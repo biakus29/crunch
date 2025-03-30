@@ -1,0 +1,89 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Styles personnalisés */
+.App {
+  @apply text-center;
+}
+
+.App-logo {
+  @apply h-[40vmin] pointer-events-none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    @apply animate-spin animate-duration-[20s] animate-ease-linear animate-infinite;
+  }
+}
+
+.App-header {
+  @apply bg-[#282c34] min-h-screen flex flex-col items-center justify-center text-[calc(10px+2vmin)] text-white;
+}
+
+.App-link {
+  @apply text-[#61dafb];
+}
+
+/* Animation personnalisée */
+@keyframes App-logo-spin {
+  from {
+    @apply rotate-0;
+  }
+  to {
+    @apply rotate-360;
+  }
+}
+
+/* Améliorations pour la responsive design */
+.App-header {
+  /* Par défaut (mobile) */
+  @apply p-4;
+
+  /* Tablette */
+  @apply md:p-8;
+
+  /* Desktop */
+  @apply lg:p-12;
+}
+
+.App-logo {
+  /* Par défaut (mobile) */
+  @apply h-[30vmin];
+
+  /* Tablette */
+  @apply md:h-[35vmin];
+
+  /* Desktop */
+  @apply lg:h-[40vmin];
+}
+
+.App-link {
+  /* Par défaut (mobile) */
+  @apply text-sm;
+
+  /* Tablette */
+  @apply md:text-base;
+
+  /* Desktop */
+  @apply lg:text-lg;
+}
+
+/* Styles supplémentaires pour la responsive design */
+@media (max-width: 640px) {
+  .App-header {
+    @apply text-xl;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .App-header {
+    @apply text-2xl;
+  }
+}
+
+@media (min-width: 1025px) {
+  .App-header {
+    @apply text-3xl;
+  }
+}
