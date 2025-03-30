@@ -38,19 +38,18 @@ const SuperAdmin = () => {
     fetchRestaurants();
   }, []);
 
-  // Réinitialiser les messages d'erreur et succès lors de la modification des champs
+  // Réinitialiser les messages d'erreur et succès
   const resetMessages = () => {
     setErrorMessage("");
     setSuccessMessage("");
   };
 
-  // Ajouter un restaurant avec l'id inclus dans les données
+  // Ajouter un restaurant
   const handleAddRestaurant = async (e) => {
     e.preventDefault();
     resetMessages();
     setIsLoading(true);
 
-    // Validation des champs
     if (!name || !adresse || !city || !contact || !email || !password) {
       setErrorMessage("Tous les champs sont obligatoires.");
       setIsLoading(false);
@@ -58,15 +57,10 @@ const SuperAdmin = () => {
     }
 
     try {
-      // Création du compte utilisateur Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-
-      // Créer une référence de document avec un id généré automatiquement
       const restaurantRef = doc(collection(db, "restaurants"));
-
-      // Enregistrer le restaurant avec setDoc et inclure l'id dans les données du document
       await setDoc(restaurantRef, {
-        id: restaurantRef.id, // Ajoute l'id dans le document
+        id: restaurantRef.id,
         name,
         adresse,
         city,
@@ -79,7 +73,6 @@ const SuperAdmin = () => {
       });
 
       setSuccessMessage("Restaurant créé avec succès !");
-      // Réinitialiser les champs du formulaire
       setName("");
       setAdresse("");
       setCity("");
@@ -87,6 +80,10 @@ const SuperAdmin = () => {
       setEmail("");
       setPassword("");
       setIsPartner(false);
+
+      // Rediriger vers l'onglet de liste après ajout
+      setActiveTab("list");
+      navigate("/superadmin"); // Assure-toi que cette route existe
     } catch (error) {
       setErrorMessage("Erreur lors de la création du restaurant : " + error.message);
     } finally {
@@ -115,7 +112,6 @@ const SuperAdmin = () => {
     resetMessages();
     setIsLoading(true);
 
-    // Validation
     if (!restaurantToEdit) {
       setErrorMessage("Aucun restaurant sélectionné pour la modification.");
       setIsLoading(false);
@@ -124,19 +120,19 @@ const SuperAdmin = () => {
 
     try {
       const restaurantRef = doc(db, "restaurants", restaurantToEdit.id);
-
-      // Mise à jour des informations du restaurant dans Firestore
       await updateDoc(restaurantRef, {
         name,
         adresse,
         city,
         contact,
         email,
-        isPartner
+        isPartner,
       });
 
       setSuccessMessage("Restaurant mis à jour avec succès !");
-      setRestaurantToEdit(null); // Réinitialiser le restaurant à modifier
+      setRestaurantToEdit(null);
+      setActiveTab("list"); // Retourner à la liste après mise à jour
+      navigate("/superadmin"); // Redirection
     } catch (error) {
       setErrorMessage("Erreur lors de la mise à jour du restaurant : " + error.message);
     } finally {
@@ -161,12 +157,10 @@ const SuperAdmin = () => {
     <Container className="mt-4">
       <h2 className="text-center mb-4">Gestion des Restaurants</h2>
 
-      {/* Messages d'erreur et de succès */}
       {errorMessage && <Alert variant="danger">{errorMessage}</Alert>}
       {successMessage && <Alert variant="success">{successMessage}</Alert>}
 
       <Tabs activeKey={activeTab} onSelect={(k) => { resetMessages(); setActiveTab(k); }} className="mb-3">
-        {/* Onglet Ajout de Restaurants */}
         <Tab eventKey="restaurants" title="Ajouter un Restaurant">
           <h3 className="mt-3">Ajouter un Restaurant</h3>
           <Form onSubmit={handleAddRestaurant}>
@@ -208,7 +202,6 @@ const SuperAdmin = () => {
           </Form>
         </Tab>
 
-        {/* Onglet Modifier Restaurant */}
         <Tab eventKey="edit" title="Modifier un Restaurant">
           <h3 className="mt-3">Modifier un Restaurant</h3>
           {restaurantToEdit ? (
@@ -250,7 +243,6 @@ const SuperAdmin = () => {
           )}
         </Tab>
 
-        {/* Onglet Liste des Restaurants */}
         <Tab eventKey="list" title="Liste des Restaurants">
           <h3 className="mt-3">Liste des Restaurants</h3>
           {isLoading ? (
