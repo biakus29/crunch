@@ -10,26 +10,24 @@ import { FaShoppingCart } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 
 const ProductDetails = () => {
-  // Récupérer l'ID du produit depuis l'URL
   const { id } = useParams();
   const { addToCart } = useCart();
   const navigate = useNavigate();
 
   // États locaux
   const [product, setProduct] = useState(null);
-  const [availableSupplements, setAvailableSupplements] = useState([]);
-  const [selectedSupplement, setSelectedSupplement] = useState(null);
-  const [availableExtras, setAvailableExtras] = useState([]);
-  const [selectedExtras, setSelectedExtras] = useState([]);
+  const [extraLists, setExtraLists] = useState([]);
   const [recommendedProducts, setRecommendedProducts] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedExtras, setSelectedExtras] = useState({});
+  const [successMessage, setSuccessMessage] = useState("");
 
   // --- FONCTIONS D'APPEL À FIRESTORE ---
 
-  // Récupérer les avis
   const fetchReviews = async () => {
     try {
       const reviewsRef = collection(db, "items", id, "reviews");
@@ -44,7 +42,6 @@ const ProductDetails = () => {
     }
   };
 
-  // Récupérer les détails du produit
   const fetchProductDetails = async () => {
     if (!id) {
       setError("ID du produit non trouvé dans l'URL.");
@@ -63,53 +60,23 @@ const ProductDetails = () => {
         setError("Données du produit manquantes.");
         return;
       }
-      // Correction éventuelle de la clé needAssortement
-      const fixedProductData = {
-        ...productData,
-        needAssortment: productData.needAssortement,
-      };
-      setProduct({ id: productSnapshot.id, ...fixedProductData });
+      setProduct({ id: productSnapshot.id, ...productData });
 
-      // Si le produit nécessite un assortiment, récupérer les suppléments associés
-      if (fixedProductData.needAssortment && fixedProductData.assortments) {
-        const supplements = await Promise.all(
-          fixedProductData.assortments.map(async (assortmentId) => {
-            const assortmentRef = doc(db, "assortments", assortmentId);
-            const assortmentSnap = await getDoc(assortmentRef);
-            return assortmentSnap.exists()
-              ? { id: assortmentSnap.id, ...assortmentSnap.data() }
-              : null;
-          })
-        );
-        const validSupplements = supplements.filter(Boolean);
-        setAvailableSupplements(validSupplements);
-        if (validSupplements.length > 0) {
-          setSelectedSupplement(validSupplements[0]);
-        }
-      }
-
-      // Récupérer les extras si disponibles
-      if (fixedProductData.extraLists) {
-        const extras = await Promise.all(
-          fixedProductData.extraLists.map(async (extraListId) => {
-            const extraListRef = doc(db, "extraLists", extraListId);
-            const extraListSnap = await getDoc(extraListRef);
-            return extraListSnap.exists()
-              ? { id: extraListSnap.id, ...extraListSnap.data() }
-              : null;
-          })
-        );
-        const validExtras = extras.filter(Boolean);
-        setAvailableExtras(validExtras);
-      }
+      // Récupérer les extraLists (comme dans HomePage)
+      const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
+      const extraListsData = extraListsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setExtraLists(extraListsData);
     } catch (err) {
       setError("Erreur lors de la récupération des détails du produit.");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Récupérer les produits recommandés
   const fetchRecommendedProducts = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, "items"));
@@ -126,56 +93,93 @@ const ProductDetails = () => {
     }
   };
 
-  // --- FONCTIONS LIÉES À L'INTERFACE ---
+  // --- FONCTIONS UTILITAIRES ---
 
-  // Gérer la redirection vers la page d'adresses
-  const handleBuyClick = () => {
-    navigate("/addresses");
+  const convertPrice = (price) => {
+    if (typeof price === "string") {
+      return parseFloat(price.replace(/\./g, ""));
+    }
+    return Number(price);
   };
 
-  // Gérer la quantité (incrément/décrément)
+  const validateExtras = () => {
+    if (!selectedItem) return false;
+    return selectedItem.assortments.every((assortmentId) => {
+      const extraList = extraLists.find((el) => el.id === assortmentId);
+      const requiredElements = extraList?.extraListElements?.filter((el) => el.required) || [];
+      if (requiredElements.length === 0) return true;
+      const selected = selectedExtras[assortmentId] || [];
+      return selected.length > 0;
+    });
+  };
+
+  const calculateTotalPrice = () => {
+    let total = selectedItem ? convertPrice(selectedItem.price) * quantity : 0;
+    if (isNaN(total)) total = 0;
+    Object.entries(selectedExtras).forEach(([assortmentId, indexes]) => {
+      const extraList = extraLists.find((el) => el.id === assortmentId);
+      if (extraList) {
+        indexes.forEach((index) => {
+          const extra = extraList.extraListElements?.[index];
+          if (extra && extra.price) {
+            const extraPrice = convertPrice(extra.price);
+            total += isNaN(extraPrice) ? 0 : extraPrice * quantity;
+          }
+        });
+      }
+    });
+    return total;
+  };
+
   const handleQuantityChange = (delta) => {
     setQuantity((prev) => Math.max(1, prev + delta));
   };
 
-  // Ajout du produit au panier via le contexte
+  const handleAddClick = () => {
+    if (product.assortments?.length > 0) {
+      setSelectedItem(product);
+      setSelectedExtras({});
+    } else {
+      addProductToCart();
+    }
+  };
+
+  const handleBuyClick = () => {
+    if (product.assortments?.length > 0) {
+      setSelectedItem(product);
+      setSelectedExtras({});
+    } else {
+      addProductToCart();
+      navigate("/addresses");
+    }
+  };
+
   const addProductToCart = () => {
-    if (!product) {
-      alert("Le produit n'est pas encore chargé.");
-      return;
-    }
-
-    if (product.needAssortment && !selectedSupplement) {
-      alert("Veuillez choisir un supplément avant d'ajouter au panier.");
-      return;
-    }
-
-    addToCart({
+    const cartItem = {
       id: product.id,
       name: product.name,
       price: product.price,
       image: (product.covers || [])[0],
       description: product.description,
       quantity: quantity,
-      supplement: selectedSupplement,
-      extras: selectedExtras,
-    });
-    alert("Produit ajouté au panier !");
+      selectedExtras: selectedItem ? selectedExtras : {},
+    };
+
+    addToCart(cartItem);
+    setSuccessMessage(`${product.name} ajouté au panier !`);
+    setTimeout(() => setSuccessMessage(""), 3000);
+    setSelectedItem(null);
   };
 
   // --- USE EFFECTS ---
   useEffect(() => {
     fetchReviews();
-  }, [id]);
-
-  useEffect(() => {
     fetchProductDetails();
     fetchRecommendedProducts();
   }, [id]);
 
   // --- AFFICHAGE ---
 
-  // Slider settings
   const sliderSettings = {
     dots: true,
     infinite: false,
@@ -184,7 +188,6 @@ const ProductDetails = () => {
     slidesToScroll: 1,
   };
 
-  // États de chargement / erreur
   if (loading) {
     return <p className="p-4 text-center">Chargement des données...</p>;
   }
@@ -195,29 +198,29 @@ const ProductDetails = () => {
     return <p className="p-4 text-center">Aucun produit trouvé.</p>;
   }
 
-  // Calculer la note moyenne pour l'affichage
   const averageRating =
     reviews.length > 0
-      ? reviews.reduce((acc, curr) => acc + (curr.rating || 0), 0) /
-        reviews.length
+      ? reviews.reduce((acc, curr) => acc + (curr.rating || 0), 0) / reviews.length
       : 0;
 
-  // Fonction d'affichage des étoiles
   const renderStars = (rating) => {
     const totalStars = 5;
     return [...Array(totalStars)].map((_, i) => (
       <i
         key={i}
-        className={`icofont-star ${
-          i < rating ? "text-yellow-400" : "text-gray-300"
-        }`}
+        className={`icofont-star ${i < rating ? "text-yellow-400" : "text-gray-300"}`}
       ></i>
     ));
   };
 
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
-      {/* Top header */}
+      {successMessage && (
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50">
+          {successMessage}
+        </div>
+      )}
+
       <div className="p-3 bg-white shadow-sm">
         <div className="flex items-center">
           <Link to="/" className="text-green-600 font-bold flex items-center">
@@ -243,7 +246,6 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Product Name, Rating, Price, Discount */}
       <div className="px-3 pt-3 pb-2 bg-white shadow-sm">
         <h2 className="text-xl font-bold">{product.name}</h2>
         <div className="flex items-center mt-1">
@@ -260,7 +262,6 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Delivery & "Available in" */}
       <div className="px-3 py-2 bg-white mt-2">
         <div className="flex justify-between items-center">
           <div>
@@ -276,7 +277,6 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Product Image Carousel */}
       <div className="bg-white py-3 mt-2">
         <Slider {...sliderSettings}>
           {(product.covers || []).map((cover, index) => (
@@ -291,7 +291,6 @@ const ProductDetails = () => {
         </Slider>
       </div>
 
-      {/* Quantity + Buttons */}
       <div className="bg-white p-3 mt-2">
         <p className="font-semibold text-gray-700 mb-2">Choisis ta quantité</p>
         <div className="flex items-center">
@@ -316,69 +315,11 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Supplements (Assortments) */}
-      {product.needAssortment && availableSupplements.length > 0 && (
-        <div className="bg-white p-3 mt-2">
-          <h6 className="font-bold mb-2">Choisis ton supplement</h6>
-          <div className="flex flex-wrap gap-2">
-            {availableSupplements.map((sup) => (
-              <button
-                key={sup.id}
-                className={`px-4 py-2 border rounded-full ${
-                  selectedSupplement && selectedSupplement.id === sup.id
-                    ? "border-green-500 text-white bg-green-500"
-                    : "border-gray-300 text-gray-700"
-                }`}
-                onClick={() => setSelectedSupplement(sup)}
-              >
-                {sup.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Extras */}
-      {availableExtras.length > 0 && (
-        <div className="bg-white p-3 mt-2">
-          <h6 className="font-bold mb-2">Choisis tes extras</h6>
-          <div className="flex flex-wrap gap-2">
-            {availableExtras.map((extra) => {
-              const isSelected = selectedExtras.some((e) => e.id === extra.id);
-              return (
-                <button
-                  key={extra.id}
-                  className={`px-4 py-2 border rounded-full ${
-                    isSelected
-                      ? "border-green-500 text-white bg-green-500"
-                      : "border-gray-300 text-gray-700"
-                  }`}
-                  onClick={() =>
-                    setSelectedExtras((prev) =>
-                      isSelected
-                        ? prev.filter((e) => e.id !== extra.id)
-                        : [...prev, extra]
-                    )
-                  }
-                >
-                  {extra.name}
-                  {extra.price ? ` (+${extra.price} FCFA)` : ""}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Product Description */}
       <div className="bg-white p-3 mt-2">
         <h6 className="font-bold mb-2">Infos sur le produit</h6>
-        <p className="text-gray-600 text-sm leading-relaxed">
-          {product.description}
-        </p>
+        <p className="text-gray-600 text-sm leading-relaxed">{product.description}</p>
       </div>
 
-      {/* Ratings & Reviews */}
       <div className="bg-white p-3 mt-2">
         <h6 className="font-bold mb-2">Avis</h6>
         {reviews.length > 0 ? (
@@ -390,16 +331,12 @@ const ProductDetails = () => {
                     <i
                       key={index}
                       className={`icofont-star ${
-                        index < review.rating
-                          ? "text-yellow-400"
-                          : "text-gray-300"
+                        index < review.rating ? "text-yellow-400" : "text-gray-300"
                       }`}
                     ></i>
                   ))}
                 </div>
-                <span className="ml-2 text-sm text-gray-500">
-                  {review.date}
-                </span>
+                <span className="ml-2 text-sm text-gray-500">{review.date}</span>
               </div>
               <p className="mt-1 text-gray-700 text-sm">{review.comment}</p>
             </div>
@@ -409,7 +346,6 @@ const ProductDetails = () => {
         )}
       </div>
 
-      {/* Recommended Products */}
       <div className="bg-white p-3 mt-2">
         <h6 className="font-bold mb-3">Recommandations</h6>
         <div className="grid grid-cols-2 gap-3">
@@ -448,12 +384,117 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Bottom Bar: Add to Cart / Buy */}
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold">Options disponibles</h3>
+              <button
+                onClick={() => setSelectedItem(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4">
+              {selectedItem.assortments.map((assortmentId) => {
+                const extraList = extraLists.find((el) => el.id === assortmentId);
+                if (!extraList) return null;
+
+                return (
+                  <div key={extraList.id} className="mb-6">
+                    <h4 className="font-medium mb-3 text-gray-700">
+                      {extraList.name}
+                      {extraList.extraListElements?.some((el) => el.required) && (
+                        <span className="text-red-500 ml-1">*</span>
+                      )}
+                    </h4>
+
+                    <div className="space-y-2">
+                      {extraList.extraListElements?.map((el, index) => (
+                        <label
+                          key={index}
+                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${
+                            selectedExtras[assortmentId]?.includes(index)
+                              ? "bg-green-50 border-2 border-green-200"
+                              : "border border-gray-200 hover:border-green-200"
+                          }`}
+                        >
+                          <input
+                            type={el.multiple ? "checkbox" : "radio"}
+                            checked={selectedExtras[assortmentId]?.includes(index)}
+                            onChange={(e) => {
+                              const newSelection = [...(selectedExtras[assortmentId] || [])];
+                              if (el.multiple) {
+                                e.target.checked
+                                  ? newSelection.push(index)
+                                  : newSelection.splice(newSelection.indexOf(index), 1);
+                              } else {
+                                newSelection.length = 0;
+                                newSelection.push(index);
+                              }
+                              setSelectedExtras({
+                                ...selectedExtras,
+                                [assortmentId]: newSelection,
+                              });
+                            }}
+                            className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
+                          />
+                          <div className="ml-3 flex-1">
+                            <span className="text-gray-700">{el.name}</span>
+                            {el.price && (
+                              <span className="text-sm text-gray-500 ml-2">
+                                + {convertPrice(el.price).toLocaleString()} FCFA
+                              </span>
+                            )}
+                          </div>
+                          {el.required && (
+                            <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
+                              Obligatoire
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex-1"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    if (validateExtras()) {
+                      addProductToCart();
+                      navigate("/cart");
+                    }
+                  }}
+                  disabled={!validateExtras()}
+                  className={`px-4 py-2 rounded-lg flex-1 ${
+                    validateExtras()
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  Confirmer ({calculateTotalPrice().toLocaleString()} FCFA)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-md">
         <div className="flex">
           <button
             className="w-1/4 flex items-center justify-center bg-yellow-400 text-white py-3 text-lg"
-            onClick={addProductToCart}
+            onClick={handleAddClick}
           >
             <FaShoppingCart className="text-2xl" />
           </button>
@@ -461,7 +502,7 @@ const ProductDetails = () => {
             className="w-3/4 flex items-center justify-center bg-green-500 text-white py-3 text-lg font-semibold"
             onClick={handleBuyClick}
           >
-            Achete
+            Acheter
           </button>
         </div>
       </div>

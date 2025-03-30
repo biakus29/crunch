@@ -10,9 +10,12 @@ import "slick-carousel/slick/slick-theme.css";
 const CategoryListing = () => {
   const { id: categoryId } = useParams();
   const [items, setItems] = useState([]);
+  const [extraLists, setExtraLists] = useState([]); // Ajout pour les extras
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [addMessage, setAddMessage] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null); // Pour la modale
+  const [selectedExtras, setSelectedExtras] = useState({}); // Extras sélectionnés
   const { addToCart } = useCart();
 
   const itemSliderSettings = {
@@ -24,38 +27,101 @@ const CategoryListing = () => {
   };
 
   useEffect(() => {
-    const fetchItems = async () => {
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const q = query(
+        // Récupérer les articles
+        const itemsQuery = query(
           collection(db, "items"),
           where("categoryId", "==", categoryId)
         );
-        const querySnapshot = await getDocs(q);
-        const itemsData = querySnapshot.docs.map((doc) => ({
+        const itemsSnapshot = await getDocs(itemsQuery);
+        const itemsData = itemsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
         setItems(itemsData);
+
+        // Récupérer les extraLists
+        const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
+        const extraListsData = extraListsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setExtraLists(extraListsData);
       } catch (err) {
-        setError("Erreur lors de la récupération des articles.");
+        setError("Erreur lors de la récupération des données.");
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
 
     if (categoryId) {
-      fetchItems();
+      fetchData();
     }
   }, [categoryId]);
 
-  const handleAddToCart = (item) => {
-    addToCart(item);
-    setAddMessage("Le plat a bien été ajouté au panier !");
-    setTimeout(() => {
-      setAddMessage("");
-    }, 2000);
+  const convertPrice = (price) => {
+    if (typeof price === "string") {
+      return parseFloat(price.replace(/\./g, ""));
+    }
+    return Number(price);
+  };
+
+  const validateExtras = () => {
+    if (!selectedItem) return false;
+    return selectedItem.assortments.every((assortmentId) => {
+      const extraList = extraLists.find((el) => el.id === assortmentId);
+      const requiredElements = extraList?.extraListElements?.filter((el) => el.required) || [];
+      if (requiredElements.length === 0) return true;
+      const selected = selectedExtras[assortmentId] || [];
+      return selected.length > 0;
+    });
+  };
+
+  const calculateTotalPrice = () => {
+    let total = selectedItem ? convertPrice(selectedItem.price) : 0;
+    if (isNaN(total)) total = 0;
+    Object.entries(selectedExtras).forEach(([assortmentId, indexes]) => {
+      const extraList = extraLists.find((el) => el.id === assortmentId);
+      if (extraList) {
+        indexes.forEach((index) => {
+          const extra = extraList.extraListElements?.[index];
+          if (extra && extra.price) {
+            const extraPrice = convertPrice(extra.price);
+            total += isNaN(extraPrice) ? 0 : extraPrice;
+          }
+        });
+      }
+    });
+    return total;
+  };
+
+  const handleAddClick = (item) => {
+    if (item.assortments?.length > 0) {
+      setSelectedItem(item);
+      setSelectedExtras({});
+    } else {
+      addToCart({ ...item, restaurantId: item.restaurantId || "default_restaurant_id" });
+      setAddMessage(`${item.name} a bien été ajouté au panier !`);
+      setTimeout(() => setAddMessage(""), 2000);
+    }
+  };
+
+  const handleAddToCart = () => {
+    if (validateExtras()) {
+      addToCart({
+        ...selectedItem,
+        restaurantId: selectedItem.restaurantId || "default_restaurant_id",
+        selectedExtras,
+      });
+      setAddMessage(`${selectedItem.name} a bien été ajouté au panier !`);
+      setTimeout(() => setAddMessage(""), 2000);
+      setSelectedItem(null);
+      setSelectedExtras({});
+    }
   };
 
   if (loading) {
@@ -101,7 +167,7 @@ const CategoryListing = () => {
                 className="bg-white rounded-lg shadow-md overflow-hidden"
               >
                 <Link to={`/detail/${item.id}`} className="no-underline text-black">
-                  <div className="relative h-32"> {/* Réduire la hauteur ici */}
+                  <div className="relative h-32">
                     {item.discount && (
                       <span className="absolute top-2 right-2 text-xs px-2 py-1 rounded-full bg-red-500 text-white">
                         {item.discount}% OFF
@@ -113,17 +179,17 @@ const CategoryListing = () => {
                           <img
                             src={item.covers[0]}
                             alt={item.name}
-                            className="w-full h-full object-cover" /* Conserver le ratio */
+                            className="w-full h-full object-cover"
                           />
                         </div>
                       ) : (
                         <Slider {...itemSliderSettings}>
                           {item.covers.map((cover, index) => (
-                            <div key={index} className="h-32"> {/* Réduire la hauteur ici */}
+                            <div key={index} className="h-32">
                               <img
                                 src={cover}
                                 alt={`${item.name} ${index + 1}`}
-                                className="w-full h-full object-cover" /* Conserver le ratio */
+                                className="w-full h-full object-cover"
                               />
                             </div>
                           ))}
@@ -134,7 +200,7 @@ const CategoryListing = () => {
                         <img
                           src="/img/default.png"
                           alt={item.name}
-                          className="w-full h-full object-cover" /* Conserver le ratio */
+                          className="w-full h-full object-cover"
                         />
                       </div>
                     )}
@@ -147,9 +213,11 @@ const CategoryListing = () => {
                   </Link>
                   <p className="text-gray-600 text-sm mt-1">{item.description}</p>
                   <div className="flex items-center justify-between mt-3">
-                    <p className="text-green-600 font-bold">{item.price} Fcfa</p>
+                    <p className="text-green-600 font-bold">
+                      {convertPrice(item.price).toLocaleString()} Fcfa
+                    </p>
                     <button
-                      onClick={() => handleAddToCart(item)}
+                      onClick={() => handleAddClick(item)}
                       className="bg-green-600 text-white px-3 py-1 rounded-full text-sm hover:bg-green-700 transition-colors"
                     >
                       <i className="fas fa-plus"></i> Ajouter
@@ -161,6 +229,107 @@ const CategoryListing = () => {
           </div>
         )}
       </div>
+
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold">Options disponibles</h3>
+              <button
+                onClick={() => setSelectedItem(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4">
+              {selectedItem.assortments.map((assortmentId) => {
+                const extraList = extraLists.find((el) => el.id === assortmentId);
+                if (!extraList) return null;
+
+                return (
+                  <div key={extraList.id} className="mb-6">
+                    <h4 className="font-medium mb-3 text-gray-700">
+                      {extraList.name}
+                      {extraList.extraListElements?.some((el) => el.required) && (
+                        <span className="text-red-500 ml-1">*</span>
+                      )}
+                    </h4>
+
+                    <div className="space-y-2">
+                      {extraList.extraListElements?.map((el, index) => (
+                        <label
+                          key={index}
+                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${
+                            selectedExtras[assortmentId]?.includes(index)
+                              ? "bg-green-50 border-2 border-green-200"
+                              : "border border-gray-200 hover:border-green-200"
+                          }`}
+                        >
+                          <input
+                            type={el.multiple ? "checkbox" : "radio"}
+                            checked={selectedExtras[assortmentId]?.includes(index)}
+                            onChange={(e) => {
+                              const newSelection = [...(selectedExtras[assortmentId] || [])];
+                              if (el.multiple) {
+                                e.target.checked
+                                  ? newSelection.push(index)
+                                  : newSelection.splice(newSelection.indexOf(index), 1);
+                              } else {
+                                newSelection.length = 0;
+                                newSelection.push(index);
+                              }
+                              setSelectedExtras({
+                                ...selectedExtras,
+                                [assortmentId]: newSelection,
+                              });
+                            }}
+                            className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
+                          />
+                          <div className="ml-3 flex-1">
+                            <span className="text-gray-700">{el.name}</span>
+                            {el.price && (
+                              <span className="text-sm text-gray-500 ml-2">
+                                + {convertPrice(el.price).toLocaleString()} FCFA
+                              </span>
+                            )}
+                          </div>
+                          {el.required && (
+                            <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
+                              Obligatoire
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex-1"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleAddToCart}
+                  disabled={!validateExtras()}
+                  className={`px-4 py-2 rounded-lg flex-1 ${
+                    validateExtras()
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                >
+                  Confirmer ({calculateTotalPrice().toLocaleString()} FCFA)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="fixed bottom-0 w-full bg-white border-t text-center">
         <div className="grid grid-cols-4">
