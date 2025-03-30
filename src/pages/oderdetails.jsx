@@ -204,7 +204,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         setFilteredQuartiers([]);
       }
     }, 300),
-    [quartiersList]
+    [quartiersList] // eslint-disable-next-line react-hooks/exhaustive-deps
   );
 
   const handleInputChange = (e) => {
