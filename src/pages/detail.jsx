@@ -172,11 +172,76 @@ const ProductDetails = () => {
   };
 
   // --- USE EFFECTS ---
-  useEffect(() => {
-    fetchReviews();
-    fetchProductDetails();
-    fetchRecommendedProducts();
-  }, [id]);
+// Remplace ton useEffect actuel par ceci
+useEffect(() => {
+  const fetchReviews = async () => {
+    try {
+      const reviewsRef = collection(db, "items", id, "reviews");
+      const reviewsSnapshot = await getDocs(reviewsRef);
+      const reviewsData = reviewsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setReviews(reviewsData);
+    } catch (error) {
+      console.error("Erreur lors du chargement des avis :", error);
+    }
+  };
+
+  const fetchProductDetails = async () => {
+    if (!id) {
+      setError("ID du produit non trouvé dans l'URL.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const productRef = doc(db, "items", id);
+      const productSnapshot = await getDoc(productRef);
+      if (!productSnapshot.exists()) {
+        setError("Produit non trouvé.");
+        return;
+      }
+      const productData = productSnapshot.data();
+      if (!productData) {
+        setError("Données du produit manquantes.");
+        return;
+      }
+      setProduct({ id: productSnapshot.id, ...productData });
+
+      const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
+      const extraListsData = extraListsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setExtraLists(extraListsData);
+    } catch (err) {
+      setError("Erreur lors de la récupération des détails du produit.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchRecommendedProducts = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "items"));
+      const recommendedData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        name: doc.data().name || "Nom inconnu",
+        price: doc.data().price || "0",
+        covers: doc.data().covers || [],
+        discount: doc.data().discount || 0,
+      }));
+      setRecommendedProducts(recommendedData);
+    } catch (err) {
+      setError("Erreur lors de la récupération des produits recommandés.");
+    }
+  };
+
+  fetchReviews();
+  fetchProductDetails();
+  fetchRecommendedProducts();
+}, [id]); // Seule dépendance nécessaire : id
 
   // --- AFFICHAGE ---
 
