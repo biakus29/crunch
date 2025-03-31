@@ -18,9 +18,8 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import debounce from "lodash/debounce";
 
-// Constantes copiées depuis OrderStatus pour cohérence
+// Constantes
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
@@ -29,14 +28,12 @@ const ORDER_STATUS = {
   CANCELLED: "annulee",
 };
 
-// Icônes pour les types d'adresse
 const addressTypeIcons = {
   Home: "fa-solid fa-house",
   Work: "fa-solid fa-briefcase",
   Other: "fa-solid fa-question",
 };
 
-// Méthodes de paiement statiques
 const paymentMethods = [
   {
     id: "payemnt_mobile",
@@ -52,7 +49,7 @@ const paymentMethods = [
   },
 ];
 
-// Composant Input réutilisable
+// Composants réutilisables
 const InputField = ({ label, name, value, onChange, error, placeholder, required = false, type = "text" }) => (
   <div className="mb-3">
     <label className="block text-gray-700">
@@ -71,6 +68,8 @@ const InputField = ({ label, name, value, onChange, error, placeholder, required
   </div>
 );
 
+// Composant principal
+
 const OrderAddress = ({ cartItems, cartTotal }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,11 +80,12 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const [editingAddress, setEditingAddress] = useState(null);
   const [data, setData] = useState({
     nickname: "Home",
+    city: "Yaoundé",
     area: "",
     completeAddress: "",
     instructions: "",
     phone: "",
-    name: "", // Pour les invités
+    name: "", // Non obligatoire pour utilisateur connecté
   });
   const [errors, setErrors] = useState({});
   const [actionError, setActionError] = useState("");
@@ -102,16 +102,16 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   // Validation des données
   const validateData = useCallback((fields, isConnected) => {
     const newErrors = {};
-    if (!fields.area) newErrors.area = "Zone de livraison requise";
+    if (!fields.city) newErrors.city = "Ville requise";
+    if (!fields.area) newErrors.area = "Quartier requis";
     if (!fields.completeAddress) newErrors.completeAddress = "Adresse complète requise";
     if (!fields.phone) newErrors.phone = "Téléphone requis";
-    else if (!/^[0-9]{9,15}$/.test(fields.phone))
-      newErrors.phone = "Numéro invalide (9-15 chiffres)";
-    if (!isConnected && !fields.name) newErrors.name = "Nom requis"; // Pour les invités
+    else if (!/^\+?[0-9]{9,15}$/.test(fields.phone))
+      newErrors.phone = "Numéro invalide (9-15 chiffres, indicatif + optionnel)";
+    if (!isConnected && !fields.name) newErrors.name = "Nom requis";
     return newErrors;
   }, []);
-
-  // Actions Firestore regroupées
+  // Actions Firestore
   const firestoreActions = useMemo(() => ({
     saveGuestUser: async (data) => {
       const guestUsersRef = doc(db, "guestUsers", "group1");
@@ -122,6 +122,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         phone: data.phone,
         address: {
           nickname: data.nickname,
+          city: data.city,
           area: data.area,
           completeAddress: data.completeAddress,
           instructions: data.instructions || "",
@@ -142,18 +143,26 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       if (isEdit) {
         await updateDoc(doc(db, `usersrestau/${userId}/addresses/${address.id}`), address);
       } else {
-        await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
+        const docRef = await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
           ...address,
-          default: addresses.length === 0,
+          default: true, // Toujours par défaut si nouvelle
         });
+        return docRef.id; // Retourne l'ID pour sélection automatique
       }
     },
     deleteAddress: async (userId, addressId) => {
       await deleteDoc(doc(db, `usersrestau/${userId}/addresses/${addressId}`));
     },
-  }), [addresses.length]);
+    setDefaultAddress: async (userId, addressId) => {
+      const addressesRef = collection(db, `usersrestau/${userId}/addresses`);
+      const snapshot = await getDocs(addressesRef);
+      snapshot.forEach(async (doc) => {
+        await updateDoc(doc.ref, { default: doc.id === addressId });
+      });
+    },
+  }), []);
 
-  // Initialisation : surveiller l'état d'authentification
+  // Initialisation de l'état d'authentification
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -172,7 +181,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         }
         const loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
         setAddresses(loadedAddresses);
-        // Sélectionner automatiquement l'adresse par défaut si elle existe
         const defaultAddress = loadedAddresses.find((addr) => addr.default);
         if (defaultAddress) setSelectedAddress(defaultAddress.id);
       } else {
@@ -192,43 +200,82 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     fetchQuartiers();
   }, []);
 
-  // Débouncing pour les suggestions de quartiers
-  const debounceQuartierFilter = useCallback(
-    debounce((value) => {
-      if (value.length > 0) {
-        const filtered = quartiersList.filter((q) =>
-          q.name.toLowerCase().includes(value.toLowerCase())
-        );
-        setFilteredQuartiers(filtered);
-      } else {
-        setFilteredQuartiers([]);
-      }
-    }, 300),
-    [quartiersList] // eslint-disable-next-line react-hooks/exhaustive-deps
-  );
+  // Filtrage des quartiers
+  useEffect(() => {
+    if (data.area.length > 0) {
+      const filtered = quartiersList.filter((q) =>
+        q.name.toLowerCase().includes(data.area.toLowerCase())
+      );
+      setFilteredQuartiers(filtered);
+    } else {
+      setFilteredQuartiers([]);
+    }
+  }, [data.area, quartiersList]);
 
+  // Gestion des changements d'entrée
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setData((prev) => ({ ...prev, [name]: value }));
-    if (name === "area") debounceQuartierFilter(value);
     setErrors((prev) => ({ ...prev, [name]: "" }));
     if (actionError) setActionError("");
   };
 
+  // Sélection d'un quartier
+  const handleQuartierSelect = (name) => {
+    setData((prev) => ({ ...prev, area: name }));
+    setFilteredQuartiers([]);
+  };
+
+  // Connexion avec Google et enregistrement automatique
   const handleGoogleSignIn = async () => {
     setSubmitState((prev) => ({ ...prev, googleLoading: true }));
     try {
+      // Validation avant connexion
+      const validationErrors = validateData(data, false);
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors);
+        setSubmitState((prev) => ({ ...prev, googleLoading: false }));
+        return;
+      }
+
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       const currentUser = auth.currentUser;
       setUser(currentUser);
-      setAddresses(await firestoreActions.loadAddresses(currentUser.uid));
+
+      // Charger les adresses existantes
+      let loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
+      setAddresses(loadedAddresses);
+
+      // Si aucune adresse, en créer une avec les données saisies
+      if (loadedAddresses.length === 0) {
+        const newAddressId = await firestoreActions.saveAddress(currentUser.uid, {
+          nickname: data.nickname,
+          city: data.city,
+          area: data.area,
+          completeAddress: data.completeAddress,
+          instructions: data.instructions,
+          phone: data.phone,
+        });
+        loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
+        setAddresses(loadedAddresses);
+        setSelectedAddress(newAddressId); // Sélectionner automatiquement la nouvelle adresse
+      } else {
+        const defaultAddress = loadedAddresses.find((addr) => addr.default);
+        setSelectedAddress(defaultAddress ? defaultAddress.id : loadedAddresses[0].id);
+      }
+
+      // Si une méthode de paiement est déjà sélectionnée, continuer directement
+      if (selectedPayment) {
+        await handleContinue();
+      }
     } catch (error) {
       setActionError("Erreur de connexion avec Google.");
     }
     setSubmitState((prev) => ({ ...prev, googleLoading: false }));
   };
 
+  // Soumission d'une adresse (pour la modale)
   const handleAddressSubmit = async (e) => {
     e.preventDefault();
     const validationErrors = validateData(data, !!user);
@@ -243,6 +290,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           user.uid,
           {
             nickname: data.nickname,
+            city: data.city,
             area: data.area,
             completeAddress: data.completeAddress,
             instructions: data.instructions,
@@ -253,7 +301,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         );
         const updatedAddresses = await firestoreActions.loadAddresses(user.uid);
         setAddresses(updatedAddresses);
-        // Sélectionner automatiquement la nouvelle adresse si c'est la première
         if (!selectedAddress && updatedAddresses.length === 1) {
           setSelectedAddress(updatedAddresses[0].id);
         }
@@ -266,6 +313,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     resetForm();
   };
 
+  // Suppression d'une adresse
   const handleDeleteAddress = async (addressId) => {
     if (window.confirm("Voulez-vous vraiment supprimer cette adresse ?")) {
       try {
@@ -279,10 +327,12 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     }
   };
 
+  // Modification d'une adresse
   const handleEditAddress = (address) => {
     setEditingAddress(address);
     setData({
       nickname: address.nickname,
+      city: address.city,
       area: address.area,
       completeAddress: address.completeAddress,
       instructions: address.instructions || "",
@@ -291,9 +341,11 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     setShowModal(true);
   };
 
+  // Réinitialisation du formulaire
   const resetForm = () => {
     setData({
       nickname: "Home",
+      city: "Yaoundé",
       area: "",
       completeAddress: "",
       instructions: "",
@@ -304,30 +356,52 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     setEditingAddress(null);
   };
 
+  // Gestion de la continuation
   const handleContinue = async () => {
     setSubmitState((prev) => ({ ...prev, continueLoading: true }));
-    
     try {
       let orderData = {};
       let navState = {};
 
       if (user) {
-        // Pour les utilisateurs connectés
-        if (!selectedAddress) {
+        let addressToUse;
+        if (addresses.length === 0) {
+          // Cas où l'utilisateur connecté n’a pas d’adresse
+          const validationErrors = validateData(data, true);
+          if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
+            setSubmitState((prev) => ({ ...prev, continueLoading: false }));
+            return;
+          }
+          const newAddressId = await firestoreActions.saveAddress(user.uid, {
+            nickname: data.nickname,
+            city: data.city,
+            area: data.area,
+            completeAddress: data.completeAddress,
+            instructions: data.instructions,
+            phone: data.phone,
+          });
+          const updatedAddresses = await firestoreActions.loadAddresses(user.uid);
+          setAddresses(updatedAddresses);
+          setSelectedAddress(newAddressId);
+          addressToUse = updatedAddresses.find((addr) => addr.id === newAddressId);
+        } else if (!selectedAddress) {
           setActionError("Veuillez sélectionner une adresse.");
           setSubmitState((prev) => ({ ...prev, continueLoading: false }));
           return;
+        } else {
+          addressToUse = addresses.find((a) => a.id === selectedAddress);
         }
+
         if (!selectedPayment) {
           setActionError("Veuillez sélectionner une méthode de paiement.");
           setSubmitState((prev) => ({ ...prev, continueLoading: false }));
           return;
         }
 
-        const address = addresses.find((a) => a.id === selectedAddress);
         orderData = {
           userId: user.uid,
-          address,
+          address: addressToUse,
           paymentMethod: paymentMethods.find((p) => p.id === selectedPayment),
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
@@ -335,12 +409,13 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           total: cartTotal || 0,
         };
         navState = {
-          selectedAddress: address,
+          selectedAddress: addressToUse,
           selectedPayment: orderData.paymentMethod,
           orderId: null,
         };
+        await firestoreActions.setDefaultAddress(user.uid, addressToUse.id);
       } else {
-        // Pour les invités
+        // Logique pour les invités (inchangée)
         const validationErrors = validateData(data, false);
         if (Object.keys(validationErrors).length > 0) {
           setErrors(validationErrors);
@@ -352,7 +427,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           setSubmitState((prev) => ({ ...prev, continueLoading: false }));
           return;
         }
-
         const guestId = `guest-${data.phone}`;
         const guestRecord = {
           uid: guestId,
@@ -378,6 +452,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           contact: contactInfo,
           address: {
             nickname: data.nickname,
+            city: data.city,
             area: data.area,
             completeAddress: data.completeAddress,
             instructions: data.instructions,
@@ -399,16 +474,9 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
 
       const orderRef = await addDoc(collection(db, "orders"), orderData);
       navState.orderId = orderRef.id;
-
       navigate("/orders", { state: navState });
-
     } catch (err) {
-      console.error("Erreur handleContinue:", err);
-      setActionError(
-        err.code === "permission-denied"
-          ? "Permission refusée par la base de données"
-          : "Erreur lors de la création de votre compte ou commande"
-      );
+      setActionError("Erreur lors de la création de la commande.");
     } finally {
       setSubmitState((prev) => ({ ...prev, continueLoading: false }));
     }
@@ -418,124 +486,139 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header user={user} onAddAddress={() => setShowModal(true)} />
+    <Header user={user} onAddAddress={() => setShowModal(true)} />
 
-      {actionError && (
-        <div className="p-3">
-          <div className="bg-red-100 text-red-700 p-2 rounded">{actionError}</div>
-        </div>
-      )}
+    {actionError && (
+      <div className="p-3">
+        <div className="bg-red-100 text-red-700 p-2 rounded">{actionError}</div>
+      </div>
+    )}
 
-      {!user && (
-        <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mt-3 mx-3">
-          <h2 className="text-xl font-bold mb-3">Vos coordonnées</h2>
-          <InputField
-            label="Nom"
-            name="name"
-            value={data.name}
-            onChange={handleInputChange}
-            error={errors.name}
-            placeholder="Votre nom"
-            required
-          />
-          <InputField
-            label="Téléphone"
-            name="phone"
-            value={data.phone}
-            onChange={handleInputChange}
-            error={errors.phone}
-            placeholder="Ex: 698123456"
-            required
-            type="tel"
-          />
-        </section>
-      )}
-
-      {user && addresses.length > 0 ? (
-        <AddressList
-          addresses={addresses}
-          selectedAddress={selectedAddress}
-          onSelect={setSelectedAddress}
-          onEdit={handleEditAddress}
-          onDelete={handleDeleteAddress}
-        />
-      ) : (
-        (!user || addresses.length === 0) && (
-          <AddressForm
-            data={data}
-            onChange={handleInputChange}
-            errors={errors}
-            quartiers={filteredQuartiers}
-            onSelectQuartier={(name) => {
-              setData((prev) => ({ ...prev, area: name }));
-              setFilteredQuartiers([]);
-            }}
-            showPhone={false}
-          />
-        )
-      )}
-
-      <PaymentMethods
-        methods={paymentMethods}
-        selected={selectedPayment}
-        onSelect={setSelectedPayment}
+    {/* Formulaire pour utilisateur connecté sans adresses */}
+    {user && addresses.length === 0 ? (
+      <AddressForm
+        data={data}
+        onChange={handleInputChange}
+        errors={errors}
+        quartiers={quartiersList}
+        filteredQuartiers={filteredQuartiers}
+        onQuartierSelect={handleQuartierSelect}
+        showPhone={true} // Afficher le téléphone car obligatoire
       />
+    ) : !user ? (
+      <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mt-3 mx-3">
+        <h2 className="text-xl font-bold mb-3">Vos coordonnées</h2>
+        <InputField
+          label="Nom"
+          name="name"
+          value={data.name}
+          onChange={handleInputChange}
+          error={errors.name}
+          placeholder="Votre nom"
+          required
+        />
+        <AddressForm
+          data={data}
+          onChange={handleInputChange}
+          errors={errors}
+          quartiers={quartiersList}
+          filteredQuartiers={filteredQuartiers}
+          onQuartierSelect={handleQuartierSelect}
+          showPhone={true}
+        />
+      </section>
+    ) : (
+      <AddressList
+        addresses={addresses}
+        selectedAddress={selectedAddress}
+        onSelect={(addressId) => {
+          setSelectedAddress(addressId);
+          if (user) {
+            firestoreActions.setDefaultAddress(user.uid, addressId);
+          }
+        }}
+        onEdit={handleEditAddress}
+        onDelete={handleDeleteAddress}
+      />
+    )}
 
-      <div className="p-3 space-y-2">
-        {!user && (
+    <PaymentMethods
+      methods={paymentMethods}
+      selected={selectedPayment}
+      onSelect={setSelectedPayment}
+    />
+
+    <div className="p-3 space-y-2">
+      {!user && (
+        <>
           <button
             onClick={handleGoogleSignIn}
-            className="w-full flex items-center justify-center py-3 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+            className="w-full flex flex-col items-center justify-center py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400"
             disabled={submitState.googleLoading}
           >
-            {submitState.googleLoading ? <Spinner /> : <i className="fa-brands fa-google mr-2"></i>}
-            Continuer avec Google
+            <div className="flex items-center">
+              {submitState.googleLoading ? (
+                <Spinner />
+              ) : (
+                <i className="fa-brands fa-google mr-1 text-base" />
+              )}
+              <span className="font-semibold text-sm">Continuer avec Google</span>
+            </div>
+            {!submitState.googleLoading && (
+              <span className="text-[10px] text-green-100 mt-0.5">
+                (Plus besoin de répéter le processus)
+              </span>
+            )}
           </button>
-        )}
+          <button
+            onClick={handleContinue}
+            className="w-full py-3 rounded-lg bg-white text-green-600 border border-green-600 hover:bg-gray-100"
+            disabled={submitState.continueLoading}
+          >
+            {submitState.continueLoading ? <Spinner /> : "Continuer sans compte"}
+          </button>
+        </>
+      )}
+      {user && (
         <button
           onClick={handleContinue}
           disabled={
-            submitState.continueLoading ||
-            !selectedPayment ||
-            (user && addresses.length > 0 && !selectedAddress) ||
-            (!user && (!data.name || !data.phone || !data.area || !data.completeAddress))
+            (addresses.length > 0 && !selectedAddress) || !selectedPayment || submitState.continueLoading
           }
           className={`w-full py-3 rounded-lg transition-colors flex items-center justify-center ${
-            (user && selectedAddress && selectedPayment) ||
-            (!user && data.name && data.phone && data.area && data.completeAddress && selectedPayment)
+            (addresses.length === 0 || selectedAddress) && selectedPayment
               ? "bg-green-600 hover:bg-green-700 text-white"
               : "bg-gray-300 text-gray-500 cursor-not-allowed"
           }`}
         >
           {submitState.continueLoading ? <Spinner /> : "Continuer"}
         </button>
-      </div>
-
-      {user && showModal && (
-        <AddressModal
-          data={data}
-          onChange={handleInputChange}
-          errors={errors}
-          onSubmit={handleAddressSubmit}
-          onClose={() => {
-            setShowModal(false);
-            resetForm();
-          }}
-          loading={submitState.addressSubmitLoading}
-          editing={!!editingAddress}
-          quartiers={filteredQuartiers}
-          onSelectQuartier={(name) => {
-            setData((prev) => ({ ...prev, area: name }));
-            setFilteredQuartiers([]);
-          }}
-        />
       )}
     </div>
-  );
+
+    {user && addresses.length > 0 && showModal && (
+      <AddressModal
+        data={data}
+        onChange={handleInputChange}
+        errors={errors}
+        onSubmit={handleAddressSubmit}
+        onClose={() => {
+          setShowModal(false);
+          resetForm();
+        }}
+        loading={submitState.addressSubmitLoading}
+        editing={!!editingAddress}
+        quartiers={quartiersList}
+        filteredQuartiers={filteredQuartiers}
+        onQuartierSelect={handleQuartierSelect}
+      />
+    )}
+  </div>
+);
 };
 
-// Composants séparés
 
+// Composants auxiliaires
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center">
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-600"></div>
@@ -560,41 +643,37 @@ const Header = ({ user, onAddAddress }) => (
 
 const AddressList = ({ addresses, selectedAddress, onSelect, onEdit, onDelete }) => (
   <div className="p-3">
-    {addresses.length > 0 ? (
-      addresses.map((address) => (
-        <div key={address.id} className="bg-white rounded-lg shadow-sm p-3 mb-3 flex items-start">
-          <input
-            type="radio"
-            checked={selectedAddress === address.id}
-            onChange={() => onSelect(address.id)}
-            className="mt-1 h-5 w-5 text-green-600"
-          />
-          <div className="ml-3 flex-1">
-            <div className="flex items-center">
-              <h6 className="font-semibold">{address.nickname}</h6>
-              <button onClick={() => onEdit(address)} className="ml-2 text-green-600 hover:text-green-800">
-                <i className="fa-solid fa-pen-to-square"></i>
-              </button>
-              <button onClick={() => onDelete(address.id)} className="ml-2 text-red-600 hover:text-red-800">
-                <i className="fa-solid fa-trash"></i>
-              </button>
-              {address.default && (
-                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Par défaut</span>
-              )}
-            </div>
-            <p className="text-gray-600">{address.area}</p>
-            <p className="text-gray-600">{address.completeAddress}</p>
-            <p className="text-gray-600">Téléphone: {address.phone}</p>
+    {addresses.map((address) => (
+      <div key={address.id} className="bg-white rounded-lg shadow-sm p-3 mb-3 flex items-start">
+        <input
+          type="radio"
+          checked={selectedAddress === address.id}
+          onChange={() => onSelect(address.id)}
+          className="mt-1 h-5 w-5 text-green-600"
+        />
+        <div className="ml-3 flex-1">
+          <div className="flex items-center">
+            <h6 className="font-semibold">{address.nickname}</h6>
+            <button onClick={() => onEdit(address)} className="ml-2 text-green-600 hover:text-green-800">
+              <i className="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button onClick={() => onDelete(address.id)} className="ml-2 text-red-600 hover:text-red-800">
+              <i className="fa-solid fa-trash"></i>
+            </button>
+            {address.default && (
+              <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Par défaut</span>
+            )}
           </div>
+          <p className="text-gray-600">{address.city} - {address.area}</p>
+          <p className="text-gray-600">{address.completeAddress}</p>
+          <p className="text-gray-600">Téléphone: {address.phone}</p>
         </div>
-      ))
-    ) : (
-      <p className="text-gray-600">Aucune adresse enregistrée</p>
-    )}
+      </div>
+    ))}
   </div>
 );
 
-const AddressForm = ({ data, onChange, errors, quartiers, onSelectQuartier, showPhone }) => (
+const AddressForm = ({ data, onChange, errors, filteredQuartiers, onQuartierSelect, showPhone }) => (
   <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mx-3">
     <h2 className="text-xl font-bold mb-3">Lieu de livraison</h2>
     <div className="mb-3">
@@ -617,26 +696,41 @@ const AddressForm = ({ data, onChange, errors, quartiers, onSelectQuartier, show
     </div>
     <div className="mb-3">
       <label className="block">Ville</label>
-      <span>YAOUNDE</span>
+      <select
+        name="city"
+        value={data.city}
+        onChange={onChange}
+        className="w-full p-2 border rounded"
+      >
+        <option value="Yaoundé">Yaoundé</option>
+        <option value="Douala" disabled>Douala (Indisponible pour le moment)</option>
+      </select>
     </div>
-    <InputField
-      label="Quartier"
-      name="area"
-      value={data.area}
-      onChange={onChange}
-      error={errors.area}
-      placeholder="Votre zone de livraison"
-      required
-    />
-    {quartiers.length > 0 && (
-      <div className="absolute z-10 bg-white w-full border border-gray-300 rounded mt-1 max-h-48 overflow-y-auto">
-        {quartiers.map((q) => (
-          <div key={q.id} onClick={() => onSelectQuartier(q.name)} className="p-2 hover:bg-gray-100 cursor-pointer">
-            {q.name}
-          </div>
-        ))}
-      </div>
-    )}
+    <div className="mb-3 relative">
+      <label className="block">Quartier</label>
+      <input
+        type="text"
+        name="area"
+        value={data.area}
+        onChange={onChange}
+        className={`w-full p-2 border rounded ${errors.area ? "border-red-500" : "border-gray-300"}`}
+        placeholder="Votre zone de livraison"
+        required
+      />
+      {filteredQuartiers.length > 0 && (
+        <div className="absolute z-10 bg-white w-full border border-gray-300 rounded mt-1 max-h-48 overflow-y-auto">
+          {filteredQuartiers.map((q) => (
+            <div
+              key={q.id}
+              onClick={() => onQuartierSelect(q.name)}
+              className="p-2 hover:bg-gray-100 cursor-pointer"
+            >
+              {q.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
     <InputField
       label="Description"
       name="completeAddress"
@@ -688,7 +782,7 @@ const PaymentMethods = ({ methods, selected, onSelect }) => (
   </section>
 );
 
-const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, editing, quartiers, onSelectQuartier }) => (
+const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, editing, filteredQuartiers, onQuartierSelect }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
     <div className="bg-white rounded-lg w-full max-w-md">
       <div className="p-4 border-b flex justify-between items-center">
@@ -714,24 +808,43 @@ const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, edit
             ))}
           </div>
         </div>
-        <InputField
-          label="Lieu de livraison"
-          name="area"
-          value={data.area}
-          onChange={onChange}
-          error={errors.area}
-          placeholder="Votre zone de livraison"
-          required
-        />
-        {quartiers.length > 0 && (
-          <div className="absolute z-10 bg-white w-full border border-gray-300 rounded mt-1 max-h-48 overflow-y-auto">
-            {quartiers.map((q) => (
-              <div key={q.id} onClick={() => onSelectQuartier(q.name)} className="p-2 hover:bg-gray-100 cursor-pointer">
-                {q.name}
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="mb-3">
+          <label className="block">Ville</label>
+          <select
+            name="city"
+            value={data.city}
+            onChange={onChange}
+            className="w-full p-2 border rounded"
+          >
+            <option value="Yaoundé">Yaoundé</option>
+            <option value="Douala" disabled>Douala (Indisponible pour le moment)</option>
+          </select>
+        </div>
+        <div className="mb-3 relative">
+          <label className="block">Quartier</label>
+          <input
+            type="text"
+            name="area"
+            value={data.area}
+            onChange={onChange}
+            className={`w-full p-2 border rounded ${errors.area ? "border-red-500" : "border-gray-300"}`}
+            placeholder="Votre zone de livraison"
+            required
+          />
+          {filteredQuartiers.length > 0 && (
+            <div className="absolute z-10 bg-white w-full border border-gray-300 rounded mt-1 max-h-48 overflow-y-auto">
+              {filteredQuartiers.map((q) => (
+                <div
+                  key={q.id}
+                  onClick={() => onQuartierSelect(q.name)}
+                  className="p-2 hover:bg-gray-100 cursor-pointer"
+                >
+                  {q.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <InputField
           label="Description"
           name="completeAddress"

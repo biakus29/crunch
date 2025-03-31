@@ -18,143 +18,394 @@ import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
 
-// Constantes harmonisées avec OrderStatus
+// Constantes harmonisées avec les nouveaux états
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
+  READY_TO_DELIVER: "pret_a_livrer",
   DELIVERING: "en_livraison",
   DELIVERED: "livree",
-  CANCELLED: "annulee",
+  FAILED: "echec",
 };
 
 const STATUS_LABELS = {
   [ORDER_STATUS.PENDING]: "En attente",
   [ORDER_STATUS.PREPARING]: "En préparation",
+  [ORDER_STATUS.READY_TO_DELIVER]: "Prêt à livrer",
   [ORDER_STATUS.DELIVERING]: "En livraison",
   [ORDER_STATUS.DELIVERED]: "Livrée",
-  [ORDER_STATUS.CANCELLED]: "Annulée",
+  [ORDER_STATUS.FAILED]: "Échec",
 };
 
 const STATUS_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
   [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
+  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-500 text-white",
   [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
   [ORDER_STATUS.DELIVERED]: "bg-green-600 text-white",
-  [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white",
+  [ORDER_STATUS.FAILED]: "bg-red-600 text-white",
 };
 
 const STATUS_COLUMN_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-gray-100 border-gray-300",
   [ORDER_STATUS.PREPARING]: "bg-blue-50 border-blue-200",
+  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-50 border-purple-200",
   [ORDER_STATUS.DELIVERING]: "bg-yellow-50 border-yellow-200",
   [ORDER_STATUS.DELIVERED]: "bg-green-50 border-green-200",
 };
 
 const DEFAULT_DELIVERY_FEE = 1000;
 
-const OrderCard = React.memo(
-  ({ order, items, usersData, onDragStart, onDragEnd, onUpdateFees, onDelete, onUpdateStatus, deliveryFee }) => {
-    const user = usersData[order.userId] || usersData[order.guestId];
-    const clientInfo = user
-      ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`
-      : "Client inconnu";
-    const phoneNumber = order.address?.phone || order.contact?.phone || "Non spécifié";
-    const addressDescription = order.address?.completeAddress || order.destination || "Description non spécifiée";
-    const additionalAddressInfo = order.address
-      ? `${order.address.area}${order.address.instructions ? ` - ${order.address.instructions}` : ""}`
-      : "";
-    const restaurantOrderItems = order.items?.filter((orderItem) =>
-      items.some((it) => it.id === orderItem.dishId)
-    ) ?? [];
+const FAILURE_REASONS = [
+  "Client injoignable",
+  "Adresse incorrecte",
+  "Annulation par le client",
+  "Problème de stock",
+  "Erreur de livraison",
+  "Autre",
+];
 
-    if (restaurantOrderItems.length === 0) return null;
+const formatPrice = (number) =>
+  Number(number).toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
 
-    const orderDate = order.timestamp
-      ? new Date(order.timestamp.seconds * 1000).toLocaleString()
-      : "Date inconnue";
+const convertPrice = (price) => {
+  if (typeof price === "string") {
+    return parseFloat(price.replace(/\./g, ""));
+  }
+  return Number(price);
+};
 
-    return (
-      <div
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        className="mb-3 p-3 bg-white rounded-lg shadow-sm border border-gray-200 cursor-move hover:shadow-md transition-transform duration-200"
-      >
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="font-medium text-gray-800">{clientInfo}</p>
-            <p className="text-sm text-gray-500">Téléphone: {phoneNumber}</p>
-            <p className="text-sm text-gray-500">Description adresse: {addressDescription}</p>
-            {additionalAddressInfo && (
-              <p className="text-sm text-gray-400">({additionalAddressInfo})</p>
-            )}
-            <p className="text-sm text-gray-500">Commandé le: {orderDate}</p>
-          </div>
-          <span className="text-sm font-semibold">{order.total || 0} FCFA</span>
+const calculateTimeDifferenceInMinutes = (start, end) => {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const diffMs = endDate - startDate;
+  return Math.floor(diffMs / (1000 * 60));
+};
+
+// Fonction utilitaire pour calculer subtotal et totalWithDelivery
+const calculateOrderTotals = (order, extraLists) => {
+  const subtotal = order.items.reduce((sum, item) => {
+    const itemPrice = convertPrice(item.dishPrice || 0);
+    const extrasTotal = item.selectedExtras
+      ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
+          const extraList = extraLists.find((el) => el.id === extraListId)?.extraListElements || [];
+          return extraSum + indexes.reduce((acc, index) => acc + Number(extraList[index]?.price || 0), 0);
+        }, 0)
+      : 0;
+    return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
+  }, 0);
+  const totalWithDelivery = subtotal + (order.deliveryFees !== undefined ? Number(order.deliveryFees) : DEFAULT_DELIVERY_FEE);
+  return { subtotal, totalWithDelivery };
+};
+
+// Composant OrderCard optimisé pour un affichage clair et agrandi
+const OrderCard = ({ order, items, extraLists, usersData, onShowDetails }) => {
+  const user = usersData[order.userId] || (order.isGuest && order.contact ? { email: order.contact.name } : null);
+  const clientInfo = user ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`.trim() : "Client inconnu";
+  const { totalWithDelivery } = calculateOrderTotals(order, extraLists);
+
+  return (
+    <div className="mb-3 p-3 bg-white rounded-lg shadow-md border border-gray-200">
+      <div className="flex flex-col space-y-2 text-base">
+        <div className="font-medium text-gray-800 truncate" title={clientInfo}>
+          Client: {clientInfo}
         </div>
-
-        <div className="mt-2 space-y-1">
-          {restaurantOrderItems.map((i, index) => {
-            const currentItem = items.find((it) => it.id === i.dishId);
-            return (
-              <div key={index} className="flex justify-between text-sm">
-                <span className="text-gray-700">
-                  {currentItem ? currentItem.name : "Plat inconnu"} (x{i.quantity})
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
+        <div className="text-gray-600">ID: #{order.id.slice(0, 6)}</div>
+        <div className="text-green-600 font-semibold">Total: {formatPrice(totalWithDelivery)} FCFA</div>
+        <div>
           <span
-            className={`text-xs px-2 py-1 rounded-full ${
+            className={`inline-block px-2 py-1 rounded text-sm font-medium ${
               STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
             }`}
           >
-            {STATUS_LABELS[order.status] || "En attente"}
+            Statut: {STATUS_LABELS[order.status] || "En attente"}
           </span>
-          <div className="flex space-x-1">
-           
-           
-           
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const newFee = prompt(
-                  `Frais pour ${order.address?.area || "destination inconnue"} (FCFA):`,
-                  order.deliveryFees ?? deliveryFee
-                );
-                if (newFee !== null && !isNaN(newFee)) {
-                  onUpdateFees(order.id, order.address?.area || "inconnu", Number(newFee));
-                }
-              }}
-              className="text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
-              aria-label="Modifier les frais de livraison"
-            >
-              ✏️
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (window.confirm("Voulez-vous vraiment supprimer cette commande ?")) {
-                  onDelete(order.id);
-                }
-              }}
-              className="text-xs p-1 bg-red-200 rounded hover:bg-red-300"
-              aria-label="Supprimer la commande"
-            >
-              🗑️
-            </button>
-          </div>
         </div>
-        <div className="mt-1 text-sm text-gray-600">
-          Livraison: {order.deliveryFees !== undefined ? order.deliveryFees : deliveryFee} FCFA
+        <div className="flex items-center justify-between">
+          <span className={`font-medium ${order.isPaid ? "text-green-600" : "text-red-600"}`}>
+            Payé: {order.isPaid ? "Oui" : "Non"}
+          </span>
+          <button
+            onClick={() => onShowDetails(order)}
+            className="text-blue-600 hover:underline text-sm px-2 py-1"
+          >
+            Détails
+          </button>
         </div>
       </div>
-    );
-  }
-);
+    </div>
+  );
+};
+
+// Modal OrderDetailsModal
+const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onClose, onUpdateFees, onDelete, onUpdateStatus }) => {
+  const user = usersData[order.userId] || (order.isGuest && order.contact ? { email: order.contact.name } : null);
+  const clientInfo = user ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`.trim() : "Client inconnu";
+  const restaurantEmail = usersData[order.restaurantId]?.email || "Restaurant inconnu";
+  const phoneNumber = order.address?.phone || order.contact?.phone || "Non spécifié";
+  const addressDescription = order.address?.completeAddress || order.destination || "Non spécifiée";
+  const additionalAddressInfo = order.address?.instructions || "";
+  const orderDate = order.timestamp ? new Date(order.timestamp.seconds * 1000).toLocaleString("fr-FR") : "Date inconnue";
+
+  const [newStatus, setNewStatus] = useState(order.status || ORDER_STATUS.PENDING);
+  const [failureReason, setFailureReason] = useState("");
+  const [showFailureModal, setShowFailureModal] = useState(false);
+  const [isPaid, setIsPaid] = useState(order.isPaid || false);
+  const [statusHistory, setStatusHistory] = useState([]);
+
+  const { subtotal, totalWithDelivery } = useMemo(() => calculateOrderTotals(order, extraLists), [order, extraLists]);
+
+  useEffect(() => {
+    const statusHistoryQuery = query(collection(db, "orders", order.id, "statusHistory"));
+    const unsubscribe = onSnapshot(statusHistoryQuery, (snapshot) => {
+      const history = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp.toDate(),
+      })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      setStatusHistory(history);
+      if (history.length > 0) {
+        setNewStatus(history[history.length - 1].status);
+      }
+    }, (error) => {
+      console.error("Erreur lors de la récupération de l'historique des statuts:", error);
+    });
+    return () => unsubscribe();
+  }, [order.id]);
+
+  const getExtraName = (extraListId, index) => {
+    const extraList = extraLists.find((el) => el.id === extraListId);
+    const element = extraList?.extraListElements?.[index];
+    return element ? `${element.name}${element.price ? ` (+${convertPrice(element.price).toLocaleString()} FCFA)` : ""}` : "Extra inconnu";
+  };
+
+  const handleStatusChange = async () => {
+    if (newStatus === ORDER_STATUS.FAILED) {
+      setShowFailureModal(true);
+    } else {
+      await onUpdateStatus(order.id, newStatus, null, isPaid);
+      onClose();
+    }
+  };
+
+  const handleFailureSubmit = async () => {
+    if (failureReason) {
+      await onUpdateStatus(order.id, ORDER_STATUS.FAILED, failureReason, isPaid);
+      setShowFailureModal(false);
+      onClose();
+    }
+  };
+
+  const handleTogglePaid = async () => {
+    const newPaidStatus = !isPaid;
+    setIsPaid(newPaidStatus);
+    try {
+      const orderRef = doc(db, "orders", order.id);
+      await updateDoc(orderRef, { isPaid: newPaidStatus, updatedAt: Timestamp.now() });
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour du statut payé:", error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl">
+        <div className="sticky top-0 bg-white p-3 border-b flex justify-between items-center z-10">
+          <h3 className="text-base font-semibold">Commande #{order.id.slice(0, 6)}</h3>
+          <div className="flex items-center space-x-1">
+            <span className="text-xs font-medium">{isPaid ? "Payé" : "Non payé"}</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={isPaid} onChange={handleTogglePaid} className="sr-only peer" />
+              <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+            </label>
+          </div>
+        </div>
+        <div className="flex flex-col md:flex-row p-3 gap-3">
+          <div className="md:w-1/2 space-y-3">
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Client & Livraison</h6>
+              <div className="text-xs text-gray-700 space-y-0.5">
+                <p><span className="font-medium">Client :</span> {clientInfo}</p>
+                <p><span className="font-medium">Tel :</span> {phoneNumber}</p>
+                <p><span className="font-medium">Adresse :</span> {addressDescription}</p>
+                {additionalAddressInfo && <p><span className="font-medium">Instr. :</span> {additionalAddressInfo}</p>}
+                <p><span className="font-medium">Date :</span> {orderDate}</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Paiement & Restaurant</h6>
+              <div className="text-xs text-gray-700 space-y-0.5">
+                <div className="flex items-center">
+                  <i className={`${order.paymentMethod?.icon || "fa fa-credit-card"} text-green-600 text-sm mr-1`}></i>
+                  <span>{order.paymentMethod?.name || "Non spécifié"}</span>
+                </div>
+                <p><span className="font-medium">Restaurant :</span> {restaurantEmail}</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Historique</h6>
+              {statusHistory.length > 0 ? (
+                <div className="text-xs text-gray-700 space-y-1 max-h-40 overflow-y-auto">
+                  {statusHistory.map((entry, index) => (
+                    <div
+                      key={entry.id}
+                      className={`flex justify-between items-center p-1 border-b border-gray-200 ${
+                        index === statusHistory.length - 1 ? "bg-gray-100" : ""
+                      }`}
+                    >
+                      <span>
+                        {index + 1}.{" "}
+                        <span className={`px-1 rounded ${STATUS_COLORS[entry.status]}`}>
+                          {STATUS_LABELS[entry.status] || entry.status}
+                        </span>
+                        {entry.reason && <span className="text-red-600"> ({entry.reason})</span>}
+                        {index > 0 && (
+                          <span className="text-green-600 ml-1">
+                            (+{calculateTimeDifferenceInMinutes(statusHistory[index - 1].timestamp, entry.timestamp)} min)
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-gray-500">
+                        {entry.timestamp.toLocaleString("fr-FR")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">Aucun historique</p>
+              )}
+            </div>
+          </div>
+          <div className="md:w-1/2 space-y-3">
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Articles</h6>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {order.items.map((item, index) => {
+                  const currentItem = items.find((it) => it.id === item.dishId);
+                  return (
+                    <div key={`${item.dishId}-${index}`} className="flex items-start">
+                      <img
+                        src={currentItem?.covers?.[0] || item.covers?.[0] || "/img/default.png"}
+                        alt={item.dishName}
+                        className="w-10 h-10 object-cover rounded mr-2"
+                        onError={(e) => (e.target.src = "/img/default.png")}
+                      />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <p className="font-semibold text-xs">{currentItem?.name || item.dishName || "Plat inconnu"}</p>
+                          <p className="text-green-600 text-xs">{convertPrice(item.dishPrice).toLocaleString()} FCFA × {item.quantity}</p>
+                        </div>
+                        {item.selectedExtras && (
+                          <div className="text-[10px] text-gray-600 mt-0.5">
+                            {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
+                              <p key={extraListId}>
+                                <span className="font-medium">{extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :</span>{" "}
+                                {indexes.map((index) => getExtraName(extraListId, index)).join(", ")}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
+              <div className="text-xs text-gray-700 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Sous-total :</span>
+                  <span>{formatPrice(subtotal)} FCFA</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Frais :</span>
+                  <span>{formatPrice(order.deliveryFees !== undefined ? order.deliveryFees : DEFAULT_DELIVERY_FEE)} FCFA</span>
+                </div>
+                <div className="flex justify-between font-bold text-sm text-green-600">
+                  <span>Total :</span>
+                  <span>{formatPrice(totalWithDelivery)} FCFA</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="block font-bold text-xs">Statut :</label>
+              <select
+                className="w-full p-1 border rounded text-xs"
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+              >
+                {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
+              <button className="w-full bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs" onClick={handleStatusChange}>
+                Appliquer
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white p-3 border-t flex gap-2">
+          <button
+            className="flex-1 bg-gray-500 text-white p-1 rounded hover:bg-gray-600 text-xs"
+            onClick={() => {
+              const newFee = prompt("Nouveaux frais (FCFA):", order.deliveryFees || DEFAULT_DELIVERY_FEE);
+              if (newFee !== null && !isNaN(newFee)) onUpdateFees(order.id, order.address?.area || "inconnu", Number(newFee));
+            }}
+          >
+            Modifier frais
+          </button>
+          <button
+            className="flex-1 bg-red-600 text-white p-1 rounded hover:bg-red-700 text-xs"
+            onClick={() => {
+              if (window.confirm("Supprimer cette commande ?")) {
+                onDelete(order.id);
+                onClose();
+              }
+            }}
+          >
+            Supprimer
+          </button>
+          <button className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs" onClick={onClose}>
+            Fermer
+          </button>
+        </div>
+        {showFailureModal && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-3 rounded-lg shadow-lg w-full max-w-xs">
+              <h4 className="text-sm font-semibold mb-2">Motif de l'échec</h4>
+              <select
+                className="w-full p-1 border rounded text-xs mb-2"
+                value={failureReason}
+                onChange={(e) => setFailureReason(e.target.value)}
+              >
+                <option value="">Sélectionner un motif</option>
+                {FAILURE_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>{reason}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs" onClick={() => setShowFailureModal(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="flex-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs"
+                  onClick={handleFailureSubmit}
+                  disabled={!failureReason}
+                >
+                  Confirmer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 const RestaurantAdmin = () => {
   const [restaurant, setRestaurant] = useState(null);
@@ -178,6 +429,7 @@ const RestaurantAdmin = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentRestaurantId, setCurrentRestaurantId] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const daysOfWeek = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
@@ -212,6 +464,7 @@ const RestaurantAdmin = () => {
     () => [
       { id: ORDER_STATUS.PENDING, name: STATUS_LABELS[ORDER_STATUS.PENDING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.PENDING] },
       { id: ORDER_STATUS.PREPARING, name: STATUS_LABELS[ORDER_STATUS.PREPARING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.PREPARING] },
+      { id: ORDER_STATUS.READY_TO_DELIVER, name: STATUS_LABELS[ORDER_STATUS.READY_TO_DELIVER], color: STATUS_COLUMN_COLORS[ORDER_STATUS.READY_TO_DELIVER] },
       { id: ORDER_STATUS.DELIVERING, name: STATUS_LABELS[ORDER_STATUS.DELIVERING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.DELIVERING] },
       { id: ORDER_STATUS.DELIVERED, name: STATUS_LABELS[ORDER_STATUS.DELIVERED], color: STATUS_COLUMN_COLORS[ORDER_STATUS.DELIVERED] },
     ],
@@ -507,10 +760,18 @@ const RestaurantAdmin = () => {
     }
   };
 
-  const updateOrderStatus = async (orderId, status) => {
+  const updateOrderStatus = async (orderId, status, reason = null, isPaid = false) => {
     try {
       const orderRef = doc(db, "orders", orderId);
-      await updateDoc(orderRef, { status, updatedAt: Timestamp.now() });
+      const statusHistoryRef = collection(orderRef, "statusHistory");
+      const statusData = {
+        status,
+        timestamp: Timestamp.now(),
+      };
+      if (reason) statusData.reason = reason;
+
+      await addDoc(statusHistoryRef, statusData);
+      await updateDoc(orderRef, { status, isPaid, updatedAt: Timestamp.now() });
     } catch (error) {
       console.error("Erreur lors de la mise à jour du statut:", error);
       setError("Erreur lors de la mise à jour du statut");
@@ -541,7 +802,7 @@ const RestaurantAdmin = () => {
     e.preventDefault();
     e.currentTarget.classList.remove("bg-gray-200");
     if (!draggedOrder || draggedOrder.status === newStatus) return;
-    updateOrderStatus(draggedOrder.id, newStatus);
+    await updateOrderStatus(draggedOrder.id, newStatus);
   };
 
   const handleDaySelection = (day) => {
@@ -572,6 +833,14 @@ const RestaurantAdmin = () => {
       return updatedElement;
     });
     setExtraListData({ ...extraListData, extraListElements: newElements });
+  };
+
+  const showOrderDetails = (order) => {
+    setSelectedOrder(order);
+  };
+
+  const closeOrderDetails = () => {
+    setSelectedOrder(null);
   };
 
   return (
@@ -941,16 +1210,16 @@ const RestaurantAdmin = () => {
               </div>
 
               {viewMode === "kanban" ? (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                   {statusColumns.map((column) => (
                     <div
                       key={column.id}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, column.id)}
-                      className={`p-4 rounded-lg border ${column.color} min-h-[200px]`}
+                      className={`p-4 rounded-lg border ${column.color} min-h-[300px] shadow-sm`}
                     >
-                      <h4 className="font-medium mb-3">
+                      <h4 className="font-semibold text-lg mb-4 text-gray-800">
                         {column.name} (
                         {
                           filteredOrders.filter((order) =>
@@ -961,131 +1230,95 @@ const RestaurantAdmin = () => {
                         }
                         )
                       </h4>
-                      {filteredOrders
-                        .filter((order) =>
-                          column.id === ORDER_STATUS.PENDING
-                            ? !order.status || order.status === ORDER_STATUS.PENDING
-                            : order.status === column.id
-                        )
-                        .map((order) => (
-                          <OrderCard
-                            key={order.id}
-                            order={order}
-                            items={items}
-                            usersData={usersData}
-                            onDragStart={(e) => handleDragStart(e, order)}
-                            onDragEnd={handleDragEnd}
-                            onUpdateFees={updateOrderDeliveryFees}
-                            onDelete={deleteOrder}
-                            onUpdateStatus={updateOrderStatus}
-                            deliveryFee={getDeliveryFee(order.address?.area)}
-                          />
-                        ))}
+                      
+                      <div className="space-y-3">
+                        {filteredOrders
+                          .filter((order) =>
+                            column.id === ORDER_STATUS.PENDING
+                              ? !order.status || order.status === ORDER_STATUS.PENDING
+                              : order.status === column.id
+                          )
+                          .map((order) => (
+                            <OrderCard
+                              key={order.id}
+                              order={order}
+                              items={items}
+                              extraLists={extraLists}
+                              usersData={usersData}
+                              onDragStart={(e) => handleDragStart(e, order)}
+                              onDragEnd={handleDragEnd}
+                              onUpdateFees={updateOrderDeliveryFees}
+                              onDelete={deleteOrder}
+                              onShowDetails={showOrderDetails}
+                            />
+                          ))}
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <table className="table">
+                <table className="table w-full text-xs">
                   <thead>
                     <tr>
                       <th>Client</th>
-                      <th>Téléphone</th>
-                      <th>Description Adresse</th>
-                      <th>Infos Supp.</th>
-                      <th>Plats commandés</th>
+                      <th>ID Commande</th>
                       <th>Total</th>
-                      <th>Frais</th>
-                      <th>Date</th>
                       <th>Statut</th>
+                      <th>Payé</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredOrders.map((order) => {
-                      const restaurantOrderItems =
-                        order.items?.filter((orderItem) => items.some((it) => it.id === orderItem.dishId)) ?? [];
-                      if (restaurantOrderItems.length === 0) return null;
-
-                      const user = usersData[order.userId] || usersData[order.guestId];
+                      const user = usersData[order.userId] || (order.isGuest && order.contact ? { email: order.contact.name } : null);
                       const clientInfo = user
-                        ? `${user.firstName || ""} ${user.email || ""}`
+                        ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`.trim()
                         : "Client inconnu";
-                      const phoneNumber = order.address?.phone || order.contact?.phone || "Non spécifié";
-                      const addressDescription =
-                        order.address?.completeAddress || order.destination || "Description non spécifiée";
-                      const additionalAddressInfo = order.address
-                        ? `${order.address.area}${order.address.instructions ? ` - ${order.address.instructions}` : ""}`
-                        : "";
-                      const orderDate = order.timestamp
-                        ? new Date(order.timestamp.seconds * 1000).toLocaleString()
-                        : "Date inconnue";
+                      const { totalWithDelivery } = calculateOrderTotals(order, extraLists);
 
                       return (
                         <tr key={order.id}>
-                          <td>{clientInfo}</td>
-                          <td>{phoneNumber}</td>
-                          <td>{addressDescription}</td>
-                          <td>{additionalAddressInfo || "N/A"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">
-                            {restaurantOrderItems.map((i, index) => {
-                              const currentItem = items.find((it) => it.id === i.dishId);
-                              return (
-                                <div key={index} className="flex items-center space-x-2">
-                                  <span className="font-medium">{currentItem?.name || "Plat inconnu"}</span>
-                                  <span className="text-gray-500">(x{i.quantity})</span>
-                                </div>
-                              );
-                            })}
+                          <td className="truncate">{clientInfo}</td>
+                          <td className="truncate">#{order.id.slice(0, 6)}</td>
+                          <td className="text-green-600 font-semibold">{formatPrice(totalWithDelivery)} FCFA</td>
+                          <td>
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full ${
+                                STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {STATUS_LABELS[order.status] || "En attente"}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">
-                            {order.total ? `${order.total} FCFA` : "Montant non précisé"}
+                          <td className={order.isPaid ? "text-green-600" : "text-red-600"}>
+                            {order.isPaid ? "Oui" : "Non"}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">
-                            {order.deliveryFees !== undefined
-                              ? `${order.deliveryFees} FCFA`
-                              : `${getDeliveryFee(order.address?.area)} FCFA`}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{orderDate}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">
-                            {STATUS_LABELS[order.status] || "En attente"}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <div className="flex items-center space-x-2">
-                              <button
-                                className="px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                                onClick={() => updateOrderStatus(order.id, ORDER_STATUS.PREPARING)}
-                              >
-                                cuisine
-                              </button>
-                              <button
-                                className="px-3 py-1.5 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors"
-                                onClick={() => updateOrderStatus(order.id, ORDER_STATUS.DELIVERING)}
-                              >
-                                en route
-                              </button>
-                              <button
-                                className="px-3 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                                onClick={() => updateOrderStatus(order.id, ORDER_STATUS.DELIVERED)}
-                              >
-                                Livrée
-                              </button>
-                              <button
-                                className="px-3 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
-                                onClick={() => {
-                                  if (window.confirm("Voulez-vous vraiment supprimer cette commande ?")) {
-                                    deleteOrder(order.id);
-                                  }
-                                }}
-                              >
-                                Supprimer
-                              </button>
-                            </div>
+                          <td>
+                            <button
+                              className="btn btn-primary btn-sm text-xs"
+                              onClick={() => showOrderDetails(order)}
+                            >
+                              Détails
+                            </button>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              )}
+
+              {selectedOrder && (
+                <OrderDetailsModal
+                  order={selectedOrder}
+                  items={items}
+                  extraLists={extraLists}
+                  usersData={usersData}
+                  onClose={closeOrderDetails}
+                  onUpdateFees={updateOrderDeliveryFees}
+                  onDelete={deleteOrder}
+                  onUpdateStatus={updateOrderStatus}
+                />
               )}
             </div>
           )}

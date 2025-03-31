@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  where, 
-  doc, 
-  updateDoc, 
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  updateDoc,
   onSnapshot,
   setDoc,
   Timestamp
@@ -38,7 +38,31 @@ const STATUS_COLORS = {
   [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white"
 };
 
+const STATUS_COLUMN_COLORS = {
+  [ORDER_STATUS.PENDING]: "bg-gray-100 border-gray-300",
+  [ORDER_STATUS.PREPARING]: "bg-blue-50 border-blue-200",
+  [ORDER_STATUS.DELIVERING]: "bg-yellow-50 border-yellow-200",
+  [ORDER_STATUS.DELIVERED]: "bg-green-50 border-green-200"
+};
+
 const DEFAULT_DELIVERY_FEE = 1000;
+
+const formatPrice = (number) =>
+  Number(number).toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+
+const formatDate = (timestamp) =>
+  timestamp?.seconds
+    ? new Date(timestamp.seconds * 1000).toLocaleString("fr-FR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    : "Date non disponible";
 
 const OrderStatus = ({ isAdmin = false }) => {
   const [orders, setOrders] = useState([]);
@@ -46,39 +70,29 @@ const OrderStatus = ({ isAdmin = false }) => {
   const [extraLists, setExtraLists] = useState({});
   const [deliveryFees, setDeliveryFees] = useState({});
   const [usersData, setUsersData] = useState({ byId: {}, byPhone: {} });
-  const [filter, setFilter] = useState(ORDER_STATUS.PENDING);
+  const [filter, setFilter] = useState(isAdmin ? null : ORDER_STATUS.PENDING);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
 
-  const statusColumns = useMemo(
-    () => [
-      {
-        id: ORDER_STATUS.PENDING,
-        name: STATUS_LABELS[ORDER_STATUS.PENDING],
-        color: "bg-gray-100 border-gray-300"
-      },
-      {
-        id: ORDER_STATUS.PREPARING,
-        name: STATUS_LABELS[ORDER_STATUS.PREPARING],
-        color: "bg-blue-50 border-blue-200"
-      },
-      {
-        id: ORDER_STATUS.DELIVERING,
-        name: STATUS_LABELS[ORDER_STATUS.DELIVERING],
-        color: "bg-yellow-50 border-yellow-200"
-      },
-      {
-        id: ORDER_STATUS.DELIVERED,
-        name: STATUS_LABELS[ORDER_STATUS.DELIVERED],
-        color: "bg-green-50 border-green-200"
-      }
-    ],
-    []
+  const effectiveUserId = useMemo(
+    () => currentUserId || localStorage.getItem("guestUid"),
+    [currentUserId]
   );
 
-  // Récupération de l'ID authentifié via Firebase Auth
+  const statusColumns = useMemo(
+    () =>
+      Object.keys(STATUS_LABELS)
+        .filter((status) => status !== ORDER_STATUS.CANCELLED || isAdmin)
+        .map((status) => ({
+          id: status,
+          name: STATUS_LABELS[status],
+          color: STATUS_COLUMN_COLORS[status] || "bg-gray-100 border-gray-300"
+        })),
+    [isAdmin]
+  );
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUserId(user ? user.uid : null);
@@ -86,55 +100,25 @@ const OrderStatus = ({ isAdmin = false }) => {
     return () => unsubscribe();
   }, []);
 
-  // Calcul de l'identifiant effectif en tenant compte du mode invité (stocké dans localStorage)
-  const effectiveUserId = useMemo(() => {
-    return currentUserId || localStorage.getItem("guestUid");
-  }, [currentUserId]);
-
-  const fetchData = async () => {
+  const fetchReferenceData = async () => {
     try {
-      const [
-        itemsSnapshot,
-        extraListsSnapshot,
-        feesSnapshot,
-        usersSnapshot
-      ] = await Promise.all([
-        getDocs(collection(db, "items")).catch(() => ({ docs: [] })),
-        getDocs(collection(db, "extraLists")).catch(() => ({ docs: [] })),
-        getDocs(collection(db, "quartiers")).catch(() => ({ docs: [] })),
-        getDocs(collection(db, "usersrestau")).catch(() => ({ docs: [] }))
+      const [items, extras, fees, users] = await Promise.all([
+        getDocs(collection(db, "items")),
+        getDocs(collection(db, "extraLists")),
+        getDocs(collection(db, "quartiers")),
+        getDocs(collection(db, "usersrestau"))
       ]);
 
-      const itemsMap = itemsSnapshot.docs.reduce(
-        (acc, doc) => ({ ...acc, [doc.id]: doc.data() }),
-        {}
-      );
-
-      const extraMap = extraListsSnapshot.docs.reduce(
-        (acc, doc) => ({ ...acc, [doc.id]: doc.data() }),
-        {}
-      );
-
-      const feesMap = feesSnapshot.docs.reduce(
-        (acc, doc) => ({ ...acc, [doc.id]: doc.data().fee }),
-        {}
-      );
-
-      // Créer deux maps pour les utilisateurs : par uid et par numéro de téléphone
-      const usersMapById = {};
-      const usersMapByPhone = {};
-      usersSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        usersMapById[doc.id] = data;
-        if (data.phone) {
-          usersMapByPhone[data.phone] = data;
-        }
+      setItemsData(items.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}));
+      setExtraLists(extras.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}));
+      setDeliveryFees(fees.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data().fee }), {}));
+      setUsersData({
+        byId: users.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}),
+        byPhone: users.docs.reduce((acc, doc) => {
+          if (doc.data().phone) acc[doc.data().phone] = doc.data();
+          return acc;
+        }, {})
       });
-
-      setItemsData(itemsMap);
-      setExtraLists(extraMap);
-      setDeliveryFees(feesMap);
-      setUsersData({ byId: usersMapById, byPhone: usersMapByPhone });
     } catch (err) {
       console.error("Erreur de chargement des données:", err);
       setError("Erreur de chargement des données de référence");
@@ -144,63 +128,60 @@ const OrderStatus = ({ isAdmin = false }) => {
   useEffect(() => {
     if (effectiveUserId === null && !isAdmin) return;
 
-    const fetchOrders = async () => {
-      try {
-        setLoading(true);
-        await fetchData();
+    const ordersQuery = isAdmin
+      ? collection(db, "orders")
+      : query(collection(db, "orders"), where("userId", "==", effectiveUserId));
 
-        const ordersQuery = isAdmin
-          ? query(collection(db, "orders"))
-          : query(
-              collection(db, "orders"),
-              where("userId", "==", effectiveUserId)
-            );
-
-        const unsubscribe = onSnapshot(
-          ordersQuery,
-          (snapshot) => {
-            const ordersData = snapshot.docs.map((doc) => ({
+    setLoading(true);
+    fetchReferenceData().then(() => {
+      const unsubscribe = onSnapshot(
+        ordersQuery,
+        (snapshot) => {
+          setOrders(
+            snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data(),
               status: doc.data().status || ORDER_STATUS.PENDING
-            }));
-            setOrders(ordersData);
-            setLoading(false);
-          },
-          (err) => {
-            console.error("Erreur dans l'écoute des commandes:", err);
-            setError("Erreur de connexion au suivi des commandes");
-            setLoading(false);
-          }
-        );
-
-        return () => unsubscribe();
-      } catch (err) {
-        console.error("Erreur initiale des commandes:", err);
-        setError("Erreur lors du chargement des commandes");
-        setLoading(false);
-      }
-    };
-
-    fetchOrders();
+            }))
+          );
+          setLoading(false);
+        },
+        (err) => {
+          console.error("Erreur dans l'écoute des commandes:", err);
+          setError("Erreur de connexion au suivi des commandes");
+          setLoading(false);
+        }
+      );
+      return () => unsubscribe();
+    });
   }, [isAdmin, effectiveUserId]);
 
-  const filteredOrders = useMemo(() => {
-    if (isAdmin) return orders;
-    if (!filter) return orders;
-    return orders.filter((order) => order.status === filter);
-  }, [orders, filter, isAdmin]);
+  const filteredOrders = useMemo(
+    () => (isAdmin || !filter ? orders : orders.filter((order) => order.status === filter)),
+    [orders, filter, isAdmin]
+  );
 
-  const formatDate = (timestamp) => {
-    if (!timestamp?.seconds) return "Date non disponible";
-    return new Date(timestamp.seconds * 1000).toLocaleString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+  const calculateTotal = (order) => {
+    if (order.total !== undefined && order.total !== null) {
+      return Number(order.total);
+    }
+    const itemsTotal = order.items?.reduce((sum, item) => {
+      const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
+      const extrasTotal = item.selectedExtras
+        ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
+            const extraList = extraLists[extraListId]?.extraListElements || [];
+            return extraSum + indexes.reduce((acc, index) => {
+              return acc + Number(extraList[index]?.price || 0);
+            }, 0);
+          }, 0)
+        : 0;
+      return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
+    }, 0) || 0;
+    const deliveryFee = Number(order.deliveryFees || getDeliveryFee(order.destination));
+    return itemsTotal + deliveryFee;
   };
+
+  const getDeliveryFee = (destination) => Number(deliveryFees[destination] || DEFAULT_DELIVERY_FEE);
 
   const handleDragStart = (e, order) => {
     e.dataTransfer.setData("orderId", order.id);
@@ -208,9 +189,7 @@ const OrderStatus = ({ isAdmin = false }) => {
     e.currentTarget.classList.add("opacity-50");
   };
 
-  const handleDragEnd = (e) => {
-    e.currentTarget.classList.remove("opacity-50");
-  };
+  const handleDragEnd = (e) => e.currentTarget.classList.remove("opacity-50");
 
   const handleDrop = async (e, newStatus) => {
     e.preventDefault();
@@ -218,8 +197,7 @@ const OrderStatus = ({ isAdmin = false }) => {
     if (!orderId || draggedOrder?.status === newStatus) return;
 
     try {
-      const orderRef = doc(db, "orders", orderId);
-      await updateDoc(orderRef, {
+      await updateDoc(doc(db, "orders", orderId), {
         status: newStatus,
         updatedAt: Timestamp.now()
       });
@@ -236,27 +214,15 @@ const OrderStatus = ({ isAdmin = false }) => {
 
     try {
       const orderRef = doc(db, "orders", orderId);
-      
-      if (isAdmin && deliveryFees[destination] === undefined) {
-        await setDoc(doc(db, "quartiers", destination), {
-          fee: feeNumber,
-          name: destination
-        });
+      if (isAdmin && !(destination in deliveryFees)) {
+        await setDoc(doc(db, "quartiers", destination), { fee: feeNumber, name: destination });
         setDeliveryFees((prev) => ({ ...prev, [destination]: feeNumber }));
       }
-
-      await updateDoc(orderRef, {
-        deliveryFees: feeNumber,
-        updatedAt: Timestamp.now()
-      });
+      await updateDoc(orderRef, { deliveryFees: feeNumber, updatedAt: Timestamp.now() });
     } catch (error) {
       console.error("Erreur de mise à jour des frais:", error);
       setError("Erreur lors de la mise à jour des frais");
     }
-  };
-
-  const getDeliveryFee = (destination) => {
-    return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
   };
 
   const renderKanban = () => (
@@ -269,66 +235,20 @@ const OrderStatus = ({ isAdmin = false }) => {
           onDrop={(e) => handleDrop(e, column.id)}
         >
           <h3 className="font-bold mb-3">
-            {column.name} (
-            {orders.filter((o) =>
-              column.id === ORDER_STATUS.PENDING
-                ? (!o.status || o.status === ORDER_STATUS.PENDING)
-                : o.status === column.id
-            ).length}
-            )
+            {column.name} ({orders.filter((o) => o.status === column.id).length})
           </h3>
           {orders
-            .filter((order) =>
-              column.id === ORDER_STATUS.PENDING
-                ? (!order.status || order.status === ORDER_STATUS.PENDING)
-                : order.status === column.id
-            )
+            .filter((order) => order.status === column.id)
             .map((order) => (
-              <div
+              <OrderTile
                 key={order.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, order)}
+                order={order}
+                onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
-                className="bg-white p-3 mb-2 rounded shadow-sm cursor-move transition-opacity"
-              >
-                <p className="font-medium">#{order.id.slice(0, 6)}</p>
-                <p className="text-sm">
-                  {order.items?.length || 0} article(s) - {order.total || 0} FCFA
-                </p>
-                <p className="text-sm">
-                  Livraison: {order.destination || "Non spécifié"} (
-                  {getDeliveryFee(order.destination)} FCFA)
-                </p>
-                <div className="flex justify-between items-center mt-1">
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      STATUS_COLORS[order.status] || "bg-gray-400 text-white"
-                    }`}
-                  >
-                    {STATUS_LABELS[order.status] || "En attente"}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const newFee = prompt(
-                        `Frais pour ${order.destination || "destination inconnue"} (FCFA):`,
-                        getDeliveryFee(order.destination)
-                      );
-                      if (newFee !== null) {
-                        updateOrderDeliveryFees(
-                          order.id,
-                          order.destination || "inconnu",
-                          newFee
-                        );
-                      }
-                    }}
-                    className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
-                    aria-label="Modifier les frais de livraison"
-                  >
-                    ✏️
-                  </button>
-                </div>
-              </div>
+                deliveryFee={getDeliveryFee(order.destination)}
+                updateOrderDeliveryFees={updateOrderDeliveryFees}
+                calculateTotal={calculateTotal}
+              />
             ))}
         </div>
       ))}
@@ -341,9 +261,7 @@ const OrderStatus = ({ isAdmin = false }) => {
         <button
           onClick={() => setFilter("")}
           className={`px-4 py-2 rounded-full text-sm ${
-            !filter
-              ? STATUS_COLORS[ORDER_STATUS.PENDING]
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            !filter ? "bg-yellow-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           Toutes
@@ -362,11 +280,8 @@ const OrderStatus = ({ isAdmin = false }) => {
           </button>
         ))}
       </div>
-
       {filteredOrders.length === 0 ? (
-        <div className="text-center py-10">
-          <p className="text-gray-500">Aucune commande trouvée</p>
-        </div>
+        <p className="text-center text-gray-500 py-10">Aucune commande trouvée</p>
       ) : (
         filteredOrders.map((order) => (
           <OrderCard
@@ -375,13 +290,12 @@ const OrderStatus = ({ isAdmin = false }) => {
             itemsData={itemsData}
             extraLists={extraLists}
             formatDate={formatDate}
-            badgeClasses={(status) =>
-              STATUS_COLORS[status] || "bg-gray-400 text-white"
-            }
+            badgeClasses={STATUS_COLORS}
             isAdmin={isAdmin}
             onUpdateFees={updateOrderDeliveryFees}
             deliveryFee={getDeliveryFee(order.destination)}
             usersData={usersData}
+            calculateTotal={calculateTotal}
           />
         ))
       )}
@@ -395,7 +309,6 @@ const OrderStatus = ({ isAdmin = false }) => {
           {isAdmin ? "Tableau de bord des commandes" : "Mes commandes"}
         </h2>
       </header>
-
       {loading && (
         <div className="text-center p-4">
           <div
@@ -406,27 +319,48 @@ const OrderStatus = ({ isAdmin = false }) => {
           </div>
         </div>
       )}
-
       {error && (
         <p className="text-center text-red-600 p-4" role="alert">
           {error}
         </p>
       )}
-
       {!loading && orders.length === 0 && (
         <p className="text-center text-gray-500 p-4">
           {isAdmin ? "Aucune commande trouvée" : "Vous n'avez aucune commande"}
         </p>
       )}
-
-      {!loading &&
-        orders.length > 0 &&
-        (isAdmin ? renderKanban() : renderClientView())}
-
+      {!loading && orders.length > 0 && (isAdmin ? renderKanban() : renderClientView())}
       <Footer />
     </div>
   );
 };
+
+const OrderTile = ({ order, onDragStart, onDragEnd, deliveryFee, updateOrderDeliveryFees, calculateTotal }) => (
+  <div
+    draggable
+    onDragStart={(e) => onDragStart(e, order)}
+    onDragEnd={onDragEnd}
+    className="bg-white p-3 mb-2 rounded shadow-sm cursor-move transition-opacity"
+  >
+    <p className="font-medium">#{order.id.slice(0, 6)}</p>
+    <p className="text-sm">{order.items?.length || 0} article(s) - {formatPrice(calculateTotal(order))} FCFA</p>
+    <p className="text-sm">Livraison: {order.destination || "Non spécifié"} ({formatPrice(order.deliveryFees || deliveryFee)} FCFA)</p>
+    <div className="flex justify-between items-center mt-1">
+      <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[order.status]}`}>
+        {STATUS_LABELS[order.status]}
+      </span>
+      <button
+        onClick={() => {
+          const newFee = prompt(`Frais pour ${order.destination || "inconnu"} (FCFA):`, order.deliveryFees || deliveryFee);
+          if (newFee !== null) updateOrderDeliveryFees(order.id, order.destination || "inconnu", newFee);
+        }}
+        className="text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
+      >
+        ✏️
+      </button>
+    </div>
+  </div>
+);
 
 const OrderCard = ({
   order,
@@ -437,41 +371,25 @@ const OrderCard = ({
   isAdmin,
   onUpdateFees,
   deliveryFee,
-  usersData
+  usersData,
+  calculateTotal
 }) => {
-  const displayStatus =
-    STATUS_LABELS[order.status] || order.status || "En attente";
-
-  // Récupération de l'utilisateur :
-  // Si order.userId existe, recherche dans usersData.byId,
-  // sinon, recherche via le numéro de téléphone dans order.contact.phone dans usersData.byPhone.
-  let user = order.userId
+  const user = order.userId
     ? usersData.byId[order.userId]
     : order.contact?.phone && usersData.byPhone[order.contact.phone];
-
-  let clientName, phoneNumber;
-
-  if (user) {
-    clientName =
-      `${user.email || ""} ${user.lastName || ""}`.trim() ||
-      "Utilisateur inconnu";
-    phoneNumber = user.phone || order.selectedAddress?.phone || "Non fourni";
-  } else {
-    clientName = order.contact?.name || "Client inconnu";
-    phoneNumber = order.contact?.phone || "Non fourni";
-  }
+  const clientName = user
+    ? `${user.email || ""} ${user.lastName || ""}`.trim() || "Utilisateur inconnu"
+    : order.contact?.name || "Client inconnu";
+  const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
 
   return (
     <div className="mb-6 bg-white rounded-lg shadow-lg p-4">
       <div className="flex flex-wrap items-center gap-4 border-b pb-3 mb-3">
-        <span className={`px-3 py-1 rounded-full text-sm ${badgeClasses(order.status)}`}>
-          {displayStatus}
+        <span className={`px-3 py-1 rounded-full text-sm ${badgeClasses[order.status]}`}>
+          {STATUS_LABELS[order.status] || "En attente"}
         </span>
-        <div className="ml-auto flex items-center gap-2 text-sm text-gray-500">
-          <span>{formatDate(order.timestamp)}</span>
-        </div>
+        <div className="ml-auto text-sm text-gray-500">{formatDate(order.timestamp)}</div>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div>
           <p className="text-sm text-gray-500">N° de commande</p>
@@ -479,34 +397,22 @@ const OrderCard = ({
         </div>
         <div>
           <p className="text-sm text-gray-500">Total</p>
-          <p className="font-medium text-green-600">
-            {(order.total || 0).toLocaleString()} FCFA
-          </p>
+          <p className="font-medium text-green-600">{formatPrice(calculateTotal(order))} FCFA</p>
         </div>
         <div>
           <p className="text-sm text-gray-500">Livraison</p>
           <div className="flex items-center">
             <div>
               <p className="font-medium">{order.destination || "Non spécifié"}</p>
-              <p className="text-sm">{deliveryFee.toLocaleString()} FCFA</p>
+              <p className="text-sm">{formatPrice(order.deliveryFees || deliveryFee)} FCFA</p>
             </div>
             {isAdmin && (
               <button
                 onClick={() => {
-                  const newFee = prompt(
-                    `Frais pour ${order.destination || "destination inconnue"} (FCFA):`,
-                    deliveryFee
-                  );
-                  if (newFee !== null) {
-                    onUpdateFees(
-                      order.id,
-                      order.destination || "inconnu",
-                      newFee
-                    );
-                  }
+                  const newFee = prompt(`Frais pour ${order.destination || "inconnu"} (FCFA):`, order.deliveryFees || deliveryFee);
+                  if (newFee !== null) onUpdateFees(order.id, order.destination || "inconnu", newFee);
                 }}
                 className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
-                aria-label="Modifier les frais de livraison"
               >
                 ✏️
               </button>
@@ -514,24 +420,15 @@ const OrderCard = ({
           </div>
         </div>
       </div>
-
       <div className="mb-4 bg-gray-50 p-2 rounded">
         <p className="text-sm font-bold">Coordonnées :</p>
-        <p className="text-sm">
-          {clientName} - {phoneNumber}
-        </p>
+        <p className="text-sm">{clientName} - {phoneNumber}</p>
       </div>
-
       <div className="mb-4">
         <h6 className="font-bold mb-3">Articles :</h6>
         <ul className="space-y-4">
           {order.items?.map((item, index) => (
-            <OrderItem
-              key={index}
-              item={item}
-              itemsData={itemsData}
-              extraLists={extraLists}
-            />
+            <OrderItem key={index} item={item} itemsData={itemsData} extraLists={extraLists} />
           )) || <li className="text-gray-500">Aucun article</li>}
         </ul>
       </div>
@@ -539,40 +436,41 @@ const OrderCard = ({
   );
 };
 
-const OrderItem = ({ item, itemsData, extraLists }) => (
-  <li className="pb-2 border-b border-gray-100">
-    <div className="flex justify-between items-start">
-      <div>
-        <p className="font-medium">
-          {itemsData[item.dishId]?.name || "Article inconnu"}
-        </p>
-        <p className="text-sm text-gray-500">
-          Quantité : {item.quantity || 1}
+const OrderItem = ({ item, itemsData, extraLists }) => {
+  const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
+  const quantity = Number(item.quantity || 1);
+  const extrasTotal = item.selectedExtras
+    ? Object.entries(item.selectedExtras).reduce((sum, [extraListId, indexes]) => {
+        const extraList = extraLists[extraListId]?.extraListElements || [];
+        return sum + indexes.reduce((acc, index) => acc + Number(extraList[index]?.price || 0), 0);
+      }, 0)
+    : 0;
+
+  return (
+    <li className="pb-2 border-b border-gray-100">
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-medium">{item.dishName || itemsData[item.dishId]?.name || "Article inconnu"}</p>
+          <p className="text-sm text-gray-500">Quantité : {quantity}</p>
+        </div>
+        <p className="text-sm text-green-600">
+          +{formatPrice((itemPrice + extrasTotal) * quantity)} FCFA
         </p>
       </div>
-      <p className="text-sm text-green-600">
-        +{((itemsData[item.dishId]?.price || 0) * (item.quantity || 1)).toLocaleString()} FCFA
-      </p>
-    </div>
-    {item.selectedExtras && (
-      <div className="ml-4 mt-2">
-        {Object.entries(item.selectedExtras).map(
-          ([extraListId, indexes]) => (
-            <div key={extraListId} className="text-sm text-gray-600">
-              <p className="font-medium">
-                {extraLists[extraListId]?.name || "Options"} :
-              </p>
+      {item.selectedExtras && (
+        <div className="ml-4 mt-2 text-sm text-gray-600">
+          {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
+            <div key={extraListId}>
+              <p className="font-medium">{extraLists[extraListId]?.name || "Options"} :</p>
               <ul className="list-disc list-inside ml-2">
                 {indexes.map((index) => {
-                  const extra =
-                    extraLists[extraListId]?.extraListElements?.[index] ||
-                    {};
+                  const extra = extraLists[extraListId]?.extraListElements?.[index] || {};
                   return (
                     <li key={index} className="flex justify-between">
                       <span>{extra.name || "Option supprimée"}</span>
                       {extra.price > 0 && (
                         <span className="text-green-500 ml-2">
-                          +{(extra.price * (item.quantity || 1)).toLocaleString()} FCFA
+                          +{formatPrice(extra.price * quantity)} FCFA
                         </span>
                       )}
                     </li>
@@ -580,32 +478,27 @@ const OrderItem = ({ item, itemsData, extraLists }) => (
                 })}
               </ul>
             </div>
-          )
-        )}
-      </div>
-    )}
-  </li>
-);
+          ))}
+        </div>
+      )}
+    </li>
+  );
+};
 
 const Footer = () => (
   <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
     <div className="grid grid-cols-4">
-      <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-        <i className="fas fa-home text-lg"></i>
-        <span className="block text-xs mt-1">Accueil</span>
-      </Link>
-      <Link to="/cart" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-        <i className="fas fa-shopping-cart text-lg"></i>
-        <span className="block text-xs mt-1">Panier</span>
-      </Link>
-      <Link to="/orders" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-        <i className="fas fa-shopping-bag text-lg"></i>
-        <span className="block text-xs mt-1">Commandes</span>
-      </Link>
-      <Link to="/account" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-        <i className="fas fa-user text-lg"></i>
-        <span className="block text-xs mt-1">Compte</span>
-      </Link>
+      {[
+        { to: "/", icon: "fas fa-home", label: "Accueil" },
+        { to: "/cart", icon: "fas fa-shopping-cart", label: "Panier" },
+        { to: "/orders", icon: "fas fa-shopping-bag", label: "Commandes" },
+        { to: "/account", icon: "fas fa-user", label: "Compte" }
+      ].map(({ to, icon, label }) => (
+        <Link key={to} to={to} className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+          <i className={`${icon} text-lg`}></i>
+          <span className="block text-xs mt-1">{label}</span>
+        </Link>
+      ))}
     </div>
   </footer>
 );

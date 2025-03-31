@@ -13,10 +13,8 @@ const OrderSummary = () => {
   const [error, setError] = useState("");
   const [missingData, setMissingData] = useState(false);
 
-  // Extraction des données depuis location.state
   const { selectedAddress, selectedPayment, contact, orderData, isGuest } = location.state || {};
 
-  // Normalisation des données d'adresse et de paiement
   const normalizedAddress = useMemo(() => {
     if (isGuest && orderData?.address) return orderData.address;
     return selectedAddress;
@@ -27,7 +25,6 @@ const OrderSummary = () => {
     return selectedPayment;
   }, [isGuest, orderData, selectedPayment]);
 
-  // Vérification des données et redirection en cas d'absence
   useEffect(() => {
     if (!normalizedAddress || !normalizedPayment) {
       setMissingData(true);
@@ -36,7 +33,6 @@ const OrderSummary = () => {
     }
   }, [normalizedAddress, normalizedPayment, navigate]);
 
-  // Chargement des extras depuis Firestore
   useEffect(() => {
     const fetchExtraLists = async () => {
       try {
@@ -49,15 +45,13 @@ const OrderSummary = () => {
     fetchExtraLists();
   }, []);
 
-  // Fonction de conversion de prix
   const convertPrice = (price) => {
-    if (typeof price === 'string') {
-      return parseFloat(price.replace(/\./g, ''));
+    if (typeof price === "string") {
+      return parseFloat(price.replace(/\./g, ""));
     }
     return Number(price);
   };
 
-  // Calcul du total de la commande
   const total = useMemo(() => {
     return cartItems.reduce((acc, item) => {
       let itemTotal = convertPrice(item.price) * item.quantity;
@@ -78,7 +72,6 @@ const OrderSummary = () => {
     }, 0);
   }, [cartItems, extraLists]);
 
-  // Récupération du nom et du prix des extras
   const getExtraName = (extraListId, index) => {
     const extraList = extraLists.find((el) => el.id === extraListId);
     const element = extraList?.extraListElements?.[index];
@@ -87,15 +80,13 @@ const OrderSummary = () => {
       : "Extra inconnu";
   };
 
-  // Lorsqu'on confirme la commande, on utilise soit l'ID de l'utilisateur connecté,
-  // soit un identifiant invité stocké dans le localStorage.
   const handleConfirmOrder = async () => {
     setLoading(true);
     setError("");
-    // Lecture de l'ID invité depuis le localStorage
     const guestUid = localStorage.getItem("guestUid");
 
     try {
+      const deliveryFee = 1000; // À rendre dynamique si nécessaire
       const orderDataToSave = {
         userId: auth.currentUser ? auth.currentUser.uid : guestUid,
         items: cartItems.map((item) => ({
@@ -121,7 +112,8 @@ const OrderSummary = () => {
           icon: normalizedPayment?.icon || "",
         },
         total: total,
-        status: "en attente",
+        deliveryFees: deliveryFee,
+        status: "en_attente",
         timestamp: Timestamp.now(),
         isGuest: !!isGuest,
       };
@@ -136,7 +128,7 @@ const OrderSummary = () => {
       const docRef = await addDoc(collection(db, "orders"), orderDataToSave);
 
       navigate("/complete_order", {
-        state: { 
+        state: {
           orderId: docRef.id,
           order: orderDataToSave,
           isGuest,
@@ -150,7 +142,6 @@ const OrderSummary = () => {
     }
   };
 
-  // Affichage en cas de données manquantes
   if (missingData) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -162,7 +153,6 @@ const OrderSummary = () => {
     );
   }
 
-  // Rendu principal
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
       <header className="bg-white border-b p-3 sticky top-0 z-10">
@@ -235,23 +225,21 @@ const OrderSummary = () => {
                       {convertPrice(item.price).toLocaleString()} Fcfa × {item.quantity}
                     </p>
                   </div>
-                  
+
                   {item.selectedExtras && (
                     <div className="mt-1 text-sm text-gray-600">
-                      {Object.entries(item.selectedExtras).map(
-                        ([extraListId, indexes]) => (
-                          <div key={extraListId} className="mb-1">
-                            <span className="font-medium">
-                              {extraLists.find((el) => el.id === extraListId)?.name} :
-                            </span>
-                            {indexes.map((index) => (
-                              <div key={index} className="ml-2">
-                                {getExtraName(extraListId, index)}
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      )}
+                      {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
+                        <div key={extraListId} className="mb-1">
+                          <span className="font-medium">
+                            {extraLists.find((el) => el.id === extraListId)?.name} :
+                          </span>
+                          {indexes.map((index) => (
+                            <div key={index} className="ml-2">
+                              {getExtraName(extraListId, index)}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -283,9 +271,18 @@ const OrderSummary = () => {
         >
           {loading ? (
             <span className="flex items-center justify-center">
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg
+                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
               Validation en cours...
             </span>

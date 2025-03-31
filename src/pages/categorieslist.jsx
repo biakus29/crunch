@@ -10,13 +10,13 @@ import "slick-carousel/slick/slick-theme.css";
 const CategoryListing = () => {
   const { id: categoryId } = useParams();
   const [items, setItems] = useState([]);
-  const [extraLists, setExtraLists] = useState([]); // Ajout pour les extras
+  const [extraLists, setExtraLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [addMessage, setAddMessage] = useState("");
-  const [selectedItem, setSelectedItem] = useState(null); // Pour la modale
-  const [selectedExtras, setSelectedExtras] = useState({}); // Extras sélectionnés
-  const { addToCart } = useCart();
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedExtras, setSelectedExtras] = useState({});
+  const { addToCart, cartItems } = useCart(); // Ajout de cartItems depuis useCart
 
   const itemSliderSettings = {
     dots: true,
@@ -31,7 +31,6 @@ const CategoryListing = () => {
       setLoading(true);
       setError(null);
       try {
-        // Récupérer les articles
         const itemsQuery = query(
           collection(db, "items"),
           where("categoryId", "==", categoryId)
@@ -43,7 +42,6 @@ const CategoryListing = () => {
         }));
         setItems(itemsData);
 
-        // Récupérer les extraLists
         const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
         const extraListsData = extraListsSnapshot.docs.map((doc) => ({
           id: doc.id,
@@ -105,8 +103,8 @@ const CategoryListing = () => {
       setSelectedExtras({});
     } else {
       addToCart({ ...item, restaurantId: item.restaurantId || "default_restaurant_id" });
-      setAddMessage(`${item.name} a bien été ajouté au panier !`);
-      setTimeout(() => setAddMessage(""), 2000);
+      setAddMessage(`${item.name} ajouté au panier !`);
+      setTimeout(() => setAddMessage(""), 3000);
     }
   };
 
@@ -117,8 +115,8 @@ const CategoryListing = () => {
         restaurantId: selectedItem.restaurantId || "default_restaurant_id",
         selectedExtras,
       });
-      setAddMessage(`${selectedItem.name} a bien été ajouté au panier !`);
-      setTimeout(() => setAddMessage(""), 2000);
+      setAddMessage(`${selectedItem.name} ajouté au panier !`);
+      setTimeout(() => setAddMessage(""), 3000);
       setSelectedItem(null);
       setSelectedExtras({});
     }
@@ -148,8 +146,9 @@ const CategoryListing = () => {
         </div>
       </header>
 
+      {/* Message d'ajout identique à HomePage */}
       {addMessage && (
-        <div className="bg-green-100 text-green-700 p-2 text-center">
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50">
           {addMessage}
         </div>
       )}
@@ -331,31 +330,29 @@ const CategoryListing = () => {
         </div>
       )}
 
-      <footer className="fixed bottom-0 w-full bg-white border-t text-center">
+      {/* Footer identique à HomePage */}
+      <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
         <div className="grid grid-cols-4">
-          <Link to="/" className="text-black p-2">
-            <p className="m-0">
-              <i className="fas fa-store text-green-600"></i>
-            </p>
-            Boutique
+          <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+            <i className="fas fa-home text-lg"></i>
+            <span className="block text-xs mt-1">Accueil</span>
           </Link>
-          <Link to="/cart" className="text-gray-600 p-2">
-            <p className="m-0">
-              <i className="fas fa-shopping-cart"></i>
-            </p>
-            Panier
+          <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors">
+            <i className="fas fa-shopping-cart text-lg"></i>
+            {cartItems.length > 0 && (
+              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full">
+                {cartItems.length}
+              </span>
+            )}
+            <span className="block text-xs mt-1">Panier</span>
           </Link>
-          <Link to="/complete_order" className="text-gray-600 p-2">
-            <p className="m-0">
-              <i className="fas fa-shopping-bag"></i>
-            </p>
-            Commandes
+          <Link to="/orders" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+            <i className="fas fa-shopping-bag text-lg"></i>
+            <span className="block text-xs mt-1">Commandes</span>
           </Link>
-          <Link to="/my_account" className="text-gray-600 p-2">
-            <p className="m-0">
-              <i className="fas fa-user"></i>
-            </p>
-            Compte
+          <Link to="/account" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+            <i className="fas fa-user text-lg"></i>
+            <span className="block text-xs mt-1">Compte</span>
           </Link>
         </div>
       </footer>
