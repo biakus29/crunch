@@ -3,38 +3,52 @@ import Slider from 'react-slick';
 import { Link } from 'react-router-dom';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useCart } from '../context/cartcontext';
 import logo from '../image/logo.png';
 import '@fortawesome/fontawesome-free/css/all.min.css';
+
+const STATUS_LABELS = {
+  "en_attente": "En attente",
+  "en_preparation": "En préparation",
+  "pret_a_livrer": "Prêt à livrer",
+  "en_livraison": "En livraison",
+  "livree": "Livrée",
+  "echec": "Échec",
+};
 
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [promos, setPromos] = useState([]);
   const [extraLists, setExtraLists] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState({});
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   const { addToCart, cartItems } = useCart();
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [categoriesSnap, itemsSnap, promosSnap, extraListsSnap] = await Promise.all([
+      const [categoriesSnap, itemsSnap, promosSnap, extraListsSnap, ordersSnap] = await Promise.all([
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'items')),
         getDocs(collection(db, 'promos')),
-        getDocs(collection(db, 'extraLists'))
+        getDocs(collection(db, 'extraLists')),
+        getDocs(collection(db, 'orders')),
       ]);
 
       setCategories(categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setItems(itemsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setPromos(promosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setExtraLists(extraListsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       setError('Erreur de chargement des données');
       console.error(err);
@@ -43,9 +57,48 @@ const HomePage = () => {
     }
   };
 
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const notificationRef = doc(db, 'notifications', notificationId);
+      await updateDoc(notificationRef, { read: true });
+      console.log(`Notification ${notificationId} marquée comme lue`);
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour de la notification:", err);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const unreadNotifications = notifications.filter(n => !n.read);
+      await Promise.all(
+        unreadNotifications.map(n => markNotificationAsRead(n.id))
+      );
+      console.log("Toutes les notifications non lues ont été marquées comme lues");
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour de toutes les notifications:", err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
-  }, []);
+
+    const unsubscribeNotifications = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+      const newNotifications = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp.toDate(),
+      })).sort((a, b) => b.timestamp - a.timestamp);
+      setNotifications(newNotifications);
+
+      if (newNotifications.some(n => !n.read) && !showNotificationModal) {
+        setShowNotificationModal(true);
+      }
+    }, (err) => {
+      console.error("Erreur lors de l'écoute des notifications:", err);
+    });
+
+    return () => unsubscribeNotifications();
+  }, [showNotificationModal]);
 
   const promoSliderSettings = {
     dots: true,
@@ -161,15 +214,17 @@ const HomePage = () => {
             <h4 className="font-bold text-green-600 m-0">MANGE d'ABORD</h4>
           </Link>
           <div className="ml-auto flex items-center">
-            <Link
-              to="/notification"
-              className="bg-white p-1 rounded shadow-sm flex items-center no-underline"
+            <button
+              onClick={() => setShowNotificationModal(true)}
+              className="bg-white p-1 rounded shadow-sm flex items-center"
             >
               <i className="fas fa-bell text-lg text-gray-700"></i>
-              <span className="bg-red-600 text-white text-xs px-1 rounded-full ml-1">
-                2
-              </span>
-            </Link>
+              {notifications.length > 0 && (
+                <span className="bg-red-600 text-white text-xs px-1 rounded-full ml-1">
+                  {notifications.filter(n => !n.read).length}
+                </span>
+              )}
+            </button>
             <Link to="#" className="ml-3 text-gray-700">
               <i className="fas fa-bars text-xl"></i>
             </Link>
@@ -188,6 +243,57 @@ const HomePage = () => {
           </div>
         </Link>
       </header>
+
+      {/* Modale pour les notifications */}
+      {showNotificationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold">Notifications</h3>
+              <button
+                onClick={() => {
+                  markAllNotificationsAsRead();
+                  setShowNotificationModal(false);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              {notifications.length === 0 ? (
+                <p className="text-gray-500 text-center">Aucune notification pour le moment</p>
+              ) : (
+                <ul className="space-y-3">
+                  {notifications.map((notification, index) => (
+                    <li
+                      key={index}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
+                      }`}
+                      onClick={() => markNotificationAsRead(notification.id)}
+                    >
+                      <p className="text-sm text-gray-700">
+                        Commande #{notification.orderId.slice(0, 6)} :{' '}
+                        <span className="font-medium">{STATUS_LABELS[notification.oldStatus]}</span> →{' '}
+                        <span className="font-medium text-green-600">{STATUS_LABELS[notification.newStatus]}</span>
+                      </p>
+                      {notification.newStatus === "echec" && notification.reason && (
+                        <p className="text-sm text-red-600 mt-1">
+                          Motif : {notification.reason}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {notification.timestamp.toLocaleString('fr-FR')}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="p-3">
         <h6 className="mb-2 font-medium">Que recherchez-vous ?</h6>
@@ -406,7 +512,7 @@ const HomePage = () => {
             <span className="block text-xs mt-1">Panier</span>
           </Link>
           
-          <Link to="/orders" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
             <i className="fas fa-shopping-bag text-lg"></i>
             <span className="block text-xs mt-1">Commandes</span>
           </Link>

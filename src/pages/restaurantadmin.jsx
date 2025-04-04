@@ -11,6 +11,7 @@ import {
   deleteDoc,
   arrayUnion,
   onSnapshot,
+  getDoc,
   setDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -18,7 +19,6 @@ import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
 
-// Constantes harmonisées avec les nouveaux états
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
@@ -85,7 +85,6 @@ const calculateTimeDifferenceInMinutes = (start, end) => {
   return Math.floor(diffMs / (1000 * 60));
 };
 
-// Fonction utilitaire pour calculer subtotal et totalWithDelivery
 const calculateOrderTotals = (order, extraLists) => {
   const subtotal = order.items.reduce((sum, item) => {
     const itemPrice = convertPrice(item.dishPrice || 0);
@@ -101,14 +100,19 @@ const calculateOrderTotals = (order, extraLists) => {
   return { subtotal, totalWithDelivery };
 };
 
-// Composant OrderCard optimisé pour un affichage clair et agrandi
-const OrderCard = ({ order, items, extraLists, usersData, onShowDetails }) => {
+const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
   const user = usersData[order.userId] || (order.isGuest && order.contact ? { email: order.contact.name } : null);
   const clientInfo = user ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`.trim() : "Client inconnu";
   const { totalWithDelivery } = calculateOrderTotals(order, extraLists);
 
   return (
-    <div className="mb-3 p-3 bg-white rounded-lg shadow-md border border-gray-200">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={() => onShowDetails(order)}
+      className="mb-3 p-3 bg-white rounded-lg shadow-md border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow"
+    >
       <div className="flex flex-col space-y-2 text-base">
         <div className="font-medium text-gray-800 truncate" title={clientInfo}>
           Client: {clientInfo}
@@ -128,19 +132,12 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails }) => {
           <span className={`font-medium ${order.isPaid ? "text-green-600" : "text-red-600"}`}>
             Payé: {order.isPaid ? "Oui" : "Non"}
           </span>
-          <button
-            onClick={() => onShowDetails(order)}
-            className="text-blue-600 hover:underline text-sm px-2 py-1"
-          >
-            Détails
-          </button>
         </div>
       </div>
     </div>
   );
 };
 
-// Modal OrderDetailsModal
 const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onClose, onUpdateFees, onDelete, onUpdateStatus }) => {
   const user = usersData[order.userId] || (order.isGuest && order.contact ? { email: order.contact.name } : null);
   const clientInfo = user ? `${user.email || "Prénom inconnu"} ${user.lastName || ""}`.trim() : "Client inconnu";
@@ -149,7 +146,7 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
   const addressDescription = order.address?.completeAddress || order.destination || "Non spécifiée";
   const additionalAddressInfo = order.address?.instructions || "";
   const orderDate = order.timestamp ? new Date(order.timestamp.seconds * 1000).toLocaleString("fr-FR") : "Date inconnue";
-
+  const [editingItem, setEditingItem] = useState(null);
   const [newStatus, setNewStatus] = useState(order.status || ORDER_STATUS.PENDING);
   const [failureReason, setFailureReason] = useState("");
   const [showFailureModal, setShowFailureModal] = useState(false);
@@ -430,6 +427,8 @@ const RestaurantAdmin = () => {
   const [error, setError] = useState(null);
   const [currentRestaurantId, setCurrentRestaurantId] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateFilterMode, setDateFilterMode] = useState('day');
 
   const daysOfWeek = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
@@ -453,13 +452,33 @@ const RestaurantAdmin = () => {
     extraLists: [],
     quantityleft: 0,
     covers: [],
-    menuId: "",
+    coverPreviews: [], // Ajout pour la prévisualisation
+    menuId: "", // Remplace menuId par menuIds pour plusieurs menus
   });
+  const [editingItem, setEditingItem] = useState(null);
   const [extraListData, setExtraListData] = useState({
     name: "",
     extraListElements: [{ name: "", price: "", required: false, multiple: false }],
   });
-
+  const resetItemForm = () => {
+    setItemData({
+      name: "",
+      description: "",
+      price: "",
+      saleMode: "pack",
+      categoryId: "",
+      available: true,
+      scheduledDay: [],
+      needAssortement: false,
+      assortments: [],
+      extraLists: [], // Réinitialiser les extras
+      quantityleft: 0,
+      covers: [],
+      coverPreviews: [],
+      menuId: "",
+    });
+    setEditingItem(null);
+  };
   const statusColumns = useMemo(
     () => [
       { id: ORDER_STATUS.PENDING, name: STATUS_LABELS[ORDER_STATUS.PENDING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.PENDING] },
@@ -543,12 +562,41 @@ const RestaurantAdmin = () => {
     return () => unsubscribeOrders();
   }, [currentRestaurantId]);
 
+  const formatDateForComparison = (date) => {
+    return date.toISOString().split('T')[0];
+  };
+
+  const filterOrdersByDate = (orders, date, mode) => {
+    const selected = new Date(date);
+    return orders.filter((order) => {
+      if (!order.timestamp) return false;
+      const orderDate = new Date(order.timestamp.seconds * 1000);
+      
+      switch (mode) {
+        case 'day':
+          return formatDateForComparison(orderDate) === formatDateForComparison(selected);
+        case 'week':
+          const startOfWeek = new Date(selected);
+          startOfWeek.setDate(selected.getDate() - selected.getDay());
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          return orderDate >= startOfWeek && orderDate <= endOfWeek;
+        case 'month':
+          return orderDate.getMonth() === selected.getMonth() && 
+                 orderDate.getFullYear() === selected.getFullYear();
+        default:
+          return true;
+      }
+    });
+  };
+
   const filteredOrders = useMemo(() => {
     if (!items.length) return [];
-    return orders.filter((order) =>
+    const dateFilteredOrders = filterOrdersByDate(orders, selectedDate, dateFilterMode);
+    return dateFilteredOrders.filter((order) =>
       order.items?.some((item) => items.some((it) => it.id === item.dishId))
     );
-  }, [orders, items]);
+  }, [orders, items, selectedDate, dateFilterMode]);
 
   const getDeliveryFee = (destination) => {
     return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
@@ -586,6 +634,7 @@ const RestaurantAdmin = () => {
         extraLists: [],
         quantityleft: 0,
         covers: [],
+        extraLists: itemData.extraLists || [],
         menuId: "",
       });
     } catch (error) {
@@ -717,12 +766,46 @@ const RestaurantAdmin = () => {
 
   const updateItem = async (itemId, newData) => {
     try {
-      await updateDoc(doc(db, "items", itemId), newData);
-      setItems(items.map((item) => (item.id === itemId ? { ...item, ...newData } : item)));
+      const uploadedCovers = newData.covers.some(file => file instanceof File)
+        ? await uploadImages(newData.covers.filter(file => file instanceof File))
+        : [];
+      const updatedCovers = [
+        ...(newData.covers.filter(url => typeof url === "string")), // Conserver les URLs existantes
+        ...uploadedCovers, // Ajouter les nouvelles images
+      ];
+      const updatedData = { ...newData, covers: updatedCovers };
+      await updateDoc(doc(db, "items", itemId), updatedData);
+      setItems(items.map((item) => (item.id === itemId ? { ...item, ...updatedData } : item)));
+      setEditingItem(null);
+      setItemData({
+        name: "",
+        description: "",
+        price: "",
+        saleMode: "pack",
+        categoryId: "",
+        available: true,
+        scheduledDay: [],
+        needAssortement: false,
+        assortments: [],
+        extraLists: [],
+        quantityleft: 0,
+        covers: [],
+        coverPreviews: [],
+        menuId: "",
+        extraLists: newData.extraLists || [] 
+      });
     } catch (error) {
       console.error("Erreur lors de la mise à jour du plat:", error);
       setError("Erreur lors de la mise à jour du plat");
     }
+  };
+  const startEditing = (item) => {
+    setEditingItem(item);
+    setItemData({
+      ...item,
+      coverPreviews: item.covers || [], // Prévisualisation des images existantes
+      menuId: item.menuIds?.[0] || "", // Si vous utilisez menuIds, prenez le premier par défaut
+    });
   };
 
   const updateRestaurantInfo = async () => {
@@ -762,22 +845,57 @@ const RestaurantAdmin = () => {
 
   const updateOrderStatus = async (orderId, status, reason = null, isPaid = false) => {
     try {
+      // Vérifications initiales
+      if (!orderId) {
+        throw new Error("L'ID de la commande est manquant.");
+      }
+      if (!auth.currentUser) {
+        throw new Error("Utilisateur non authentifié.");
+      }
+      if (!currentRestaurantId) {
+        throw new Error("ID du restaurant non défini.");
+      }
+  
       const orderRef = doc(db, "orders", orderId);
       const statusHistoryRef = collection(orderRef, "statusHistory");
+      const notificationsRef = collection(db, "notifications");
       const statusData = {
         status,
         timestamp: Timestamp.now(),
       };
       if (reason) statusData.reason = reason;
-
+  
+      // Étape 1: Ajouter à l'historique des statuts
       await addDoc(statusHistoryRef, statusData);
+  
+      // Étape 2: Mettre à jour le statut de la commande
       await updateDoc(orderRef, { status, isPaid, updatedAt: Timestamp.now() });
+  
+      // Étape 3: Récupérer les données actuelles de la commande
+      const orderDoc = await getDoc(orderRef); // Correction: utiliser getDoc au lieu de getDocs
+      if (!orderDoc.exists()) {
+        throw new Error("La commande n'existe pas.");
+      }
+      const orderData = orderDoc.data();
+  
+      // Étape 4: Créer une notification
+      const notificationData = {
+        orderId: orderId,
+        oldStatus: orderData.status || ORDER_STATUS.PENDING, // Statut précédent
+        newStatus: status,
+        timestamp: Timestamp.now(),
+        userId: orderData.userId || "unknown",
+        restaurantId: orderData.restaurantId || currentRestaurantId,
+        read: false,
+      };
+      await addDoc(notificationsRef, notificationData);
+  
+      console.log(`Notification créée pour la commande ${orderId}: ${status}`);
     } catch (error) {
-      console.error("Erreur lors de la mise à jour du statut:", error);
-      setError("Erreur lors de la mise à jour du statut");
+      console.error("Erreur lors de la mise à jour du statut ou création de la notification:", error);
+      setError(`Erreur: ${error.message}`); // Ligne 878 dans votre fichier
     }
   };
-
   const handleDragStart = (e, order) => {
     setDraggedOrder(order);
     e.dataTransfer.setData("text/plain", order.id);
@@ -841,6 +959,22 @@ const RestaurantAdmin = () => {
 
   const closeOrderDetails = () => {
     setSelectedOrder(null);
+  };
+
+  const handlePreviousPeriod = () => {
+    const newDate = new Date(selectedDate);
+    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() - 1);
+    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() - 7);
+    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    setSelectedDate(newDate);
+  };
+
+  const handleNextPeriod = () => {
+    const newDate = new Date(selectedDate);
+    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() + 1);
+    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() + 7);
+    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    setSelectedDate(newDate);
   };
 
   return (
@@ -962,174 +1096,291 @@ const RestaurantAdmin = () => {
             </>
           )}
 
-          {activeTab === "items" && (
-            <>
-              <input
-                type="text"
-                placeholder="Nom du plat"
-                className="form-control mb-2"
-                value={itemData.name}
-                onChange={(e) => setItemData({ ...itemData, name: e.target.value })}
-              />
-              <select
-                className="form-control mb-2"
-                value={itemData.menuId}
-                onChange={(e) => setItemData({ ...itemData, menuId: e.target.value })}
-              >
-                <option value="">Sélectionner un menu</option>
-                {menus.map((menu) => (
-                  <option key={menu.id} value={menu.id}>
-                    {menu.name}
-                  </option>
-                ))}
-              </select>
-              <div className="mb-3">
-                <label className="form-label">Jours de disponibilité :</label>
-                <div>
-                  {daysOfWeek.map((day) => (
-                    <label key={day} className="me-2">
-                      <input
-                        type="checkbox"
-                        value={day}
-                        checked={itemData.scheduledDay.includes(day)}
-                        onChange={() => handleDaySelection(day)}
-                      />
-                      {day}
-                    </label>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary ms-2"
-                    onClick={() => setItemData({ ...itemData, scheduledDay: [] })}
-                  >
-                    Réinitialiser
-                  </button>
+{activeTab === "items" && (
+  <div className="space-y-6">
+    {/* Formulaire de création/édition */}
+    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+      <h3 className="text-xl font-semibold mb-4 text-gray-800">
+        {editingItem ? "Modifier le plat" : "Ajouter un nouveau plat"}
+      </h3>
+      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nom du plat *</label>
+          <input
+            type="text"
+            placeholder="Entrez le nom du plat"
+            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+              !itemData.name && error ? "border-red-500" : ""
+            }`}
+            value={itemData.name}
+            onChange={(e) => setItemData({ ...itemData, name: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Menu *</label>
+          <select
+            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+              !itemData.menuId && error ? "border-red-500" : ""
+            }`}
+            value={itemData.menuId}
+            onChange={(e) => setItemData({ ...itemData, menuId: e.target.value })}
+          >
+            <option value="">Sélectionner un menu</option>
+            {menus.map((menu) => (
+              <option key={menu.id} value={menu.id}>
+                {menu.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+          <select
+            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+              !itemData.categoryId && error ? "border-red-500" : ""
+            }`}
+            value={itemData.categoryId}
+            onChange={(e) => setItemData({ ...itemData, categoryId: e.target.value })}
+          >
+            <option value="">Sélectionner une catégorie</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Prix (FCFA) *</label>
+          <input
+            type="number"
+            placeholder="Prix"
+            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+              !itemData.price && error ? "border-red-500" : ""
+            }`}
+            value={itemData.price}
+            onChange={(e) => setItemData({ ...itemData, price: e.target.value })}
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea
+            placeholder="Décrivez le plat..."
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-y"
+            rows="3"
+            value={itemData.description}
+            onChange={(e) => setItemData({ ...itemData, description: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Mode de vente</label>
+          <select
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            value={itemData.saleMode}
+            onChange={(e) => setItemData({ ...itemData, saleMode: e.target.value })}
+          >
+            <option value="pack">Pack</option>
+            <option value="kilo">Kilo</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Images</label>
+          <input
+            type="file"
+            multiple
+            className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+            onChange={(e) => {
+              const files = Array.from(e.target.files);
+              const previews = files.map(file => URL.createObjectURL(file));
+              setItemData({ 
+                ...itemData, 
+                covers: editingItem ? [...itemData.covers, ...files] : files,
+                coverPreviews: editingItem ? [...itemData.coverPreviews, ...previews] : previews 
+              });
+            }}
+          />
+        </div>
+        {/* Chipsets pour les extras */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Extras</label>
+          <div className="flex flex-wrap gap-2">
+            {extraLists.length > 0 ? (
+              extraLists.map((extra) => (
+                <div
+                  key={extra.id}
+                  className={`px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
+                    itemData.extraLists.includes(extra.id)
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setItemData({
+                      ...itemData,
+                      extraLists: itemData.extraLists.includes(extra.id)
+                        ? itemData.extraLists.filter(id => id !== extra.id)
+                        : [...itemData.extraLists, extra.id]
+                    });
+                  }}
+                >
+                  {extra.name} ({extra.extraListElements.length})
                 </div>
-                {itemData.scheduledDay.length > 0 ? (
-                  <p className="small mt-2">
-                    Disponibilité sélectionnée : <strong>{itemData.scheduledDay.join(", ")}</strong>
-                  </p>
-                ) : (
-                  <p className="small text-muted mt-2">
-                    Aucun jour sélectionné (disponible tous les jours).
-                  </p>
-                )}
+              ))
+            ) : (
+              <p className="text-gray-500 text-sm">Aucune liste d'extras disponible</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {itemData.coverPreviews?.length > 0 && (
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Prévisualisation des images</label>
+          <div className="flex flex-wrap gap-2">
+            {itemData.coverPreviews.map((preview, index) => (
+              <div key={index} className="relative">
+                <img
+                  src={preview}
+                  alt={`Prévisualisation ${index + 1}`}
+                  className="w-24 h-24 object-cover rounded-lg"
+                />
+                <button
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                  onClick={() => {
+                    const newCovers = itemData.covers.filter((_, i) => i !== index);
+                    const newPreviews = itemData.coverPreviews.filter((_, i) => i !== index);
+                    setItemData({ ...itemData, covers: newCovers, coverPreviews: newPreviews });
+                  }}
+                >
+                  ×
+                </button>
               </div>
-              <select
-                className="form-control mb-2"
-                value={itemData.categoryId}
-                onChange={(e) => setItemData({ ...itemData, categoryId: e.target.value })}
-              >
-                <option value="">Sélectionner une catégorie</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                placeholder="Description du plat"
-                className="form-control mb-2"
-                value={itemData.description}
-                onChange={(e) => setItemData({ ...itemData, description: e.target.value })}
-              />
-              <input
-                type="number"
-                placeholder="Prix du plat"
-                className="form-control mb-2"
-                value={itemData.price}
-                onChange={(e) => setItemData({ ...itemData, price: e.target.value })}
-              />
-              <select
-                className="form-control mb-2"
-                value={itemData.saleMode}
-                onChange={(e) => setItemData({ ...itemData, saleMode: e.target.value })}
-              >
-                <option value="pack">Pack</option>
-                <option value="kilo">Kilo</option>
-              </select>
-              <input
-                type="file"
-                multiple
-                className="form-control mb-2"
-                onChange={(e) => setItemData({ ...itemData, covers: Array.from(e.target.files) })}
-              />
-              {extraLists.length > 0 && (
-                <div className="mb-2">
-                  <label>Extras :</label>
-                  {extraLists.map((extra) => (
-                    <div key={extra.id}>
-                      <input
-                        type="checkbox"
-                        checked={itemData.assortments.includes(extra.id)}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setItemData({
-                            ...itemData,
-                            assortments: checked
-                              ? [...itemData.assortments, extra.id]
-                              : itemData.assortments.filter((id) => id !== extra.id),
-                          });
-                        }}
-                      />
-                      {extra.name}
-                      {extra.required && <span className="text-muted"> (Obligatoire)</span>}
-                    </div>
-                  ))}
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Jours de disponibilité</label>
+        <div className="flex flex-wrap gap-2">
+          {daysOfWeek.map((day) => (
+            <button
+              key={day}
+              type="button"
+              className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                itemData.scheduledDay.includes(day)
+                  ? "bg-green-500 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+              onClick={() => handleDaySelection(day)}
+            >
+              {day.charAt(0).toUpperCase() + day.slice(1)}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-700 hover:bg-red-200"
+            onClick={() => setItemData({ ...itemData, scheduledDay: [] })}
+          >
+            Réinitialiser
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 flex gap-4">
+        <button
+          className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+          onClick={editingItem ? () => updateItem(editingItem.id, itemData) : addItem}
+        >
+          {editingItem ? "Mettre à jour" : "Ajouter le plat"}
+        </button>
+        {editingItem && (
+          <button
+            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+            onClick={resetItemForm}
+          >
+            Annuler
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Liste des plats */}
+    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+      <h3 className="text-xl font-semibold mb-4 text-gray-800">Liste des plats</h3>
+      {items.length === 0 ? (
+        <p className="text-gray-500 text-center py-4">Aucun plat ajouté pour le moment</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
+            >
+              <div className="flex items-start space-x-4">
+                {item.covers?.length > 0 ? (
+                  <div className="relative w-24 h-24">
+                    <img
+                      src={item.covers[0]}
+                      alt={item.name}
+                      className="w-full h-full object-cover rounded-lg"
+                      onError={(e) => (e.target.src = "/img/default.png")}
+                    />
+                    {item.covers.length > 1 && (
+                      <span className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs rounded-full px-2 py-1">
+                        +{item.covers.length - 1}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <span className="text-gray-500 text-sm">Aucune image</span>
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h4 className="font-semibold text-gray-800">{item.name}</h4>
+                  <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
+                  <p className="text-green-600 font-medium mt-1">
+                    {formatPrice(item.price)} FCFA ({item.saleMode})
+                  </p>
+                  {item.menuId && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Menu: {menus.find(m => m.id === item.menuId)?.name || item.menuId}
+                    </p>
+                  )}
+                  {item.scheduledDay.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Disponible: {item.scheduledDay.join(", ")}
+                    </p>
+                  )}
+                  {item.extraLists?.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Extras: {item.extraLists.map(id => extraLists.find(ex => ex.id === id)?.name || id).join(", ")}
+                    </p>
+                  )}
                 </div>
-              )}
-              <button className="btn btn-success" onClick={addItem}>
-                Ajouter
-              </button>
-              <h3 className="mt-4">Liste des Plats</h3>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Nom</th>
-                    <th>Description</th>
-                    <th>Prix</th>
-                    <th>RestaurantId</th>
-                    <th>Extras</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td>{item.description}</td>
-                      <td>{item.price}</td>
-                      <td>{item.restaurantId}</td>
-                      <td>
-                        {item.assortments?.map((assId) => {
-                          const extra = extraLists.find((ex) => ex.id === assId);
-                          return extra ? extra.name : assId;
-                        }).join(", ") || "Aucun"}
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-warning btn-sm me-2"
-                          onClick={() =>
-                            updateItem(item.id, {
-                              name: prompt("Nouveau nom :", item.name),
-                              description: prompt("Nouvelle description :", item.description),
-                              price: prompt("Nouveau prix :", item.price),
-                            })
-                          }
-                        >
-                          Modifier
-                        </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => deleteItem(item.id)}>
-                          Supprimer
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+              </div>
+              <div className="mt-3 flex justify-between">
+                <button
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  onClick={() => startEditing(item)}
+                >
+                  Modifier
+                </button>
+                <button
+                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+                  onClick={() => deleteItem(item.id)}
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
           {activeTab === "categories" && (
             <>
@@ -1201,12 +1452,62 @@ const RestaurantAdmin = () => {
             <div>
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
-                <button
-                  className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300"
-                  onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
-                >
-                  {viewMode === "table" ? "Vue Kanban" : "Vue Tableau"}
-                </button>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                      onClick={handlePreviousPeriod}
+                    >
+                      &lt;
+                    </button>
+                    <input
+                      type="date"
+                      value={formatDateForComparison(selectedDate)}
+                      onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                      className="border rounded px-2 py-1"
+                    />
+                    <button 
+                      className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                      onClick={handleNextPeriod}
+                    >
+                      &gt;
+                    </button>
+                  </div>
+                  <select
+                    value={dateFilterMode}
+                    onChange={(e) => setDateFilterMode(e.target.value)}
+                    className="border rounded px-2 py-1"
+                  >
+                    <option value="day">Jour</option>
+                    <option value="week">Semaine</option>
+                    <option value="month">Mois</option>
+                  </select>
+                  <button
+                    className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300"
+                    onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
+                  >
+                    {viewMode === "table" ? "Vue Kanban" : "Vue Tableau"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-4 text-sm text-gray-600">
+                {dateFilterMode === 'day' && (
+                  `Commandes du ${selectedDate.toLocaleDateString('fr-FR')}`
+                )}
+                {dateFilterMode === 'week' && (
+                  (() => {
+                    const start = new Date(selectedDate);
+                    start.setDate(start.getDate() - start.getDay());
+                    const end = new Date(start);
+                    end.setDate(start.getDate() + 6);
+                    return `Commandes de la semaine du ${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
+                  })()
+                )}
+                {dateFilterMode === 'month' && (
+                  `Commandes de ${selectedDate.toLocaleString('fr-FR', { month: 'long', year: 'numeric' })}`
+                )}
+                {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? 's' : ''})`}
               </div>
 
               {viewMode === "kanban" ? (
@@ -1247,8 +1548,6 @@ const RestaurantAdmin = () => {
                               usersData={usersData}
                               onDragStart={(e) => handleDragStart(e, order)}
                               onDragEnd={handleDragEnd}
-                              onUpdateFees={updateOrderDeliveryFees}
-                              onDelete={deleteOrder}
                               onShowDetails={showOrderDetails}
                             />
                           ))}
@@ -1262,6 +1561,7 @@ const RestaurantAdmin = () => {
                     <tr>
                       <th>Client</th>
                       <th>ID Commande</th>
+                      <th>Date</th>
                       <th>Total</th>
                       <th>Statut</th>
                       <th>Payé</th>
@@ -1280,6 +1580,7 @@ const RestaurantAdmin = () => {
                         <tr key={order.id}>
                           <td className="truncate">{clientInfo}</td>
                           <td className="truncate">#{order.id.slice(0, 6)}</td>
+                          <td>{order.timestamp ? new Date(order.timestamp.seconds * 1000).toLocaleDateString('fr-FR') : 'N/A'}</td>
                           <td className="text-green-600 font-semibold">{formatPrice(totalWithDelivery)} FCFA</td>
                           <td>
                             <span

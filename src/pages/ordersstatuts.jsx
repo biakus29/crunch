@@ -17,6 +17,7 @@ import { onAuthStateChanged } from "firebase/auth";
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
+  READY_TO_DELIVER: "pret_a_livrer", // Nouvel état ajouté
   DELIVERING: "en_livraison",
   DELIVERED: "livree",
   CANCELLED: "annulee"
@@ -25,6 +26,7 @@ const ORDER_STATUS = {
 const STATUS_LABELS = {
   [ORDER_STATUS.PENDING]: "En attente",
   [ORDER_STATUS.PREPARING]: "En préparation",
+  [ORDER_STATUS.READY_TO_DELIVER]: "Prêt à livrer", // Label ajouté
   [ORDER_STATUS.DELIVERING]: "En livraison",
   [ORDER_STATUS.DELIVERED]: "Livrée",
   [ORDER_STATUS.CANCELLED]: "Annulée"
@@ -33,6 +35,7 @@ const STATUS_LABELS = {
 const STATUS_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
   [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
+  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-500 text-white", // Couleur ajoutée
   [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
   [ORDER_STATUS.DELIVERED]: "bg-green-600 text-white",
   [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white"
@@ -41,6 +44,7 @@ const STATUS_COLORS = {
 const STATUS_COLUMN_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-gray-100 border-gray-300",
   [ORDER_STATUS.PREPARING]: "bg-blue-50 border-blue-200",
+  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-50 border-purple-200", // Couleur de colonne ajoutée
   [ORDER_STATUS.DELIVERING]: "bg-yellow-50 border-yellow-200",
   [ORDER_STATUS.DELIVERED]: "bg-green-50 border-green-200"
 };
@@ -64,6 +68,8 @@ const formatDate = (timestamp) =>
       })
     : "Date non disponible";
 
+const formatDateForComparison = (date) => date.toISOString().split('T')[0];
+
 const OrderStatus = ({ isAdmin = false }) => {
   const [orders, setOrders] = useState([]);
   const [itemsData, setItemsData] = useState({});
@@ -75,6 +81,8 @@ const OrderStatus = ({ isAdmin = false }) => {
   const [error, setError] = useState("");
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateFilterMode, setDateFilterMode] = useState('day');
 
   const effectiveUserId = useMemo(
     () => currentUserId || localStorage.getItem("guestUid"),
@@ -125,6 +133,30 @@ const OrderStatus = ({ isAdmin = false }) => {
     }
   };
 
+  const filterOrdersByDate = (orders, date, mode) => {
+    const selected = new Date(date);
+    return orders.filter((order) => {
+      if (!order.timestamp) return false;
+      const orderDate = new Date(order.timestamp.seconds * 1000);
+      
+      switch (mode) {
+        case 'day':
+          return formatDateForComparison(orderDate) === formatDateForComparison(selected);
+        case 'week':
+          const startOfWeek = new Date(selected);
+          startOfWeek.setDate(selected.getDate() - selected.getDay());
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          return orderDate >= startOfWeek && orderDate <= endOfWeek;
+        case 'month':
+          return orderDate.getMonth() === selected.getMonth() && 
+                 orderDate.getFullYear() === selected.getFullYear();
+        default:
+          return true;
+      }
+    });
+  };
+
   useEffect(() => {
     if (effectiveUserId === null && !isAdmin) return;
 
@@ -137,13 +169,12 @@ const OrderStatus = ({ isAdmin = false }) => {
       const unsubscribe = onSnapshot(
         ordersQuery,
         (snapshot) => {
-          setOrders(
-            snapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              status: doc.data().status || ORDER_STATUS.PENDING
-            }))
-          );
+          const allOrders = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            status: doc.data().status || ORDER_STATUS.PENDING
+          }));
+          setOrders(allOrders);
           setLoading(false);
         },
         (err) => {
@@ -156,10 +187,19 @@ const OrderStatus = ({ isAdmin = false }) => {
     });
   }, [isAdmin, effectiveUserId]);
 
-  const filteredOrders = useMemo(
-    () => (isAdmin || !filter ? orders : orders.filter((order) => order.status === filter)),
-    [orders, filter, isAdmin]
-  );
+  const filteredOrders = useMemo(() => {
+    const dateFilteredOrders = isAdmin ? filterOrdersByDate(orders, selectedDate, dateFilterMode) : orders;
+    return isAdmin || !filter
+      ? dateFilteredOrders
+      : dateFilteredOrders.filter((order) => order.status === filter);
+  }, [orders, filter, isAdmin, selectedDate, dateFilterMode]);
+
+  const statusCounts = useMemo(() => {
+    return Object.keys(STATUS_LABELS).reduce((acc, status) => {
+      acc[status] = orders.filter((order) => order.status === status).length;
+      return acc;
+    }, {});
+  }, [orders]);
 
   const calculateTotal = (order) => {
     if (order.total !== undefined && order.total !== null) {
@@ -225,33 +265,108 @@ const OrderStatus = ({ isAdmin = false }) => {
     }
   };
 
+  const handlePreviousPeriod = () => {
+    const newDate = new Date(selectedDate);
+    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() - 1);
+    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() - 7);
+    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    setSelectedDate(newDate);
+  };
+
+  const handleNextPeriod = () => {
+    const newDate = new Date(selectedDate);
+    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() + 1);
+    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() + 7);
+    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    setSelectedDate(newDate);
+  };
+
   const renderKanban = () => (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 px-4">
-      {statusColumns.map((column) => (
-        <div
-          key={column.id}
-          className={`${column.color} p-4 rounded-lg border min-h-[200px]`}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, column.id)}
-        >
-          <h3 className="font-bold mb-3">
-            {column.name} ({orders.filter((o) => o.status === column.id).length})
-          </h3>
-          {orders
-            .filter((order) => order.status === column.id)
-            .map((order) => (
-              <OrderTile
-                key={order.id}
-                order={order}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                deliveryFee={getDeliveryFee(order.destination)}
-                updateOrderDeliveryFees={updateOrderDeliveryFees}
-                calculateTotal={calculateTotal}
+    <div className="mt-4 px-4">
+      {isAdmin && (
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <button 
+                className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                onClick={handlePreviousPeriod}
+              >
+                &lt;
+              </button>
+              <input
+                type="date"
+                value={formatDateForComparison(selectedDate)}
+                onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                className="border rounded px-2 py-1"
               />
-            ))}
+              <button 
+                className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                onClick={handleNextPeriod}
+              >
+                &gt;
+              </button>
+            </div>
+            <select
+              value={dateFilterMode}
+              onChange={(e) => setDateFilterMode(e.target.value)}
+              className="border rounded px-2 py-1"
+            >
+              <option value="day">Jour</option>
+              <option value="week">Semaine</option>
+              <option value="month">Mois</option>
+            </select>
+          </div>
         </div>
-      ))}
+      )}
+      {isAdmin && (
+        <div className="mb-4 text-sm text-gray-600">
+          {dateFilterMode === 'day' && (
+            `Commandes du ${selectedDate.toLocaleDateString('fr-FR')}`
+          )}
+          {dateFilterMode === 'week' && (
+            (() => {
+              const start = new Date(selectedDate);
+              start.setDate(start.getDate() - start.getDay());
+              const end = new Date(start);
+              end.setDate(start.getDate() + 6);
+              return `Commandes de la semaine du ${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
+            })()
+          )}
+          {dateFilterMode === 'month' && (
+            `Commandes de ${selectedDate.toLocaleString('fr-FR', { month: 'long', year: 'numeric' })}`
+          )}
+          {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? 's' : ''})`}
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4"> {/* Changé de 4 à 5 colonnes */}
+        {statusColumns.map((column) => {
+          const columnOrders = filteredOrders.filter((order) => order.status === column.id);
+          return (
+            <div
+              key={column.id}
+              className={`${column.color} p-4 rounded-lg border min-h-[200px]`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => handleDrop(e, column.id)}
+            >
+              <h3 className="font-bold mb-3">
+                {column.name} ({columnOrders.length})
+              </h3>
+              {columnOrders.map((order) => (
+                <OrderTile
+                  key={order.id}
+                  order={order}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  deliveryFee={getDeliveryFee(order.destination)}
+                  updateOrderDeliveryFees={updateOrderDeliveryFees}
+                  calculateTotal={calculateTotal}
+                />
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 
@@ -264,7 +379,7 @@ const OrderStatus = ({ isAdmin = false }) => {
             !filter ? "bg-yellow-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
-          Toutes
+          Toutes ({orders.length})
         </button>
         {Object.entries(STATUS_LABELS).map(([key, label]) => (
           <button
@@ -276,7 +391,7 @@ const OrderStatus = ({ isAdmin = false }) => {
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            {label}
+            {label} ({statusCounts[key]})
           </button>
         ))}
       </div>
