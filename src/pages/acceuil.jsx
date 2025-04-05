@@ -3,9 +3,10 @@ import Slider from 'react-slick';
 import { Link } from 'react-router-dom';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
-import { collection, getDocs, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, getDocs, onSnapshot, doc, updateDoc, query, where, deleteDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { useCart } from '../context/cartcontext';
+import { onAuthStateChanged } from 'firebase/auth';
 import logo from '../image/logo.png';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -16,6 +17,15 @@ const STATUS_LABELS = {
   "en_livraison": "En livraison",
   "livree": "Livrée",
   "echec": "Échec",
+};
+
+const STATUS_COLORS = {
+  "en_attente": "text-yellow-600",
+  "en_preparation": "text-blue-600",
+  "pret_a_livrer": "text-purple-600",
+  "en_livraison": "text-orange-600",
+  "livree": "text-green-600",
+  "echec": "text-red-600",
 };
 
 const HomePage = () => {
@@ -31,9 +41,22 @@ const HomePage = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState({});
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [user, setUser] = useState(null);
   const { addToCart, cartItems } = useCart();
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    }, (err) => {
+      console.error("Erreur auth:", err);
+      setError("Erreur lors de la vérification de l'utilisateur");
+      setLoading(false);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  const fetchData = async (userId) => {
     try {
       setLoading(true);
       const [categoriesSnap, itemsSnap, promosSnap, extraListsSnap, ordersSnap] = await Promise.all([
@@ -41,7 +64,9 @@ const HomePage = () => {
         getDocs(collection(db, 'items')),
         getDocs(collection(db, 'promos')),
         getDocs(collection(db, 'extraLists')),
-        getDocs(collection(db, 'orders')),
+        userId
+          ? getDocs(query(collection(db, 'orders'), where('userId', '==', userId)))
+          : getDocs(collection(db, 'orders')),
       ]);
 
       setCategories(categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -79,16 +104,67 @@ const HomePage = () => {
     }
   };
 
-  useEffect(() => {
-    fetchData();
+  const clearAllNotifications = async () => {
+    if (window.confirm("Voulez-vous vraiment supprimer toutes vos notifications ?")) {
+      try {
+        const userId = user ? user.uid : null;
+        if (!userId) return;
+        const notificationsQuery = query(collection(db, 'notifications'), where('userId', '==', userId));
+        const snapshot = await getDocs(notificationsQuery);
+        await Promise.all(snapshot.docs.map(doc => deleteDoc(doc.ref)));
+        setNotifications([]);
+        console.log("Toutes les notifications ont été supprimées");
+      } catch (err) {
+        console.error("Erreur lors de la suppression des notifications:", err);
+      }
+    }
+  };
 
-    const unsubscribeNotifications = onSnapshot(collection(db, 'notifications'), (snapshot) => {
+  const formatOrderId = (orderId) => {
+    return `C${orderId.slice(-4).padStart(4, '0')}`;
+  };
+
+  useEffect(() => {
+    if (user === null) return;
+
+    fetchData(user?.uid);
+
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
+    const notificationsQuery = user?.uid
+      ? query(collection(db, 'notifications'), where('userId', '==', user.uid))
+      : collection(db, 'notifications');
+
+    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
       const newNotifications = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         timestamp: doc.data().timestamp.toDate(),
       })).sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(newNotifications);
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added" || change.type === "modified") {
+          const n = change.doc.data();
+          if (!n.read && Notification.permission === "granted") {
+            const order = orders.find(o => o.id === n.orderId);
+            const itemsList = order?.label || "Articles non spécifiés"; // Utilisation uniquement de label
+            const orderNumber = formatOrderId(n.orderId);
+
+            const notification = new Notification("Mange d'Abord - Mise à jour commande", {
+              body: `Votre commande ${orderNumber} (${itemsList}) est ${STATUS_LABELS[n.newStatus]}`,
+              icon: logo,
+            });
+
+            notification.onclick = () => {
+              window.location.href = `/complete_order/${n.orderId}`;
+              markNotificationAsRead(n.id);
+            };
+          }
+        }
+      });
 
       if (newNotifications.some(n => !n.read) && !showNotificationModal) {
         setShowNotificationModal(true);
@@ -98,7 +174,7 @@ const HomePage = () => {
     });
 
     return () => unsubscribeNotifications();
-  }, [showNotificationModal]);
+  }, [user]);
 
   const promoSliderSettings = {
     dots: true,
@@ -194,7 +270,7 @@ const HomePage = () => {
   if (error) {
     return (
       <div className="p-4 text-center bg-red-100 text-red-600">
-        {error} - <button onClick={fetchData} className="text-red-600 underline">Réessayer</button>
+        {error} - <button onClick={() => fetchData(user?.uid)} className="text-red-600 underline">Réessayer</button>
       </div>
     );
   }
@@ -244,50 +320,73 @@ const HomePage = () => {
         </Link>
       </header>
 
-      {/* Modale pour les notifications */}
       {showNotificationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-semibold">Notifications</h3>
-              <button
-                onClick={() => {
-                  markAllNotificationsAsRead();
-                  setShowNotificationModal(false);
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={clearAllNotifications}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                  title="Supprimer toutes les notifications"
+                >
+                  <i className="fas fa-trash-alt"></i> Vider
+                </button>
+                <button
+                  onClick={() => {
+                    markAllNotificationsAsRead();
+                    setShowNotificationModal(false);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <div className="p-4">
               {notifications.length === 0 ? (
                 <p className="text-gray-500 text-center">Aucune notification pour le moment</p>
               ) : (
                 <ul className="space-y-3">
-                  {notifications.map((notification, index) => (
-                    <li
-                      key={index}
-                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                        notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
-                      }`}
-                      onClick={() => markNotificationAsRead(notification.id)}
-                    >
-                      <p className="text-sm text-gray-700">
-                        Commande #{notification.orderId.slice(0, 6)} :{' '}
-                        <span className="font-medium">{STATUS_LABELS[notification.oldStatus]}</span> →{' '}
-                        <span className="font-medium text-green-600">{STATUS_LABELS[notification.newStatus]}</span>
-                      </p>
-                      {notification.newStatus === "echec" && notification.reason && (
-                        <p className="text-sm text-red-600 mt-1">
-                          Motif : {notification.reason}
+                  {notifications.map((notification, index) => {
+                    const order = orders.find(o => o.id === notification.orderId);
+                    const itemsList = order?.label || "Articles non spécifiés"; // Utilisation uniquement de label
+                    const orderNumber = formatOrderId(notification.orderId);
+                    
+                    return (
+                      <li
+                        key={index}
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
+                        }`}
+                        onClick={() => {
+                          markNotificationAsRead(notification.id);
+                          setShowNotificationModal(false);
+                          window.location.href = `/complete_order/${notification.orderId}`;
+                        }}
+                      >
+                        <p className="text-sm text-gray-700">
+                          Commande #{orderNumber} ({itemsList}) :{' '}
+                          <span className={`font-medium ${STATUS_COLORS[notification.oldStatus]}`}>
+                            {STATUS_LABELS[notification.oldStatus] || "Nouveau"}
+                          </span>{' '}
+                          →{' '}
+                          <span className={`font-medium ${STATUS_COLORS[notification.newStatus]}`}>
+                            {STATUS_LABELS[notification.newStatus]}
+                          </span>
                         </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        {notification.timestamp.toLocaleString('fr-FR')}
-                      </p>
-                    </li>
-                  ))}
+                        {notification.newStatus === "echec" && notification.reason && (
+                          <p className="text-sm text-red-600 mt-1">
+                            Motif : {notification.reason}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          {notification.timestamp.toLocaleString('fr-FR')}
+                        </p>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -517,7 +616,7 @@ const HomePage = () => {
             <span className="block text-xs mt-1">Commandes</span>
           </Link>
           
-          <Link to="/account" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
+          <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
             <i className="fas fa-user text-lg"></i>
             <span className="block text-xs mt-1">Compte</span>
           </Link>

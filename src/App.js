@@ -15,7 +15,7 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import CategoryListing from "./pages/categorieslist";
 import FinalOrderStatus from "./pages/ordersstatuts";
 import RemplacerRestaurantId from "./pages/exo";
-
+import Profile from "./pages/profile";
 
 function App() {
   return (
@@ -37,6 +37,8 @@ function App() {
           <Route path="/complete_order" element={<FinalOrderStatus />} />
                     {/* Nouvelle route pour la mise à jour de l'ID */}
           <Route path="/update-restaurant-id" element={<RemplacerRestaurantId />} />
+          <Route path="/profile" element={<Profile />} />
+          {/* Ajoutez d'autres routes ici si nécessaire */}
 
         </Routes>
       </Router>

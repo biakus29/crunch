@@ -8,7 +8,7 @@ import {
   updateDoc,
   onSnapshot,
   setDoc,
-  Timestamp
+  Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { Link } from "react-router-dom";
@@ -17,36 +17,38 @@ import { onAuthStateChanged } from "firebase/auth";
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
-  READY_TO_DELIVER: "pret_a_livrer", // Nouvel état ajouté
+  READY_TO_DELIVER: "pret_a_livrer",
   DELIVERING: "en_livraison",
   DELIVERED: "livree",
-  CANCELLED: "annulee"
+  CANCELLED: "annulee",
 };
 
 const STATUS_LABELS = {
   [ORDER_STATUS.PENDING]: "En attente",
   [ORDER_STATUS.PREPARING]: "En préparation",
-  [ORDER_STATUS.READY_TO_DELIVER]: "Prêt à livrer", // Label ajouté
+  
   [ORDER_STATUS.DELIVERING]: "En livraison",
   [ORDER_STATUS.DELIVERED]: "Livrée",
-  [ORDER_STATUS.CANCELLED]: "Annulée"
+  [ORDER_STATUS.CANCELLED]: "Annulée",
 };
 
 const STATUS_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
   [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
-  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-500 text-white", // Couleur ajoutée
+  
   [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
   [ORDER_STATUS.DELIVERED]: "bg-green-600 text-white",
-  [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white"
+  [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white",
 };
 
-const STATUS_COLUMN_COLORS = {
-  [ORDER_STATUS.PENDING]: "bg-gray-100 border-gray-300",
-  [ORDER_STATUS.PREPARING]: "bg-blue-50 border-blue-200",
-  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-50 border-purple-200", // Couleur de colonne ajoutée
-  [ORDER_STATUS.DELIVERING]: "bg-yellow-50 border-yellow-200",
-  [ORDER_STATUS.DELIVERED]: "bg-green-50 border-green-200"
+// Commentaires spécifiques pour chaque état
+const STATUS_COMMENTS = {
+  [ORDER_STATUS.PENDING]: "Commande en attente d’être validée",
+  [ORDER_STATUS.PREPARING]: "Un livreur vous appelera dès que votre commande sera prête",
+
+  [ORDER_STATUS.DELIVERING]: "Commande en route pour la livraison",
+  [ORDER_STATUS.DELIVERED]: "Commande livrée avec succès",
+  [ORDER_STATUS.CANCELLED]: "Commande annulée",
 };
 
 const DEFAULT_DELIVERY_FEE = 1000;
@@ -54,7 +56,7 @@ const DEFAULT_DELIVERY_FEE = 1000;
 const formatPrice = (number) =>
   Number(number).toLocaleString("fr-FR", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    maximumFractionDigits: 0,
   });
 
 const formatDate = (timestamp) =>
@@ -64,11 +66,11 @@ const formatDate = (timestamp) =>
         month: "2-digit",
         year: "numeric",
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
       })
     : "Date non disponible";
 
-const formatDateForComparison = (date) => date.toISOString().split('T')[0];
+const formatDateForComparison = (date) => date.toISOString().split("T")[0];
 
 const OrderStatus = ({ isAdmin = false }) => {
   const [orders, setOrders] = useState([]);
@@ -76,29 +78,17 @@ const OrderStatus = ({ isAdmin = false }) => {
   const [extraLists, setExtraLists] = useState({});
   const [deliveryFees, setDeliveryFees] = useState({});
   const [usersData, setUsersData] = useState({ byId: {}, byPhone: {} });
-  const [filter, setFilter] = useState(isAdmin ? null : ORDER_STATUS.PENDING);
+  const [activeTab, setActiveTab] = useState(isAdmin ? ORDER_STATUS.PENDING : ORDER_STATUS.PENDING); // Onglet actif
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [dateFilterMode, setDateFilterMode] = useState('day');
+  const [dateFilterMode, setDateFilterMode] = useState("day");
 
   const effectiveUserId = useMemo(
     () => currentUserId || localStorage.getItem("guestUid"),
     [currentUserId]
-  );
-
-  const statusColumns = useMemo(
-    () =>
-      Object.keys(STATUS_LABELS)
-        .filter((status) => status !== ORDER_STATUS.CANCELLED || isAdmin)
-        .map((status) => ({
-          id: status,
-          name: STATUS_LABELS[status],
-          color: STATUS_COLUMN_COLORS[status] || "bg-gray-100 border-gray-300"
-        })),
-    [isAdmin]
   );
 
   useEffect(() => {
@@ -114,7 +104,7 @@ const OrderStatus = ({ isAdmin = false }) => {
         getDocs(collection(db, "items")),
         getDocs(collection(db, "extraLists")),
         getDocs(collection(db, "quartiers")),
-        getDocs(collection(db, "usersrestau"))
+        getDocs(collection(db, "usersrestau")),
       ]);
 
       setItemsData(items.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}));
@@ -125,7 +115,7 @@ const OrderStatus = ({ isAdmin = false }) => {
         byPhone: users.docs.reduce((acc, doc) => {
           if (doc.data().phone) acc[doc.data().phone] = doc.data();
           return acc;
-        }, {})
+        }, {}),
       });
     } catch (err) {
       console.error("Erreur de chargement des données:", err);
@@ -138,19 +128,21 @@ const OrderStatus = ({ isAdmin = false }) => {
     return orders.filter((order) => {
       if (!order.timestamp) return false;
       const orderDate = new Date(order.timestamp.seconds * 1000);
-      
+
       switch (mode) {
-        case 'day':
+        case "day":
           return formatDateForComparison(orderDate) === formatDateForComparison(selected);
-        case 'week':
+        case "week":
           const startOfWeek = new Date(selected);
           startOfWeek.setDate(selected.getDate() - selected.getDay());
           const endOfWeek = new Date(startOfWeek);
           endOfWeek.setDate(startOfWeek.getDate() + 6);
           return orderDate >= startOfWeek && orderDate <= endOfWeek;
-        case 'month':
-          return orderDate.getMonth() === selected.getMonth() && 
-                 orderDate.getFullYear() === selected.getFullYear();
+        case "month":
+          return (
+            orderDate.getMonth() === selected.getMonth() &&
+            orderDate.getFullYear() === selected.getFullYear()
+          );
         default:
           return true;
       }
@@ -172,7 +164,7 @@ const OrderStatus = ({ isAdmin = false }) => {
           const allOrders = snapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
-            status: doc.data().status || ORDER_STATUS.PENDING
+            status: doc.data().status || ORDER_STATUS.PENDING,
           }));
           setOrders(allOrders);
           setLoading(false);
@@ -189,10 +181,8 @@ const OrderStatus = ({ isAdmin = false }) => {
 
   const filteredOrders = useMemo(() => {
     const dateFilteredOrders = isAdmin ? filterOrdersByDate(orders, selectedDate, dateFilterMode) : orders;
-    return isAdmin || !filter
-      ? dateFilteredOrders
-      : dateFilteredOrders.filter((order) => order.status === filter);
-  }, [orders, filter, isAdmin, selectedDate, dateFilterMode]);
+    return dateFilteredOrders.filter((order) => order.status === activeTab);
+  }, [orders, activeTab, isAdmin, selectedDate, dateFilterMode]);
 
   const statusCounts = useMemo(() => {
     return Object.keys(STATUS_LABELS).reduce((acc, status) => {
@@ -237,14 +227,37 @@ const OrderStatus = ({ isAdmin = false }) => {
     if (!orderId || draggedOrder?.status === newStatus) return;
 
     try {
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) throw new Error("Commande non trouvée");
+
+      const oldStatus = order.status;
+
       await updateDoc(doc(db, "orders", orderId), {
         status: newStatus,
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
       });
+
+      const itemNames = order.items
+        ?.map((item) => item.dishName || itemsData[item.dishId]?.name || "Article inconnu")
+        .join(", ");
+
+      if (order.userId) {
+        const notificationRef = doc(collection(db, "notifications"));
+        await setDoc(notificationRef, {
+          userId: order.userId,
+          orderId: orderId,
+          oldStatus: oldStatus,
+          newStatus: newStatus,
+          itemNames: itemNames,
+          timestamp: Timestamp.now(),
+          read: false,
+        });
+      }
+
       setDraggedOrder(null);
     } catch (error) {
-      console.error("Erreur de mise à jour du statut:", error);
-      setError("Impossible de mettre à jour le statut");
+      console.error("Erreur de mise à jour du statut ou création de notification:", error);
+      setError("Impossible de mettre à jour le statut ou d'envoyer la notification");
     }
   };
 
@@ -267,32 +280,32 @@ const OrderStatus = ({ isAdmin = false }) => {
 
   const handlePreviousPeriod = () => {
     const newDate = new Date(selectedDate);
-    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() - 1);
-    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() - 7);
-    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+    if (dateFilterMode === "day") newDate.setDate(newDate.getDate() - 1);
+    else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() - 7);
+    else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() - 1);
     setSelectedDate(newDate);
   };
 
   const handleNextPeriod = () => {
     const newDate = new Date(selectedDate);
-    if (dateFilterMode === 'day') newDate.setDate(newDate.getDate() + 1);
-    else if (dateFilterMode === 'week') newDate.setDate(newDate.getDate() + 7);
-    else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+    if (dateFilterMode === "day") newDate.setDate(newDate.getDate() + 1);
+    else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() + 7);
+    else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() + 1);
     setSelectedDate(newDate);
   };
 
-  const renderKanban = () => (
-    <div className="mt-4 px-4">
+  const renderTabs = () => (
+    <div className="p-4">
       {isAdmin && (
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={handlePreviousPeriod}
               >
-                &lt;
+                {"<"}
               </button>
               <input
                 type="date"
@@ -300,11 +313,11 @@ const OrderStatus = ({ isAdmin = false }) => {
                 onChange={(e) => setSelectedDate(new Date(e.target.value))}
                 className="border rounded px-2 py-1"
               />
-              <button 
+              <button
                 className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={handleNextPeriod}
               >
-                &gt;
+                {">"}
               </button>
             </div>
             <select
@@ -319,101 +332,49 @@ const OrderStatus = ({ isAdmin = false }) => {
           </div>
         </div>
       )}
-      {isAdmin && (
-        <div className="mb-4 text-sm text-gray-600">
-          {dateFilterMode === 'day' && (
-            `Commandes du ${selectedDate.toLocaleDateString('fr-FR')}`
-          )}
-          {dateFilterMode === 'week' && (
-            (() => {
-              const start = new Date(selectedDate);
-              start.setDate(start.getDate() - start.getDay());
-              const end = new Date(start);
-              end.setDate(start.getDate() + 6);
-              return `Commandes de la semaine du ${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
-            })()
-          )}
-          {dateFilterMode === 'month' && (
-            `Commandes de ${selectedDate.toLocaleString('fr-FR', { month: 'long', year: 'numeric' })}`
-          )}
-          {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? 's' : ''})`}
-        </div>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4"> {/* Changé de 4 à 5 colonnes */}
-        {statusColumns.map((column) => {
-          const columnOrders = filteredOrders.filter((order) => order.status === column.id);
-          return (
-            <div
-              key={column.id}
-              className={`${column.color} p-4 rounded-lg border min-h-[200px]`}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, column.id)}
+      {/* Onglets */}
+      <div className="flex flex-wrap gap-2 mb-6 border-b">
+        {Object.entries(STATUS_LABELS)
+          .filter(([status]) => status !== ORDER_STATUS.CANCELLED || isAdmin)
+          .map(([status, label]) => (
+            <button
+              key={status}
+              onClick={() => setActiveTab(status)}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${
+                activeTab === status
+                  ? `${STATUS_COLORS[status]} border-b-2 border-white`
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
             >
-              <h3 className="font-bold mb-3">
-                {column.name} ({columnOrders.length})
-              </h3>
-              {columnOrders.map((order) => (
-                <OrderTile
-                  key={order.id}
-                  order={order}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  deliveryFee={getDeliveryFee(order.destination)}
-                  updateOrderDeliveryFees={updateOrderDeliveryFees}
-                  calculateTotal={calculateTotal}
-                />
-              ))}
-            </div>
-          );
-        })}
+              {label} ({statusCounts[status]})
+            </button>
+          ))}
       </div>
-    </div>
-  );
-
-  const renderClientView = () => (
-    <div className="p-4 max-w-5xl mx-auto">
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setFilter("")}
-          className={`px-4 py-2 rounded-full text-sm ${
-            !filter ? "bg-yellow-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          Toutes ({orders.length})
-        </button>
-        {Object.entries(STATUS_LABELS).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`px-4 py-2 rounded-full text-sm ${
-              filter === key
-                ? STATUS_COLORS[key]
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            {label} ({statusCounts[key]})
-          </button>
-        ))}
+      {/* Contenu de l’onglet actif */}
+      <div className="max-w-5xl mx-auto">
+        {filteredOrders.length === 0 ? (
+          <p className="text-center text-gray-500 py-10">Aucune commande dans cet état</p>
+        ) : (
+          filteredOrders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              itemsData={itemsData}
+              extraLists={extraLists}
+              formatDate={formatDate}
+              badgeClasses={STATUS_COLORS}
+              isAdmin={isAdmin}
+              onUpdateFees={updateOrderDeliveryFees}
+              deliveryFee={getDeliveryFee(order.destination)}
+              usersData={usersData}
+              calculateTotal={calculateTotal}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDrop={(e) => handleDrop(e, order.status)} // Permettre le drop dans le même onglet
+            />
+          ))
+        )}
       </div>
-      {filteredOrders.length === 0 ? (
-        <p className="text-center text-gray-500 py-10">Aucune commande trouvée</p>
-      ) : (
-        filteredOrders.map((order) => (
-          <OrderCard
-            key={order.id}
-            order={order}
-            itemsData={itemsData}
-            extraLists={extraLists}
-            formatDate={formatDate}
-            badgeClasses={STATUS_COLORS}
-            isAdmin={isAdmin}
-            onUpdateFees={updateOrderDeliveryFees}
-            deliveryFee={getDeliveryFee(order.destination)}
-            usersData={usersData}
-            calculateTotal={calculateTotal}
-          />
-        ))
-      )}
     </div>
   );
 
@@ -444,38 +405,11 @@ const OrderStatus = ({ isAdmin = false }) => {
           {isAdmin ? "Aucune commande trouvée" : "Vous n'avez aucune commande"}
         </p>
       )}
-      {!loading && orders.length > 0 && (isAdmin ? renderKanban() : renderClientView())}
+      {!loading && orders.length > 0 && renderTabs()}
       <Footer />
     </div>
   );
 };
-
-const OrderTile = ({ order, onDragStart, onDragEnd, deliveryFee, updateOrderDeliveryFees, calculateTotal }) => (
-  <div
-    draggable
-    onDragStart={(e) => onDragStart(e, order)}
-    onDragEnd={onDragEnd}
-    className="bg-white p-3 mb-2 rounded shadow-sm cursor-move transition-opacity"
-  >
-    <p className="font-medium">#{order.id.slice(0, 6)}</p>
-    <p className="text-sm">{order.items?.length || 0} article(s) - {formatPrice(calculateTotal(order))} FCFA</p>
-    <p className="text-sm">Livraison: {order.destination || "Non spécifié"} ({formatPrice(order.deliveryFees || deliveryFee)} FCFA)</p>
-    <div className="flex justify-between items-center mt-1">
-      <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[order.status]}`}>
-        {STATUS_LABELS[order.status]}
-      </span>
-      <button
-        onClick={() => {
-          const newFee = prompt(`Frais pour ${order.destination || "inconnu"} (FCFA):`, order.deliveryFees || deliveryFee);
-          if (newFee !== null) updateOrderDeliveryFees(order.id, order.destination || "inconnu", newFee);
-        }}
-        className="text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
-      >
-        ✏️
-      </button>
-    </div>
-  </div>
-);
 
 const OrderCard = ({
   order,
@@ -487,7 +421,10 @@ const OrderCard = ({
   onUpdateFees,
   deliveryFee,
   usersData,
-  calculateTotal
+  calculateTotal,
+  onDragStart,
+  onDragEnd,
+  onDrop,
 }) => {
   const user = order.userId
     ? usersData.byId[order.userId]
@@ -498,13 +435,22 @@ const OrderCard = ({
   const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
 
   return (
-    <div className="mb-6 bg-white rounded-lg shadow-lg p-4">
+    <div
+      draggable={isAdmin} // Activer le glisser-déposer uniquement pour les admins
+      onDragStart={(e) => isAdmin && onDragStart(e, order)}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+      className="mb-6 bg-white rounded-lg shadow-lg p-4 cursor-move"
+    >
       <div className="flex flex-wrap items-center gap-4 border-b pb-3 mb-3">
         <span className={`px-3 py-1 rounded-full text-sm ${badgeClasses[order.status]}`}>
           {STATUS_LABELS[order.status] || "En attente"}
         </span>
         <div className="ml-auto text-sm text-gray-500">{formatDate(order.timestamp)}</div>
       </div>
+      {/* Commentaire spécifique à l’état */}
+      <p className="text-sm text-gray-600 mb-3 italic">{STATUS_COMMENTS[order.status]}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div>
           <p className="text-sm text-gray-500">N° de commande</p>
@@ -524,7 +470,10 @@ const OrderCard = ({
             {isAdmin && (
               <button
                 onClick={() => {
-                  const newFee = prompt(`Frais pour ${order.destination || "inconnu"} (FCFA):`, order.deliveryFees || deliveryFee);
+                  const newFee = prompt(
+                    `Frais pour ${order.destination || "inconnu"} (FCFA):`,
+                    order.deliveryFees || deliveryFee
+                  );
                   if (newFee !== null) onUpdateFees(order.id, order.destination || "inconnu", newFee);
                 }}
                 className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
@@ -568,9 +517,7 @@ const OrderItem = ({ item, itemsData, extraLists }) => {
           <p className="font-medium">{item.dishName || itemsData[item.dishId]?.name || "Article inconnu"}</p>
           <p className="text-sm text-gray-500">Quantité : {quantity}</p>
         </div>
-        <p className="text-sm text-green-600">
-          +{formatPrice((itemPrice + extrasTotal) * quantity)} FCFA
-        </p>
+        <p className="text-sm text-green-600">+{formatPrice((itemPrice + extrasTotal) * quantity)} FCFA</p>
       </div>
       {item.selectedExtras && (
         <div className="ml-4 mt-2 text-sm text-gray-600">
@@ -607,7 +554,7 @@ const Footer = () => (
         { to: "/", icon: "fas fa-home", label: "Accueil" },
         { to: "/cart", icon: "fas fa-shopping-cart", label: "Panier" },
         { to: "/orders", icon: "fas fa-shopping-bag", label: "Commandes" },
-        { to: "/account", icon: "fas fa-user", label: "Compte" }
+        { to: "/account", icon: "fas fa-user", label: "Compte" },
       ].map(({ to, icon, label }) => (
         <Link key={to} to={to} className="text-gray-700 p-2 hover:text-green-600 transition-colors">
           <i className={`${icon} text-lg`}></i>

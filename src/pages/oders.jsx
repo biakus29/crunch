@@ -87,6 +87,10 @@ const OrderSummary = () => {
 
     try {
       const deliveryFee = 1000; // À rendre dynamique si nécessaire
+
+      // Création du label en concaténant les dishName des items
+      const orderLabel = cartItems.map(item => item.name).join(", ");
+
       const orderDataToSave = {
         userId: auth.currentUser ? auth.currentUser.uid : guestUid,
         items: cartItems.map((item) => ({
@@ -116,6 +120,7 @@ const OrderSummary = () => {
         status: "en_attente",
         timestamp: Timestamp.now(),
         isGuest: !!isGuest,
+        label: orderLabel, // Ajout du champ label
       };
 
       if (isGuest && contact) {
@@ -125,8 +130,28 @@ const OrderSummary = () => {
         };
       }
 
+      // Étape 1 : Ajouter la commande dans Firestore
       const docRef = await addDoc(collection(db, "orders"), orderDataToSave);
 
+      // Étape 2 : Créer une notification pour l'administrateur
+      const restaurantId = cartItems[0]?.restaurantId || "default_restaurant_id"; // Supposons un seul restaurant
+      const notificationData = {
+        orderId: docRef.id,
+        oldStatus: null, // Pas de statut précédent pour une nouvelle commande
+        newStatus: "en_attente",
+        timestamp: Timestamp.now(),
+        userId: orderDataToSave.userId || "unknown",
+        restaurantId: restaurantId,
+        read: false,
+        message: `Nouvelle commande #${docRef.id.slice(0, 6)} reçue`,
+        type: "new_order", // Pour différencier des autres notifications
+        itemNames: orderLabel, // Ajout de itemNames pour cohérence avec les autres notifications
+      };
+
+      await addDoc(collection(db, "notifications"), notificationData);
+      console.log(`Notification envoyée à l'administrateur pour la commande ${docRef.id}`);
+
+      // Étape 3 : Rediriger l'utilisateur
       navigate("/complete_order", {
         state: {
           orderId: docRef.id,
@@ -135,7 +160,7 @@ const OrderSummary = () => {
         },
       });
     } catch (err) {
-      console.error("Erreur création commande:", err);
+      console.error("Erreur création commande ou notification:", err);
       setError("Erreur lors de la commande. Veuillez réessayer.");
     } finally {
       setLoading(false);
