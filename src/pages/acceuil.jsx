@@ -126,17 +126,17 @@ const HomePage = () => {
 
   useEffect(() => {
     if (user === null) return;
-
+  
     fetchData(user?.uid);
-
+  
     if (Notification.permission !== "granted") {
       Notification.requestPermission();
     }
-
+  
     const notificationsQuery = user?.uid
       ? query(collection(db, 'notifications'), where('userId', '==', user.uid))
       : collection(db, 'notifications');
-
+  
     const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
       const newNotifications = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -144,20 +144,20 @@ const HomePage = () => {
         timestamp: doc.data().timestamp.toDate(),
       })).sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(newNotifications);
-
+  
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added" || change.type === "modified") {
           const n = change.doc.data();
           if (!n.read && Notification.permission === "granted") {
             const order = orders.find(o => o.id === n.orderId);
-            const itemsList = order?.label || "Articles non spécifiés"; // Utilisation uniquement de label
+            const itemsList = order?.label || "Articles non spécifiés";
             const orderNumber = formatOrderId(n.orderId);
-
+  
             const notification = new Notification("Mange d'Abord - Mise à jour commande", {
               body: `Votre commande ${orderNumber} (${itemsList}) est ${STATUS_LABELS[n.newStatus]}`,
               icon: logo,
             });
-
+  
             notification.onclick = () => {
               window.location.href = `/complete_order/${n.orderId}`;
               markNotificationAsRead(n.id);
@@ -165,16 +165,16 @@ const HomePage = () => {
           }
         }
       });
-
+  
       if (newNotifications.some(n => !n.read) && !showNotificationModal) {
         setShowNotificationModal(true);
       }
     }, (err) => {
       console.error("Erreur lors de l'écoute des notifications:", err);
     });
-
+  
     return () => unsubscribeNotifications();
-  }, [user]);
+  }, [user, orders, showNotificationModal]);
 
   const promoSliderSettings = {
     dots: true,
