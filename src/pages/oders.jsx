@@ -1,22 +1,29 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useCart } from "../context/cartcontext";
 import { auth, db } from "../firebase";
-import { addDoc, collection, Timestamp, getDocs } from "firebase/firestore";
+import { addDoc, collection, getDocs, getDoc, Timestamp } from "firebase/firestore";
+
+const DEFAULT_DELIVERY_FEE = 1000;
 
 const OrderSummary = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { cartItems } = useCart();
   const [extraLists, setExtraLists] = useState([]);
+  const [quartiersList, setQuartiersList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [missingData, setMissingData] = useState(false);
 
-  const { selectedAddress, selectedPayment, contact, orderData, isGuest } = location.state || {};
+  const { selectedAddress, selectedPayment, contact, orderData, isGuest, deliveryFee: passedDeliveryFee } = location.state || {};
 
   const normalizedAddress = useMemo(() => {
-    if (isGuest && orderData?.address) return orderData.address;
+    if (isGuest && orderData?.address) {
+      console.log("Utilisation de l'adresse invité:", orderData.address);
+      return orderData.address;
+    }
+    console.log("Utilisation de l'adresse sélectionnée:", selectedAddress);
     return selectedAddress;
   }, [isGuest, orderData, selectedAddress]);
 
@@ -25,6 +32,29 @@ const OrderSummary = () => {
     return selectedPayment;
   }, [isGuest, orderData, selectedPayment]);
 
+  // Vérifier si le panier est vide
+  useEffect(() => {
+    if (!cartItems || cartItems.length === 0) {
+      setError("Votre panier est vide. Redirection vers la page d'accueil...");
+      const timer = setTimeout(() => navigate("/"), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [cartItems, navigate]);
+
+  // Charger les frais de livraison depuis la collection "quartiers"
+  useEffect(() => {
+    const fetchQuartiers = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "quartiers"));
+        setQuartiersList(querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error("Erreur chargement des quartiers:", error);
+      }
+    };
+    fetchQuartiers();
+  }, []);
+
+  // Vérifier les données manquantes (adresse ou paiement)
   useEffect(() => {
     if (!normalizedAddress || !normalizedPayment) {
       setMissingData(true);
@@ -80,16 +110,28 @@ const OrderSummary = () => {
       : "Extra inconnu";
   };
 
+  // Récupérer dynamiquement le frais de livraison selon le quartier
+  const getDeliveryFee = (area) => {
+    if (passedDeliveryFee) return Number(passedDeliveryFee); // Priorité aux frais passés via state
+    if (!area || quartiersList.length === 0) return DEFAULT_DELIVERY_FEE;
+    const quartier = quartiersList.find((q) => q.name.toLowerCase() === area.toLowerCase());
+    return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
+  };
+
+  const formatPrice = (number) =>
+    Number(number).toLocaleString("fr-FR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+
   const handleConfirmOrder = async () => {
     setLoading(true);
     setError("");
     const guestUid = localStorage.getItem("guestUid");
 
     try {
-      const deliveryFee = 1000; // À rendre dynamique si nécessaire
-
-      // Création du label en concaténant les dishName des items
-      const orderLabel = cartItems.map(item => item.name).join(", ");
+      const deliveryFee = getDeliveryFee(normalizedAddress?.area);
+      const orderLabel = cartItems.map((item) => item.name).join(", ");
 
       const orderDataToSave = {
         userId: auth.currentUser ? auth.currentUser.uid : guestUid,
@@ -115,12 +157,12 @@ const OrderSummary = () => {
           description: normalizedPayment?.description || "",
           icon: normalizedPayment?.icon || "",
         },
-        total: total,
-        deliveryFees: deliveryFee,
+        total: total + deliveryFee,
+        deliveryFee: deliveryFee,
         status: "en_attente",
         timestamp: Timestamp.now(),
         isGuest: !!isGuest,
-        label: orderLabel, // Ajout du champ label
+        label: orderLabel,
       };
 
       if (isGuest && contact) {
@@ -130,28 +172,26 @@ const OrderSummary = () => {
         };
       }
 
-      // Étape 1 : Ajouter la commande dans Firestore
       const docRef = await addDoc(collection(db, "orders"), orderDataToSave);
 
-      // Étape 2 : Créer une notification pour l'administrateur
-      const restaurantId = cartItems[0]?.restaurantId || "default_restaurant_id"; // Supposons un seul restaurant
+      // Création d'une notification pour l'administrateur
+      const restaurantId = cartItems[0]?.restaurantId || "default_restaurant_id";
       const notificationData = {
         orderId: docRef.id,
-        oldStatus: null, // Pas de statut précédent pour une nouvelle commande
+        oldStatus: null,
         newStatus: "en_attente",
         timestamp: Timestamp.now(),
         userId: orderDataToSave.userId || "unknown",
         restaurantId: restaurantId,
         read: false,
         message: `Nouvelle commande #${docRef.id.slice(0, 6)} reçue`,
-        type: "new_order", // Pour différencier des autres notifications
-        itemNames: orderLabel, // Ajout de itemNames pour cohérence avec les autres notifications
+        type: "new_order",
+        itemNames: orderLabel,
       };
 
       await addDoc(collection(db, "notifications"), notificationData);
-      console.log(`Notification envoyée à l'administrateur pour la commande ${docRef.id}`);
+      console.log(`Notification envoyée pour la commande ${docRef.id}`);
 
-      // Étape 3 : Rediriger l'utilisateur
       navigate("/complete_order", {
         state: {
           orderId: docRef.id,
@@ -160,19 +200,30 @@ const OrderSummary = () => {
         },
       });
     } catch (err) {
-      console.error("Erreur création commande ou notification:", err);
+      console.error("Erreur lors de la commande:", err);
       setError("Erreur lors de la commande. Veuillez réessayer.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (missingData) {
+  // Afficher un message si le panier est vide ou s'il manque des données
+  if (!cartItems || cartItems.length === 0 || missingData) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="bg-white p-6 rounded-lg shadow-md text-center">
-          <p className="text-red-600 mb-4">Informations de commande manquantes</p>
-          <p>Redirection vers votre panier...</p>
+          {(!cartItems || cartItems.length === 0) && (
+            <>
+              <p className="text-red-600 mb-4">Votre panier est vide</p>
+              <p>Redirection vers la page d'accueil...</p>
+            </>
+          )}
+          {missingData && (
+            <>
+              <p className="text-red-600 mb-4">Informations de commande manquantes</p>
+              <p>Redirection vers votre panier...</p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -250,7 +301,6 @@ const OrderSummary = () => {
                       {convertPrice(item.price).toLocaleString()} Fcfa × {item.quantity}
                     </p>
                   </div>
-
                   {item.selectedExtras && (
                     <div className="mt-1 text-sm text-gray-600">
                       {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
@@ -273,20 +323,31 @@ const OrderSummary = () => {
           ))}
         </div>
 
+        {/* Bloc pour afficher dynamiquement les frais de livraison */}
+        <div className="bg-gray-50 p-3 rounded-lg mb-4">
+          <h6 className="font-bold text-gray-800 mb-2">Frais de livraison</h6>
+          <p className="text-sm">
+            {normalizedAddress?.area
+              ? `${normalizedAddress.area} : ${formatPrice(getDeliveryFee(normalizedAddress.area))} Fcfa`
+              : `Inconnu : ${formatPrice(DEFAULT_DELIVERY_FEE)} Fcfa`}
+          </p>
+          <p className="text-xs text-gray-600">
+            NB: Ce prix est défini selon le quartier et peut être ajusté par un gestionnaire si l'accès est difficile.
+          </p>
+        </div>
+
         <div className="bg-white p-3 rounded shadow-sm">
           <div className="flex justify-between font-bold text-lg">
             <span>Total :</span>
             <span className="text-green-600">
-              {isNaN(total) ? "Calcul..." : total.toLocaleString()} Fcfa
+              {isNaN(total) ? "Calcul..." : formatPrice(total + getDeliveryFee(normalizedAddress?.area))} Fcfa
             </span>
           </div>
         </div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg">
-        {error && (
-          <p className="mb-2 text-center text-red-600 text-sm">{error}</p>
-        )}
+        {error && <p className="mb-2 text-center text-red-600 text-sm">{error}</p>}
         <button
           onClick={handleConfirmOrder}
           disabled={loading}

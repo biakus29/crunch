@@ -16,6 +16,7 @@ import CategoryListing from "./pages/categorieslist";
 import FinalOrderStatus from "./pages/ordersstatuts";
 import RemplacerRestaurantId from "./pages/exo";
 import Profile from "./pages/profile";
+import Auth from "./pages/login";
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
           <Route path="/update-restaurant-id" element={<RemplacerRestaurantId />} />
           <Route path="/profile" element={<Profile />} />
           {/* Ajoutez d'autres routes ici si nécessaire */}
+          <Route path="/login"element={<Auth /> }/>  
 
         </Routes>
       </Router>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   collection,
   getDocs,
+  getDoc,
   query,
   where,
   doc,
@@ -11,8 +12,9 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
+import { FaStar } from "react-icons/fa";
 
 const ORDER_STATUS = {
   PENDING: "en_attente",
@@ -21,34 +23,34 @@ const ORDER_STATUS = {
   DELIVERING: "en_livraison",
   DELIVERED: "livree",
   CANCELLED: "annulee",
+  FAILED: "echec",
 };
 
 const STATUS_LABELS = {
   [ORDER_STATUS.PENDING]: "En attente",
   [ORDER_STATUS.PREPARING]: "En préparation",
-  
   [ORDER_STATUS.DELIVERING]: "En livraison",
   [ORDER_STATUS.DELIVERED]: "Livrée",
   [ORDER_STATUS.CANCELLED]: "Annulée",
+  [ORDER_STATUS.FAILED]: "Échec",
 };
 
 const STATUS_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
   [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
-  
   [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
   [ORDER_STATUS.DELIVERED]: "bg-green-600 text-white",
   [ORDER_STATUS.CANCELLED]: "bg-red-600 text-white",
+  [ORDER_STATUS.FAILED]: "bg-gray-600 text-white",
 };
 
-// Commentaires spécifiques pour chaque état
 const STATUS_COMMENTS = {
   [ORDER_STATUS.PENDING]: "Commande en attente d’être validée",
   [ORDER_STATUS.PREPARING]: "Un livreur vous appelera dès que votre commande sera prête",
-
   [ORDER_STATUS.DELIVERING]: "Commande en route pour la livraison",
   [ORDER_STATUS.DELIVERED]: "Commande livrée avec succès",
   [ORDER_STATUS.CANCELLED]: "Commande annulée",
+  [ORDER_STATUS.FAILED]: "La livraison a échoué (contactez le support)",
 };
 
 const DEFAULT_DELIVERY_FEE = 1000;
@@ -76,15 +78,16 @@ const OrderStatus = ({ isAdmin = false }) => {
   const [orders, setOrders] = useState([]);
   const [itemsData, setItemsData] = useState({});
   const [extraLists, setExtraLists] = useState({});
-  const [deliveryFees, setDeliveryFees] = useState({});
+  const [quartiersList, setQuartiersList] = useState([]);
   const [usersData, setUsersData] = useState({ byId: {}, byPhone: {} });
-  const [activeTab, setActiveTab] = useState(isAdmin ? ORDER_STATUS.PENDING : ORDER_STATUS.PENDING); // Onglet actif
+  const [activeTab, setActiveTab] = useState(isAdmin ? ORDER_STATUS.PENDING : ORDER_STATUS.PENDING);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dateFilterMode, setDateFilterMode] = useState("day");
+  const navigate = useNavigate();
 
   const effectiveUserId = useMemo(
     () => currentUserId || localStorage.getItem("guestUid"),
@@ -100,7 +103,7 @@ const OrderStatus = ({ isAdmin = false }) => {
 
   const fetchReferenceData = async () => {
     try {
-      const [items, extras, fees, users] = await Promise.all([
+      const [items, extras, quartiers, users] = await Promise.all([
         getDocs(collection(db, "items")),
         getDocs(collection(db, "extraLists")),
         getDocs(collection(db, "quartiers")),
@@ -109,7 +112,7 @@ const OrderStatus = ({ isAdmin = false }) => {
 
       setItemsData(items.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}));
       setExtraLists(extras.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}));
-      setDeliveryFees(fees.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data().fee }), {}));
+      setQuartiersList(quartiers.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       setUsersData({
         byId: users.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}),
         byPhone: users.docs.reduce((acc, doc) => {
@@ -150,7 +153,15 @@ const OrderStatus = ({ isAdmin = false }) => {
   };
 
   useEffect(() => {
-    if (effectiveUserId === null && !isAdmin) return;
+    // Réinitialiser l’erreur au début pour éviter qu’un ancien message persiste
+    setError("");
+
+    if (!isAdmin && effectiveUserId === null) {
+      setError("Vous devez être connecté pour voir vos commandes. Redirection vers la page de connexion...");
+      setLoading(false);
+      const timer = setTimeout(() => navigate("/profile"), 2000);
+      return () => clearTimeout(timer);
+    }
 
     const ordersQuery = isAdmin
       ? collection(db, "orders")
@@ -161,11 +172,14 @@ const OrderStatus = ({ isAdmin = false }) => {
       const unsubscribe = onSnapshot(
         ordersQuery,
         (snapshot) => {
-          const allOrders = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            status: doc.data().status || ORDER_STATUS.PENDING,
-          }));
+          const allOrders = snapshot.docs
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              status: doc.data().status || ORDER_STATUS.PENDING,
+            }))
+            .filter((order) => order.items && order.items.length > 0)
+            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
           setOrders(allOrders);
           setLoading(false);
         },
@@ -177,7 +191,7 @@ const OrderStatus = ({ isAdmin = false }) => {
       );
       return () => unsubscribe();
     });
-  }, [isAdmin, effectiveUserId]);
+  }, [isAdmin, effectiveUserId, navigate]);
 
   const filteredOrders = useMemo(() => {
     const dateFilteredOrders = isAdmin ? filterOrdersByDate(orders, selectedDate, dateFilterMode) : orders;
@@ -191,10 +205,13 @@ const OrderStatus = ({ isAdmin = false }) => {
     }, {});
   }, [orders]);
 
+  const getDeliveryFee = (area) => {
+    if (!area) return DEFAULT_DELIVERY_FEE;
+    const quartier = quartiersList.find((q) => q.name.toLowerCase() === area.toLowerCase());
+    return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
+  };
+
   const calculateTotal = (order) => {
-    if (order.total !== undefined && order.total !== null) {
-      return Number(order.total);
-    }
     const itemsTotal = order.items?.reduce((sum, item) => {
       const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
       const extrasTotal = item.selectedExtras
@@ -207,11 +224,9 @@ const OrderStatus = ({ isAdmin = false }) => {
         : 0;
       return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
     }, 0) || 0;
-    const deliveryFee = Number(order.deliveryFees || getDeliveryFee(order.destination));
+    const deliveryFee = Number(order.deliveryFee) || getDeliveryFee(order.address?.area);
     return itemsTotal + deliveryFee;
   };
-
-  const getDeliveryFee = (destination) => Number(deliveryFees[destination] || DEFAULT_DELIVERY_FEE);
 
   const handleDragStart = (e, order) => {
     e.dataTransfer.setData("orderId", order.id);
@@ -257,21 +272,22 @@ const OrderStatus = ({ isAdmin = false }) => {
       setDraggedOrder(null);
     } catch (error) {
       console.error("Erreur de mise à jour du statut ou création de notification:", error);
-      setError("Impossible de mettre à jour le statut ou d'envoyer la notification");
+      setError("Impossible de mettre à jour le statut ou d’envoyer la notification");
     }
   };
 
-  const updateOrderDeliveryFees = async (orderId, destination, newFee) => {
+  const updateOrderDeliveryFees = async (orderId, area, newFee) => {
     const feeNumber = Number(newFee);
     if (isNaN(feeNumber) || feeNumber < 0) return;
 
     try {
       const orderRef = doc(db, "orders", orderId);
-      if (isAdmin && !(destination in deliveryFees)) {
-        await setDoc(doc(db, "quartiers", destination), { fee: feeNumber, name: destination });
-        setDeliveryFees((prev) => ({ ...prev, [destination]: feeNumber }));
+      if (isAdmin && !quartiersList.some((q) => q.name.toLowerCase() === area.toLowerCase())) {
+        const newQuartierRef = doc(collection(db, "quartiers"));
+        await setDoc(newQuartierRef, { name: area, fee: feeNumber });
+        setQuartiersList((prev) => [...prev, { id: newQuartierRef.id, name: area, fee: feeNumber }]);
       }
-      await updateDoc(orderRef, { deliveryFees: feeNumber, updatedAt: Timestamp.now() });
+      await updateDoc(orderRef, { deliveryFee: feeNumber, updatedAt: Timestamp.now() });
     } catch (error) {
       console.error("Erreur de mise à jour des frais:", error);
       setError("Erreur lors de la mise à jour des frais");
@@ -332,25 +348,21 @@ const OrderStatus = ({ isAdmin = false }) => {
           </div>
         </div>
       )}
-      {/* Onglets */}
       <div className="flex flex-wrap gap-2 mb-6 border-b">
-        {Object.entries(STATUS_LABELS)
-          .filter(([status]) => status !== ORDER_STATUS.CANCELLED || isAdmin)
-          .map(([status, label]) => (
-            <button
-              key={status}
-              onClick={() => setActiveTab(status)}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${
-                activeTab === status
-                  ? `${STATUS_COLORS[status]} border-b-2 border-white`
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              {label} ({statusCounts[status]})
-            </button>
-          ))}
+        {Object.entries(STATUS_LABELS).map(([status, label]) => (
+          <button
+            key={status}
+            onClick={() => setActiveTab(status)}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium ${
+              activeTab === status
+                ? `${STATUS_COLORS[status]} border-b-2 border-white`
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            {label} ({statusCounts[status]})
+          </button>
+        ))}
       </div>
-      {/* Contenu de l’onglet actif */}
       <div className="max-w-5xl mx-auto">
         {filteredOrders.length === 0 ? (
           <p className="text-center text-gray-500 py-10">Aucune commande dans cet état</p>
@@ -365,12 +377,12 @@ const OrderStatus = ({ isAdmin = false }) => {
               badgeClasses={STATUS_COLORS}
               isAdmin={isAdmin}
               onUpdateFees={updateOrderDeliveryFees}
-              deliveryFee={getDeliveryFee(order.destination)}
+              deliveryFee={getDeliveryFee(order.address?.area)}
               usersData={usersData}
               calculateTotal={calculateTotal}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, order.status)} // Permettre le drop dans le même onglet
+              onDrop={(e) => handleDrop(e, order.status)}
             />
           ))
         )}
@@ -402,7 +414,7 @@ const OrderStatus = ({ isAdmin = false }) => {
       )}
       {!loading && orders.length === 0 && (
         <p className="text-center text-gray-500 p-4">
-          {isAdmin ? "Aucune commande trouvée" : "Vous n'avez aucune commande"}
+          {isAdmin ? "Aucune commande trouvée" : "Vous n’avez aucune commande"}
         </p>
       )}
       {!loading && orders.length > 0 && renderTabs()}
@@ -426,17 +438,44 @@ const OrderCard = ({
   onDragEnd,
   onDrop,
 }) => {
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const navigate = useNavigate();
+
   const user = order.userId
     ? usersData.byId[order.userId]
     : order.contact?.phone && usersData.byPhone[order.contact.phone];
   const clientName = user
-    ? `${user.email || ""} ${user.lastName || ""}`.trim() || "Utilisateur inconnu"
+    ? `${user.lastName || "" } ${user.firstName || "" } ${user.email || ""} `.trim() || "Utilisateur inconnu"
     : order.contact?.name || "Client inconnu";
   const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
 
+  const handleConfirmDelivery = async () => {
+    try {
+      await updateDoc(doc(db, "orders", order.id), {
+        status: ORDER_STATUS.DELIVERED,
+        updatedAt: Timestamp.now(),
+      });
+
+      if (window.fbq) {
+        window.fbq("track", "Purchase", {
+          value: calculateTotal(order),
+          currency: "XAF",
+          content_ids: order.items.map((item) => item.dishId),
+          content_type: "product",
+          order_id: order.id,
+        });
+      }
+
+      setShowConfirmModal(false);
+      navigate(`/thank-you/${order.id}`);
+    } catch (error) {
+      console.error("Erreur lors de la confirmation de la livraison:", error);
+    }
+  };
+
   return (
     <div
-      draggable={isAdmin} // Activer le glisser-déposer uniquement pour les admins
+      draggable={isAdmin}
       onDragStart={(e) => isAdmin && onDragStart(e, order)}
       onDragEnd={onDragEnd}
       onDragOver={(e) => e.preventDefault()}
@@ -449,7 +488,6 @@ const OrderCard = ({
         </span>
         <div className="ml-auto text-sm text-gray-500">{formatDate(order.timestamp)}</div>
       </div>
-      {/* Commentaire spécifique à l’état */}
       <p className="text-sm text-gray-600 mb-3 italic">{STATUS_COMMENTS[order.status]}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div>
@@ -457,24 +495,24 @@ const OrderCard = ({
           <p className="font-medium">#{order.id.slice(0, 8)}</p>
         </div>
         <div>
-          <p className="text-sm text-gray-500">Total</p>
+          <p className="text-sm text-gray-500">Total (avec livraison)</p>
           <p className="font-medium text-green-600">{formatPrice(calculateTotal(order))} FCFA</p>
         </div>
         <div>
           <p className="text-sm text-gray-500">Livraison</p>
           <div className="flex items-center">
             <div>
-              <p className="font-medium">{order.destination || "Non spécifié"}</p>
-              <p className="text-sm">{formatPrice(order.deliveryFees || deliveryFee)} FCFA</p>
+              <p className="font-medium">{order.address?.area || "Non spécifié"}</p>
+              <p className="text-sm">{formatPrice(order.deliveryFee || deliveryFee)} FCFA</p>
             </div>
             {isAdmin && (
               <button
                 onClick={() => {
                   const newFee = prompt(
-                    `Frais pour ${order.destination || "inconnu"} (FCFA):`,
-                    order.deliveryFees || deliveryFee
+                    `Frais pour ${order.address?.area || "inconnu"} (FCFA):`,
+                    order.deliveryFee || deliveryFee
                   );
-                  if (newFee !== null) onUpdateFees(order.id, order.destination || "inconnu", newFee);
+                  if (newFee !== null) onUpdateFees(order.id, order.address?.area || "inconnu", newFee);
                 }}
                 className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
               >
@@ -496,6 +534,38 @@ const OrderCard = ({
           )) || <li className="text-gray-500">Aucun article</li>}
         </ul>
       </div>
+      {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
+        <button
+          onClick={() => setShowConfirmModal(true)}
+          className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+        >
+          Confirmer la livraison
+        </button>
+      )}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-full max-w-md p-6">
+            <h5 className="font-semibold mb-4">Confirmer la réception de votre commande</h5>
+            <p className="text-sm text-gray-600 mb-6">
+              Avez-vous bien reçu votre commande #{order.id.slice(0, 8)} ?
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleConfirmDelivery}
+                className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              >
+                Oui, confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -553,8 +623,8 @@ const Footer = () => (
       {[
         { to: "/", icon: "fas fa-home", label: "Accueil" },
         { to: "/cart", icon: "fas fa-shopping-cart", label: "Panier" },
-        { to: "/orders", icon: "fas fa-shopping-bag", label: "Commandes" },
-        { to: "/account", icon: "fas fa-user", label: "Compte" },
+        { to: "/complete_order", icon: "fas fa-shopping-bag", label: "Commandes" },
+        { to: "/profile", icon: "fas fa-user", label: "Compte" },
       ].map(({ to, icon, label }) => (
         <Link key={to} to={to} className="text-gray-700 p-2 hover:text-green-600 transition-colors">
           <i className={`${icon} text-lg`}></i>
@@ -565,4 +635,198 @@ const Footer = () => (
   </footer>
 );
 
+// Le reste du code pour ThankYouPage reste inchangé
+const ThankYouPage = () => {
+  const { orderId } = useParams();
+  const [feedback, setFeedback] = useState({
+    recommend: null,
+    deliveryService: 0,
+    foodQuality: 0,
+  });
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState(null);
+  const [orderName, setOrderName] = useState("votre commande");
+  const [restaurantName, setRestaurantName] = useState("le restaurant");
+  const [deliveryPersonName, setDeliveryPersonName] = useState("votre livreur");
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    const fetchOrderDetails = async () => {
+      try {
+        const orderRef = doc(db, "orders", orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (orderSnap.exists()) {
+          const orderData = orderSnap.data();
+          const items = orderData.items || [];
+          const firstItemName = items.length > 0 ? items[0].dishName || "Commande" : "Commande";
+          setOrderName(`${firstItemName}${items.length > 1 ? " et plus" : ""}`);
+          setRestaurantName(orderData.restaurantName || "le restaurant");
+          setDeliveryPersonName(orderData.deliveryPersonName || "votre livreur");
+        }
+      } catch (err) {
+        console.error("Erreur lors de la récupération des détails de la commande:", err);
+        setOrderName("votre commande");
+        setRestaurantName("le restaurant");
+        setDeliveryPersonName("votre livreur");
+      }
+    };
+
+    fetchOrderDetails();
+  }, [orderId]);
+
+  const handleRatingChange = (category, value) => {
+    setFeedback((prev) => ({ ...prev, [category]: value }));
+  };
+
+  const handleRecommendationChange = (value) => {
+    setFeedback((prev) => ({ ...prev, recommend: value }));
+  };
+
+  const handleSubmitFeedback = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (!orderId) {
+      setError("ID de commande manquant.");
+      return;
+    }
+    if (feedback.recommend === null) {
+      setError("Veuillez indiquer si vous recommanderiez notre service.");
+      return;
+    }
+    try {
+      const feedbackRef = doc(collection(db, "feedback"));
+      await setDoc(feedbackRef, {
+        orderId,
+        userId: localStorage.getItem("guestUid") || null,
+        ...feedback,
+        timestamp: Timestamp.now(),
+      });
+
+      if (window.fbq) {
+        window.fbq("track", "CompleteRegistration", {
+          content_name: "Feedback Submission",
+          order_id: orderId,
+          value: feedback.recommend ? 1 : 0,
+          currency: "XAF",
+        });
+      }
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Erreur lors de l’envoi du feedback:", error);
+      setError("Erreur lors de l’envoi du feedback. Veuillez réessayer.");
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Merci pour votre avis !</h2>
+          <p className="text-gray-600 mb-6">Bon appétit !</p>
+          <Link
+            to="/complete_order"
+            className="text-gray-600 hover:text-gray-800 underline"
+          >
+            Retour aux commandes
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-between p-4">
+      <div className="w-full max-w-md flex-1 flex flex-col justify-start">
+        <div className="flex justify-between items-center mb-8">
+          <Link to="/" className="text-gray-600 text-lg"></Link>
+          <h2 className="text-sm text-gray-500">Noter votre livraison</h2>
+          <Link to="/" className="text-gray-600 text-sm"></Link>
+        </div>
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-2">
+            Merci pour votre confiance !
+          </h2>
+          <p className="text-xl font-medium text-green-600">
+            Bon appétit à vous !
+          </p>
+        </div>
+        <div className="w-full border-t border-gray-300 mb-8"></div>
+        <div className="mb-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">
+            Recommanderiez-vous notre service ?
+          </h3>
+          <div className="flex justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => handleRecommendationChange(true)}
+              className={`px-6 py-2 rounded-full border-2 font-semibold text-lg transition-colors ${
+                feedback.recommend === true
+                  ? "border-green-500 text-green-500"
+                  : "border-gray-300 text-gray-500 hover:border-gray-400"
+              }`}
+            >
+              Oui
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRecommendationChange(false)}
+              className={`px-6 py-2 rounded-full border-2 font-semibold text-lg transition-colors ${
+                feedback.recommend === false
+                  ? "border-red-500 text-red-500"
+                  : "border-gray-300 text-gray-500 hover:border-gray-400"
+              }`}
+            >
+              Non
+            </button>
+          </div>
+        </div>
+        <div className="mb-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">
+            Comment était votre livraison avec {deliveryPersonName} ?
+          </h3>
+          <div className="flex justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <FaStar
+                key={value}
+                size={40}
+                className={`cursor-pointer transition-colors ${
+                  value <= feedback.deliveryService ? "text-yellow-400" : "text-gray-300"
+                }`}
+                onClick={() => handleRatingChange("deliveryService", value)}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="mb-12 text-center">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">
+            Noter le système de commande ?
+          </h3>
+          <div className="flex justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <FaStar
+                key={value}
+                size={40}
+                className={`cursor-pointer transition-colors ${
+                  value <= feedback.foodQuality ? "text-yellow-400" : "text-gray-300"
+                }`}
+                onClick={() => handleRatingChange("foodQuality", value)}
+              />
+            ))}
+          </div>
+        </div>
+        {error && <p className="text-red-600 text-center mb-4">{error}</p>}
+      </div>
+      <button
+        onClick={handleSubmitFeedback}
+        className="w-full max-w-md py-4 bg-red-500 text-white text-lg font-semibold rounded-full hover:bg-red-600 transition duration-300"
+      >
+        Soumettre
+      </button>
+    </div>
+  );
+};
+
+export { ThankYouPage };
 export default OrderStatus;

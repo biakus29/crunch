@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useCart } from "../context/cartcontext";
 import { FaShoppingCart } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
 
 const ProductDetails = () => {
   const { id } = useParams();
   const { addToCart } = useCart();
   const navigate = useNavigate();
 
-  // États locaux
   const [product, setProduct] = useState(null);
   const [extraLists, setExtraLists] = useState([]);
   const [recommendedProducts, setRecommendedProducts] = useState([]);
@@ -27,7 +25,6 @@ const ProductDetails = () => {
   const [successMessage, setSuccessMessage] = useState("");
 
   // --- FONCTIONS D'APPEL À FIRESTORE ---
-
   const fetchReviews = async () => {
     try {
       const reviewsRef = collection(db, "items", id, "reviews");
@@ -60,9 +57,13 @@ const ProductDetails = () => {
         setError("Données du produit manquantes.");
         return;
       }
-      setProduct({ id: productSnapshot.id, ...productData });
+      const finalProductData = {
+        id: productSnapshot.id,
+        ...productData,
+        available: productData.available !== undefined ? productData.available : true, // Valeur par défaut
+      };
+      setProduct(finalProductData);
 
-      // Récupérer les extraLists (comme dans HomePage)
       const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
       const extraListsData = extraListsSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -86,6 +87,7 @@ const ProductDetails = () => {
         price: doc.data().price || "0",
         covers: doc.data().covers || [],
         discount: doc.data().discount || 0,
+        available: doc.data().available !== undefined ? doc.data().available : true,
       }));
       setRecommendedProducts(recommendedData);
     } catch (err) {
@@ -94,12 +96,12 @@ const ProductDetails = () => {
   };
 
   // --- FONCTIONS UTILITAIRES ---
-
   const convertPrice = (price) => {
     if (typeof price === "string") {
-      return parseFloat(price.replace(/\./g, ""));
+      const cleanedPrice = price.replace(/[^0-9,.]/g, "").replace(",", ".");
+      return parseFloat(cleanedPrice) || 0;
     }
-    return Number(price);
+    return Number(price) || 0;
   };
 
   const validateExtras = () => {
@@ -115,15 +117,13 @@ const ProductDetails = () => {
 
   const calculateTotalPrice = () => {
     let total = selectedItem ? convertPrice(selectedItem.price) * quantity : 0;
-    if (isNaN(total)) total = 0;
     Object.entries(selectedExtras).forEach(([assortmentId, indexes]) => {
       const extraList = extraLists.find((el) => el.id === assortmentId);
-      if (extraList) {
+      if (extraList && extraList.extraListElements) {
         indexes.forEach((index) => {
-          const extra = extraList.extraListElements?.[index];
+          const extra = extraList.extraListElements[index];
           if (extra && extra.price) {
-            const extraPrice = convertPrice(extra.price);
-            total += isNaN(extraPrice) ? 0 : extraPrice * quantity;
+            total += convertPrice(extra.price) * quantity;
           }
         });
       }
@@ -151,100 +151,120 @@ const ProductDetails = () => {
     } else {
       addProductToCart();
       navigate("/addresses");
+      trackInitiateCheckout();
     }
   };
 
   const addProductToCart = () => {
+    const totalPrice = calculateTotalPrice();
     const cartItem = {
       id: product.id,
       name: product.name,
-      price: product.price,
+      price: convertPrice(product.price),
       image: (product.covers || [])[0],
       description: product.description,
       quantity: quantity,
       selectedExtras: selectedItem ? selectedExtras : {},
+      available: product.available,
     };
 
     addToCart(cartItem);
     setSuccessMessage(`${product.name} ajouté au panier !`);
     setTimeout(() => setSuccessMessage(""), 3000);
     setSelectedItem(null);
+
+    trackAddToCart(totalPrice);
+  };
+
+  // --- FONCTIONS DE SUIVI PIXEL ET MICRODONNÉES ---
+  const trackViewContent = (price) => {
+    if (window.fbq && product) {
+      window.fbq("track", "ViewContent", {
+        content_ids: [product.id],
+        content_name: product.name,
+        content_type: "product",
+        value: price,
+        currency: "XAF",
+        availability: product.available ? "in stock" : "out of stock",
+      });
+    }
+  };
+
+  const trackAddToCart = (totalPrice) => {
+    if (window.fbq && product) {
+      window.fbq("track", "AddToCart", {
+        content_ids: [product.id],
+        content_name: product.name,
+        content_type: "product",
+        value: totalPrice,
+        currency: "XAF",
+        availability: product.available ? "in stock" : "out of stock",
+        num_items: quantity,
+      });
+    }
+  };
+
+  const trackInitiateCheckout = () => {
+    if (window.fbq && product) {
+      const totalPrice = calculateTotalPrice();
+      window.fbq("track", "InitiateCheckout", {
+        content_ids: [product.id],
+        content_name: product.name,
+        content_type: "product",
+        value: totalPrice,
+        currency: "XAF",
+        availability: product.available ? "in stock" : "out of stock",
+        num_items: quantity,
+      });
+    }
+  };
+
+  const generateSchemaOrgJSONLD = () => {
+    if (!product) return null;
+    return {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "productID": product.id, // Utilisation de "productID" pour Meta
+      "name": product.name,
+      "description": product.description || "Description non disponible",
+      "image": product.covers?.[0] || "https://www.mangedabord.com/logo192.png",
+      "offers": {
+        "@type": "Offer",
+        "priceCurrency": "XAF",
+        "price": convertPrice(product.price || "0").toString(), // Toujours une string pour Meta
+        "availability": product.available 
+          ? "https://schema.org/InStock" 
+          : "https://schema.org/OutOfStock",
+        "url": `https://www.mangedabord.com/detail/${product.id}`,
+      },
+    };
   };
 
   // --- USE EFFECTS ---
-// Remplace ton useEffect actuel par ceci
-useEffect(() => {
-  const fetchReviews = async () => {
-    try {
-      const reviewsRef = collection(db, "items", id, "reviews");
-      const reviewsSnapshot = await getDocs(reviewsRef);
-      const reviewsData = reviewsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setReviews(reviewsData);
-    } catch (error) {
-      console.error("Erreur lors du chargement des avis :", error);
-    }
-  };
+  useEffect(() => {
+    fetchReviews();
+    fetchProductDetails();
+    fetchRecommendedProducts();
+  }, [id]);
 
-  const fetchProductDetails = async () => {
-    if (!id) {
-      setError("ID du produit non trouvé dans l'URL.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const productRef = doc(db, "items", id);
-      const productSnapshot = await getDoc(productRef);
-      if (!productSnapshot.exists()) {
-        setError("Produit non trouvé.");
-        return;
+  useEffect(() => {
+    if (product) {
+      trackViewContent(convertPrice(product.price));
+
+      // Injecter les microdonnées Schema.org dans le DOM
+      const schemaData = generateSchemaOrgJSONLD();
+      if (schemaData) {
+        const existingScript = document.querySelector('script[type="application/ld+json"]');
+        if (existingScript) existingScript.remove(); // Supprimer l’ancien script
+        const script = document.createElement("script");
+        script.type = "application/ld+json";
+        script.text = JSON.stringify(schemaData);
+        document.head.appendChild(script);
       }
-      const productData = productSnapshot.data();
-      if (!productData) {
-        setError("Données du produit manquantes.");
-        return;
-      }
-      setProduct({ id: productSnapshot.id, ...productData });
-
-      const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
-      const extraListsData = extraListsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setExtraLists(extraListsData);
-    } catch (err) {
-      setError("Erreur lors de la récupération des détails du produit.");
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const fetchRecommendedProducts = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, "items"));
-      const recommendedData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        name: doc.data().name || "Nom inconnu",
-        price: doc.data().price || "0",
-        covers: doc.data().covers || [],
-        discount: doc.data().discount || 0,
-      }));
-      setRecommendedProducts(recommendedData);
-    } catch (err) {
-      setError("Erreur lors de la récupération des produits recommandés.");
-    }
-  };
-
-  fetchReviews();
-  fetchProductDetails();
-  fetchRecommendedProducts();
-}, [id]); // Seule dépendance nécessaire : id
+  }, [product]);
 
   // --- AFFICHAGE ---
-
   const sliderSettings = {
     dots: true,
     infinite: false,
@@ -292,16 +312,10 @@ useEffect(() => {
             <i className="icofont-rounded-left mr-2"></i> Back
           </Link>
           <div className="ml-auto flex items-center">
-            <Link
-              to="#"
-              className="bg-red-500 p-2 rounded-full shadow-sm text-white"
-            >
+            <Link to="#" className="bg-red-500 p-2 rounded-full shadow-sm text-white">
               <i className="icofont-heart"></i>
             </Link>
-            <Link
-              to="#"
-              className="bg-green-500 p-2 rounded-full shadow-sm text-white ml-2"
-            >
+            <Link to="#" className="bg-green-500 p-2 rounded-full shadow-sm text-white ml-2">
               <i className="icofont-share"></i>
             </Link>
             <button className="ml-3">
@@ -318,20 +332,25 @@ useEffect(() => {
           <p className="ml-2 text-gray-600 text-sm">({reviews.length} Avis)</p>
         </div>
         <div className="flex items-center mt-2">
-          <p className="text-lg font-bold text-gray-800">{product.price} FCFA</p>
+          <p className="text-lg font-bold text-gray-800">
+            {convertPrice(product.price).toLocaleString()} FCFA
+          </p>
           {product.discount > 0 && (
             <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
               {product.discount}% OFF
             </span>
           )}
         </div>
+        <p className="text-sm text-gray-600 mt-1">
+          Disponibilité : {product.available ? "En stock" : "Rupture de stock"}
+        </p>
       </div>
 
       <div className="px-3 py-2 bg-white mt-2">
         <div className="flex justify-between items-center">
           <div>
             <p className="text-sm text-gray-500">Livraison</p>
-            <p className="text-sm font-semibold">A partir de 1000 FCFA</p>
+            <p className="text-sm font-semibold">À partir de 1000 FCFA</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Disponible en </p>
@@ -349,7 +368,7 @@ useEffect(() => {
               <img
                 src={cover}
                 alt={`Product ${index + 1}`}
-                className="w-full h-48 object-cover rounded-md shadow-sm"
+                className="w-full h-64 object-cover rounded-lg shadow-md"
               />
             </div>
           ))}
@@ -362,6 +381,7 @@ useEffect(() => {
           <button
             className="bg-green-500 text-white px-3 py-1 rounded-full"
             onClick={() => handleQuantityChange(-1)}
+            disabled={!product.available}
           >
             -
           </button>
@@ -374,6 +394,7 @@ useEffect(() => {
           <button
             className="bg-green-500 text-white px-3 py-1 rounded-full"
             onClick={() => handleQuantityChange(1)}
+            disabled={!product.available}
           >
             +
           </button>
@@ -395,9 +416,7 @@ useEffect(() => {
                   {[...Array(5)].map((_, index) => (
                     <i
                       key={index}
-                      className={`icofont-star ${
-                        index < review.rating ? "text-yellow-400" : "text-gray-300"
-                      }`}
+                      className={`icofont-star ${index < review.rating ? "text-yellow-400" : "text-gray-300"}`}
                     ></i>
                   ))}
                 </div>
@@ -420,7 +439,7 @@ useEffect(() => {
               className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-100"
             >
               <Link to={`/detail/${item.id}`} className="block">
-                <div className="relative">
+                <div className="relative w-48 h-48 mx-auto bg-gray-100 rounded-t">
                   {item.discount > 0 && (
                     <span className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
                       {item.discount}% OFF
@@ -429,14 +448,14 @@ useEffect(() => {
                   <img
                     src={(item.covers || [])[0]}
                     alt={item.name}
-                    className="w-full h-32 object-cover"
+                    className="w-48 h-48 object-cover"
                   />
                 </div>
                 <div className="p-3">
                   <h6 className="font-semibold text-sm">{item.name}</h6>
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-green-500 font-bold text-sm">
-                      {item.price} FCFA
+                      {convertPrice(item.price).toLocaleString()} FCFA
                     </p>
                     <button className="bg-green-500 text-white text-sm px-3 py-1 rounded-full">
                       +
@@ -492,9 +511,11 @@ useEffect(() => {
                             onChange={(e) => {
                               const newSelection = [...(selectedExtras[assortmentId] || [])];
                               if (el.multiple) {
-                                e.target.checked
-                                  ? newSelection.push(index)
-                                  : newSelection.splice(newSelection.indexOf(index), 1);
+                                if (e.target.checked) {
+                                  newSelection.push(index);
+                                } else {
+                                  newSelection.splice(newSelection.indexOf(index), 1);
+                                }
                               } else {
                                 newSelection.length = 0;
                                 newSelection.push(index);
@@ -538,11 +559,12 @@ useEffect(() => {
                     if (validateExtras()) {
                       addProductToCart();
                       navigate("/cart");
+                      trackInitiateCheckout();
                     }
                   }}
-                  disabled={!validateExtras()}
+                  disabled={!validateExtras() || !product.available}
                   className={`px-4 py-2 rounded-lg flex-1 ${
-                    validateExtras()
+                    validateExtras() && product.available
                       ? "bg-green-600 text-white hover:bg-green-700"
                       : "bg-gray-300 text-gray-500 cursor-not-allowed"
                   }`}
@@ -560,14 +582,16 @@ useEffect(() => {
           <button
             className="w-1/4 flex items-center justify-center bg-yellow-400 text-white py-3 text-lg"
             onClick={handleAddClick}
+            disabled={!product.available}
           >
             <FaShoppingCart className="text-2xl" />
           </button>
           <button
             className="w-3/4 flex items-center justify-center bg-green-500 text-white py-3 text-lg font-semibold"
             onClick={handleBuyClick}
+            disabled={!product.available}
           >
-            Acheter
+            Ajouter à ma commande
           </button>
         </div>
       </div>

@@ -69,7 +69,6 @@ const InputField = ({ label, name, value, onChange, error, placeholder, required
 );
 
 // Composant principal
-
 const OrderAddress = ({ cartItems, cartTotal }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +95,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     addressSubmitLoading: false,
     continueLoading: false,
   });
+  const [deliveryFee, setDeliveryFee] = useState(0); // État pour les frais de livraison
 
   const navigate = useNavigate();
 
@@ -111,6 +111,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     if (!isConnected && !fields.name) newErrors.name = "Nom requis";
     return newErrors;
   }, []);
+
   // Actions Firestore
   const firestoreActions = useMemo(() => ({
     saveGuestUser: async (data) => {
@@ -212,6 +213,19 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     }
   }, [data.area, quartiersList]);
 
+  // Calcul des frais de livraison
+  useEffect(() => {
+    if (data.area && quartiersList.length > 0) {
+      const selectedQuartier = quartiersList.find(
+        (q) => q.name.toLowerCase() === data.area.toLowerCase()
+      );
+      const fee = selectedQuartier ? selectedQuartier.fee : 0; // 0 si aucun quartier correspondant
+      setDeliveryFee(fee);
+    } else {
+      setDeliveryFee(0); // Réinitialiser si aucun quartier n'est sélectionné
+    }
+  }, [data.area, quartiersList]);
+
   // Gestion des changements d'entrée
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -230,7 +244,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const handleGoogleSignIn = async () => {
     setSubmitState((prev) => ({ ...prev, googleLoading: true }));
     try {
-      // Validation avant connexion
       const validationErrors = validateData(data, false);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
@@ -243,11 +256,9 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       const currentUser = auth.currentUser;
       setUser(currentUser);
 
-      // Charger les adresses existantes
       let loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
       setAddresses(loadedAddresses);
 
-      // Si aucune adresse, en créer une avec les données saisies
       if (loadedAddresses.length === 0) {
         const newAddressId = await firestoreActions.saveAddress(currentUser.uid, {
           nickname: data.nickname,
@@ -259,13 +270,12 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         });
         loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
         setAddresses(loadedAddresses);
-        setSelectedAddress(newAddressId); // Sélectionner automatiquement la nouvelle adresse
+        setSelectedAddress(newAddressId);
       } else {
         const defaultAddress = loadedAddresses.find((addr) => addr.default);
         setSelectedAddress(defaultAddress ? defaultAddress.id : loadedAddresses[0].id);
       }
 
-      // Si une méthode de paiement est déjà sélectionnée, continuer directement
       if (selectedPayment) {
         await handleContinue();
       }
@@ -366,7 +376,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       if (user) {
         let addressToUse;
         if (addresses.length === 0) {
-          // Cas où l'utilisateur connecté n’a pas d’adresse
           const validationErrors = validateData(data, true);
           if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
@@ -406,16 +415,18 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
-          total: cartTotal || 0,
+          subtotal: cartTotal || 0,
+          deliveryFee: deliveryFee, // Ajout des frais de livraison
+          total: cartTotal + deliveryFee, // Total mis à jour
         };
         navState = {
           selectedAddress: addressToUse,
           selectedPayment: orderData.paymentMethod,
           orderId: null,
+          deliveryFee: deliveryFee, // Passer les frais
         };
         await firestoreActions.setDefaultAddress(user.uid, addressToUse.id);
       } else {
-        // Logique pour les invités (inchangée)
         const validationErrors = validateData(data, false);
         if (Object.keys(validationErrors).length > 0) {
           setErrors(validationErrors);
@@ -462,13 +473,16 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
-          total: cartTotal || 0,
+          subtotal: cartTotal || 0,
+          deliveryFee: deliveryFee, // Ajout des frais de livraison
+          total: cartTotal + deliveryFee, // Total mis à jour
         };
         navState = {
           selectedAddress: orderData.address,
           selectedPayment: orderData.paymentMethod,
           contact: contactInfo,
           orderId: null,
+          deliveryFee: deliveryFee, // Passer les frais
         };
       }
 
@@ -486,137 +500,149 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-    <Header user={user} onAddAddress={() => setShowModal(true)} />
+      <Header user={user} onAddAddress={() => setShowModal(true)} />
 
-    {actionError && (
-      <div className="p-3">
-        <div className="bg-red-100 text-red-700 p-2 rounded">{actionError}</div>
-      </div>
-    )}
+      {actionError && (
+        <div className="p-3">
+          <div className="bg-red-100 text-red-700 p-2 rounded">{actionError}</div>
+        </div>
+      )}
 
-    {/* Formulaire pour utilisateur connecté sans adresses */}
-    {user && addresses.length === 0 ? (
-      <AddressForm
-        data={data}
-        onChange={handleInputChange}
-        errors={errors}
-        quartiers={quartiersList}
-        filteredQuartiers={filteredQuartiers}
-        onQuartierSelect={handleQuartierSelect}
-        showPhone={true} // Afficher le téléphone car obligatoire
-      />
-    ) : !user ? (
-      <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mt-3 mx-3">
-        <h2 className="text-xl font-bold mb-3">Vos coordonnées</h2>
-        <InputField
-          label="Nom"
-          name="name"
-          value={data.name}
-          onChange={handleInputChange}
-          error={errors.name}
-          placeholder="Votre nom"
-          required
+      {/* Formulaire pour utilisateur connecté sans adresses */}
+      {user && addresses.length === 0 ? (
+        <>
+          <AddressForm
+            data={data}
+            onChange={handleInputChange}
+            errors={errors}
+            quartiers={quartiersList}
+            filteredQuartiers={filteredQuartiers}
+            onQuartierSelect={handleQuartierSelect}
+            showPhone={true}
+          />
+          {deliveryFee > 0 && (
+            <div className="p-3 mx-3 text-gray-700">
+              Frais de livraison : {deliveryFee} FCFA
+            </div>
+          )}
+        </>
+      ) : !user ? (
+        <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mt-3 mx-3">
+          <h2 className="text-xl font-bold mb-3">Vos coordonnées</h2>
+          <InputField
+            label="Nom"
+            name="name"
+            value={data.name}
+            onChange={handleInputChange}
+            error={errors.name}
+            placeholder="Votre nom"
+            required
+          />
+          <AddressForm
+            data={data}
+            onChange={handleInputChange}
+            errors={errors}
+            quartiers={quartiersList}
+            filteredQuartiers={filteredQuartiers}
+            onQuartierSelect={handleQuartierSelect}
+            showPhone={true}
+          />
+          {deliveryFee > 0 && (
+            <div className="mt-3 text-gray-700">
+              Frais de livraison : {deliveryFee} FCFA
+            </div>
+          )}
+        </section>
+      ) : (
+        <AddressList
+          addresses={addresses}
+          selectedAddress={selectedAddress}
+          onSelect={(addressId) => {
+            setSelectedAddress(addressId);
+            if (user) {
+              firestoreActions.setDefaultAddress(user.uid, addressId);
+            }
+          }}
+          onEdit={handleEditAddress}
+          onDelete={handleDeleteAddress}
         />
-        <AddressForm
+      )}
+
+      <PaymentMethods
+        methods={paymentMethods}
+        selected={selectedPayment}
+        onSelect={setSelectedPayment}
+      />
+
+      <div className="p-3 space-y-2">
+        {!user && (
+          <>
+            <button
+              onClick={handleGoogleSignIn}
+              className="w-full flex flex-col items-center justify-center py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400"
+              disabled={submitState.googleLoading}
+            >
+              <div className="flex items-center">
+                {submitState.googleLoading ? (
+                  <Spinner />
+                ) : (
+                  <i className="fa-brands fa-google mr-1 text-base" />
+                )}
+                <span className="font-semibold text-sm">Continuer avec Google</span>
+              </div>
+              {!submitState.googleLoading && (
+                <span className="text-[10px] text-green-100 mt-0.5">
+                  (Plus besoin de répéter le processus)
+                </span>
+              )}
+            </button>
+            <button
+              onClick={handleContinue}
+              className="w-full py-3 rounded-lg bg-white text-green-600 border border-green-600 hover:bg-gray-100"
+              disabled={submitState.continueLoading}
+            >
+              {submitState.continueLoading ? <Spinner /> : "Continuer sans compte"}
+            </button>
+          </>
+        )}
+        {user && (
+          <button
+            onClick={handleContinue}
+            disabled={
+              (addresses.length > 0 && !selectedAddress) || !selectedPayment || submitState.continueLoading
+            }
+            className={`w-full py-3 rounded-lg transition-colors flex items-center justify-center ${
+              (addresses.length === 0 || selectedAddress) && selectedPayment
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            {submitState.continueLoading ? <Spinner /> : "Continuer"}
+          </button>
+        )}
+      </div>
+
+      {user && addresses.length > 0 && showModal && (
+        <AddressModal
           data={data}
           onChange={handleInputChange}
           errors={errors}
+          onSubmit={handleAddressSubmit}
+          onClose={() => {
+            setShowModal(false);
+            resetForm();
+          }}
+          loading={submitState.addressSubmitLoading}
+          editing={!!editingAddress}
           quartiers={quartiersList}
           filteredQuartiers={filteredQuartiers}
           onQuartierSelect={handleQuartierSelect}
-          showPhone={true}
+          deliveryFee={deliveryFee} // Passer les frais à la modale
         />
-      </section>
-    ) : (
-      <AddressList
-        addresses={addresses}
-        selectedAddress={selectedAddress}
-        onSelect={(addressId) => {
-          setSelectedAddress(addressId);
-          if (user) {
-            firestoreActions.setDefaultAddress(user.uid, addressId);
-          }
-        }}
-        onEdit={handleEditAddress}
-        onDelete={handleDeleteAddress}
-      />
-    )}
-
-    <PaymentMethods
-      methods={paymentMethods}
-      selected={selectedPayment}
-      onSelect={setSelectedPayment}
-    />
-
-    <div className="p-3 space-y-2">
-      {!user && (
-        <>
-          <button
-            onClick={handleGoogleSignIn}
-            className="w-full flex flex-col items-center justify-center py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-400"
-            disabled={submitState.googleLoading}
-          >
-            <div className="flex items-center">
-              {submitState.googleLoading ? (
-                <Spinner />
-              ) : (
-                <i className="fa-brands fa-google mr-1 text-base" />
-              )}
-              <span className="font-semibold text-sm">Continuer avec Google</span>
-            </div>
-            {!submitState.googleLoading && (
-              <span className="text-[10px] text-green-100 mt-0.5">
-                (Plus besoin de répéter le processus)
-              </span>
-            )}
-          </button>
-          <button
-            onClick={handleContinue}
-            className="w-full py-3 rounded-lg bg-white text-green-600 border border-green-600 hover:bg-gray-100"
-            disabled={submitState.continueLoading}
-          >
-            {submitState.continueLoading ? <Spinner /> : "Continuer sans compte"}
-          </button>
-        </>
-      )}
-      {user && (
-        <button
-          onClick={handleContinue}
-          disabled={
-            (addresses.length > 0 && !selectedAddress) || !selectedPayment || submitState.continueLoading
-          }
-          className={`w-full py-3 rounded-lg transition-colors flex items-center justify-center ${
-            (addresses.length === 0 || selectedAddress) && selectedPayment
-              ? "bg-green-600 hover:bg-green-700 text-white"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-          }`}
-        >
-          {submitState.continueLoading ? <Spinner /> : "Continuer"}
-        </button>
       )}
     </div>
-
-    {user && addresses.length > 0 && showModal && (
-      <AddressModal
-        data={data}
-        onChange={handleInputChange}
-        errors={errors}
-        onSubmit={handleAddressSubmit}
-        onClose={() => {
-          setShowModal(false);
-          resetForm();
-        }}
-        loading={submitState.addressSubmitLoading}
-        editing={!!editingAddress}
-        quartiers={quartiersList}
-        filteredQuartiers={filteredQuartiers}
-        onQuartierSelect={handleQuartierSelect}
-      />
-    )}
-  </div>
-);
+  );
 };
-
 
 // Composants auxiliaires
 const LoadingSpinner = () => (
@@ -782,11 +808,11 @@ const PaymentMethods = ({ methods, selected, onSelect }) => (
   </section>
 );
 
-const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, editing, filteredQuartiers, onQuartierSelect }) => (
+const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, editing, filteredQuartiers, onQuartierSelect, deliveryFee }) => (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
     <div className="bg-white rounded-lg w-full max-w-md">
       <div className="p-4 border-b flex justify-between items-center">
-        <h5 className="font-semibold">{editing ? "Modifier l'adresse" : "Nouveau Lieu"}</h5>
+        <h5 className="font-semibold">{editing ? "Modifier l'adresse" : "Nouvelle adresse"}</h5>
         <button onClick={onClose} className="text-gray-500 hover:text-gray-700">×</button>
       </div>
       <form onSubmit={onSubmit} className="p-4 space-y-4">
@@ -864,6 +890,11 @@ const AddressModal = ({ data, onChange, errors, onSubmit, onClose, loading, edit
           required
           type="tel"
         />
+        {deliveryFee > 0 && (
+          <div className="text-gray-700">
+            Frais de livraison : {deliveryFee} FCFA
+          </div>
+        )}
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 p-2 bg-gray-100 rounded">
             Annuler

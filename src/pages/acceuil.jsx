@@ -31,54 +31,63 @@ const STATUS_COLORS = {
 const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
   const [promos, setPromos] = useState([]);
   const [extraLists, setExtraLists] = useState([]);
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState({ global: true, categories: true, items: true, promos: true });
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState({});
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [user, setUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { addToCart, cartItems } = useCart();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false);
+      setLoading(prev => ({ ...prev, global: false }));
+      if (currentUser && window.fbq) {
+        window.fbq('track', 'PageView'); // Optionnel si géré par React Router
+      }
     }, (err) => {
-      console.error("Erreur auth:", err);
       setError("Erreur lors de la vérification de l'utilisateur");
-      setLoading(false);
+      setLoading(prev => ({ ...prev, global: false }));
     });
     return () => unsubscribeAuth();
   }, []);
 
-  const fetchData = async (userId) => {
+  const fetchPublicData = async () => {
     try {
-      setLoading(true);
-      const [categoriesSnap, itemsSnap, promosSnap, extraListsSnap, ordersSnap] = await Promise.all([
+      const [categoriesSnap, itemsSnap, promosSnap, extraListsSnap] = await Promise.all([
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'items')),
         getDocs(collection(db, 'promos')),
         getDocs(collection(db, 'extraLists')),
-        userId
-          ? getDocs(query(collection(db, 'orders'), where('userId', '==', userId)))
-          : getDocs(collection(db, 'orders')),
       ]);
 
       setCategories(categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setItems(itemsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setFilteredItems(itemsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setPromos(promosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setExtraLists(extraListsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      setLoading(prev => ({ ...prev, categories: false, items: false, promos: false }));
     } catch (err) {
       setError('Erreur de chargement des données');
-      console.error(err);
-    } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, categories: false, items: false, promos: false }));
+    }
+  };
+
+  const fetchPrivateData = async (userId) => {
+    try {
+      const ordersSnap = await getDocs(query(collection(db, 'orders'), where('userId', '==', userId)));
+      setOrders(ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (err) {
+      setError('Erreur de chargement des commandes');
     }
   };
 
@@ -86,7 +95,7 @@ const HomePage = () => {
     try {
       const notificationRef = doc(db, 'notifications', notificationId);
       await updateDoc(notificationRef, { read: true });
-      console.log(`Notification ${notificationId} marquée comme lue`);
+      setNotifications(prev => prev.map(n => (n.id === notificationId ? { ...n, read: true } : n)));
     } catch (err) {
       console.error("Erreur lors de la mise à jour de la notification:", err);
     }
@@ -95,12 +104,9 @@ const HomePage = () => {
   const markAllNotificationsAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(n => !n.read);
-      await Promise.all(
-        unreadNotifications.map(n => markNotificationAsRead(n.id))
-      );
-      console.log("Toutes les notifications non lues ont été marquées comme lues");
+      await Promise.all(unreadNotifications.map(n => markNotificationAsRead(n.id)));
     } catch (err) {
-      console.error("Erreur lors de la mise à jour de toutes les notifications:", err);
+      console.error("Erreur lors de la mise à jour des notifications:", err);
     }
   };
 
@@ -113,84 +119,62 @@ const HomePage = () => {
         const snapshot = await getDocs(notificationsQuery);
         await Promise.all(snapshot.docs.map(doc => deleteDoc(doc.ref)));
         setNotifications([]);
-        console.log("Toutes les notifications ont été supprimées");
       } catch (err) {
         console.error("Erreur lors de la suppression des notifications:", err);
       }
     }
   };
 
-  const formatOrderId = (orderId) => {
-    return `C${orderId.slice(-4).padStart(4, '0')}`;
+  const formatOrderId = (orderId) => `C${orderId.slice(-4).padStart(4, '0')}`;
+
+  const handleSearch = (e) => {
+    const query = e.target.value.toLowerCase();
+    setSearchQuery(query);
+    const filtered = items.filter(item => 
+      item.name.toLowerCase().includes(query) || 
+      item.description?.toLowerCase().includes(query)
+    );
+    setFilteredItems(filtered);
   };
 
   useEffect(() => {
-    if (user === null) return;
-  
-    fetchData(user?.uid);
-  
-    if (Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-  
-    const notificationsQuery = user?.uid
-      ? query(collection(db, 'notifications'), where('userId', '==', user.uid))
-      : collection(db, 'notifications');
-  
-    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-      const newNotifications = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp.toDate(),
-      })).sort((a, b) => b.timestamp - a.timestamp);
-      setNotifications(newNotifications);
-  
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added" || change.type === "modified") {
-          const n = change.doc.data();
-          if (!n.read && Notification.permission === "granted") {
-            const order = orders.find(o => o.id === n.orderId);
-            const itemsList = order?.label || "Articles non spécifiés";
-            const orderNumber = formatOrderId(n.orderId);
-  
-            const notification = new Notification("Mange d'Abord - Mise à jour commande", {
-              body: `Votre commande ${orderNumber} (${itemsList}) est ${STATUS_LABELS[n.newStatus]}`,
-              icon: logo,
-            });
-  
-            notification.onclick = () => {
-              window.location.href = `/complete_order/${n.orderId}`;
-              markNotificationAsRead(n.id);
-            };
-          }
+    fetchPublicData();
+
+    if (user) {
+      fetchPrivateData(user.uid);
+      const notificationsQuery = query(collection(db, 'notifications'), where('userId', '==', user.uid));
+      const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+        const newNotifications = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          timestamp: doc.data().timestamp.toDate(),
+        })).sort((a, b) => b.timestamp - a.timestamp);
+        setNotifications(newNotifications);
+
+        if (newNotifications.some(n => !n.read) && !showNotificationModal) {
+          setShowNotificationModal(true);
         }
       });
-  
-      if (newNotifications.some(n => !n.read) && !showNotificationModal) {
-        setShowNotificationModal(true);
-      }
-    }, (err) => {
-      console.error("Erreur lors de l'écoute des notifications:", err);
-    });
-  
-    return () => unsubscribeNotifications();
-  }, [user, orders, showNotificationModal]);
+      return () => unsubscribeNotifications();
+    }
+  }, [user]);
 
-  const promoSliderSettings = {
-    dots: true,
-    infinite: true,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    autoplay: true,
-  };
+  const promoSliderSettings = { dots: true, infinite: true, speed: 500, slidesToShow: 1, slidesToScroll: 1, autoplay: true };
+  const itemSliderSettings = { dots: true, infinite: false, speed: 500, slidesToShow: 1, slidesToScroll: 1 };
 
-  const itemSliderSettings = {
-    dots: true,
-    infinite: false,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
+  // Événement ViewContent
+  const handleViewContent = (item) => {
+    if (window.fbq) {
+      window.fbq('track', 'ViewContent', {
+        content_ids: [item.id],
+        content_name: item.name,
+        content_type: 'product',
+        value: convertPrice(item.price),
+        currency: 'XAF',
+      });
+    } else {
+      console.warn("Pixel Facebook non initialisé");
+    }
   };
 
   const handleAddClick = (item, e) => {
@@ -202,6 +186,19 @@ const HomePage = () => {
       addToCart({ ...item, restaurantId: item.restaurantId || "default_restaurant_id" });
       setSuccessMessage(`${item.name} ajouté au panier !`);
       setTimeout(() => setSuccessMessage(''), 3000);
+
+      // Événement AddToCart
+      if (window.fbq) {
+        window.fbq('track', 'AddToCart', {
+          content_ids: [item.id],
+          content_name: item.name,
+          content_type: 'product',
+          value: convertPrice(item.price),
+          currency: 'XAF',
+        });
+      } else {
+        console.warn("Pixel Facebook non initialisé");
+      }
     }
   };
 
@@ -216,16 +213,10 @@ const HomePage = () => {
     });
   };
 
-  const getCurrentDay = () => {
-    const days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-    return days[new Date().getDay()];
-  };
-
+  const getCurrentDay = () => ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"][new Date().getDay()];
   const convertPrice = (price) => {
-    if (typeof price === 'string') {
-      return parseFloat(price.replace(/\./g, ''));
-    }
-    return Number(price);
+    if (!price) return 0; // Gestion des cas où price est undefined ou null
+    return typeof price === 'string' ? parseFloat(price.replace(/\./g, '')) : Number(price);
   };
 
   const calculateTotalPrice = () => {
@@ -235,11 +226,8 @@ const HomePage = () => {
       const extraList = extraLists.find(el => el.id === assortmentId);
       if (extraList) {
         indexes.forEach(index => {
-          const extra = extraList.extraListElements?.[index];
-          if (extra && extra.price) {
-            const extraPrice = convertPrice(extra.price);
-            total += isNaN(extraPrice) ? 0 : extraPrice;
-          }
+          const extraPrice = convertPrice(extraList.extraListElements?.[index]?.price);
+          total += isNaN(extraPrice) ? 0 : extraPrice;
         });
       }
     });
@@ -248,29 +236,41 @@ const HomePage = () => {
 
   const handleAddToCart = () => {
     if (validateExtras()) {
-      addToCart({
-        ...selectedItem,
-        restaurantId: selectedItem.restaurantId || "default_restaurant_id",
-        selectedExtras
-      });
+      addToCart({ ...selectedItem, restaurantId: selectedItem.restaurantId || "default_restaurant_id", selectedExtras });
       setSuccessMessage(`${selectedItem.name} ajouté au panier !`);
       setTimeout(() => setSuccessMessage(''), 3000);
+
+      // Événement AddToCart avec extras
+      if (window.fbq) {
+        window.fbq('track', 'AddToCart', {
+          content_ids: [selectedItem.id],
+          content_name: selectedItem.name,
+          content_type: 'product',
+          value: calculateTotalPrice(),
+          currency: 'XAF',
+        });
+      } else {
+        console.warn("Pixel Facebook non initialisé");
+      }
+
       setSelectedItem(null);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <i className="fas fa-spinner fa-spin text-4xl text-green-600"></i>
-      </div>
-    );
+  const Loader = () => (
+    <div className="flex justify-center items-center h-32">
+      <i className="fas fa-spinner fa-spin text-4xl text-green-600 animate-spin"></i>
+    </div>
+  );
+
+  if (loading.global) {
+    return <div className="flex justify-center items-center h-screen"><Loader /></div>;
   }
 
   if (error) {
     return (
-      <div className="p-4 text-center bg-red-100 text-red-600">
-        {error} - <button onClick={() => fetchData(user?.uid)} className="text-red-600 underline">Réessayer</button>
+      <div className="p-4 text-center bg-red-100 text-red-600 transition-opacity duration-500">
+        {error} - <button onClick={() => fetchPublicData()} className="text-red-600 underline">Réessayer</button>
       </div>
     );
   }
@@ -278,70 +278,58 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
       {successMessage && (
-        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50 animate-bounce">
           {successMessage}
         </div>
       )}
 
-      <header className="bg-white border-b p-3">
+      <header className="bg-white border-b p-3 transition-all duration-300">
         <div className="flex items-center">
           <Link to="/" className="flex items-center no-underline text-black">
-            <img src={logo} alt="logo" className="h-8 mr-2" />
+            <img src={logo} alt="logo" className="h-8 mr-2 transition-transform duration-300 hover:scale-105" />
             <h4 className="font-bold text-green-600 m-0">MANGE d'ABORD</h4>
           </Link>
           <div className="ml-auto flex items-center">
             <button
               onClick={() => setShowNotificationModal(true)}
-              className="bg-white p-1 rounded shadow-sm flex items-center"
+              className="bg-white p-1 rounded shadow-sm flex items-center hover:bg-gray-100 transition-colors duration-200"
             >
               <i className="fas fa-bell text-lg text-gray-700"></i>
               {notifications.length > 0 && (
-                <span className="bg-red-600 text-white text-xs px-1 rounded-full ml-1">
+                <span className="bg-red-600 text-white text-xs px-1 rounded-full ml-1 animate-pulse">
                   {notifications.filter(n => !n.read).length}
                 </span>
               )}
             </button>
-            <Link to="#" className="ml-3 text-gray-700">
+            <Link to="#" className="ml-3 text-gray-700 hover:text-green-600 transition-colors duration-200">
               <i className="fas fa-bars text-xl"></i>
             </Link>
           </div>
         </div>
-        <Link to="/search" className="no-underline">
-          <div className="mt-3 rounded shadow-sm overflow-hidden bg-white flex">
-            <button className="bg-white p-2 border-0 text-green-600">
-              <i className="fas fa-search"></i>
-            </button>
-            <input
-              type="text"
-              className="flex-1 p-2 border-0"
-              placeholder="Rechercher des produits..."
-            />
-          </div>
-        </Link>
+        <div className="mt-3 rounded shadow-sm overflow-hidden bg-white flex transition-all duration-300 focus-within:ring-2 focus-within:ring-green-500">
+          <button className="bg-white p-2 border-0 text-green-600">
+            <i className="fas fa-search"></i>
+          </button>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearch}
+            className="flex-1 p-2 border-0 focus:outline-none"
+            placeholder="Rechercher des plats ou restaurants..."
+          />
+        </div>
       </header>
 
       {showNotificationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-transform duration-300 scale-95 hover:scale-100">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-semibold">Notifications</h3>
               <div className="flex gap-2">
-                <button
-                  onClick={clearAllNotifications}
-                  className="text-red-600 hover:text-red-800 text-sm"
-                  title="Supprimer toutes les notifications"
-                >
+                <button onClick={clearAllNotifications} className="text-red-600 hover:text-red-800 text-sm">
                   <i className="fas fa-trash-alt"></i> Vider
                 </button>
-                <button
-                  onClick={() => {
-                    markAllNotificationsAsRead();
-                    setShowNotificationModal(false);
-                  }}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
+                <button onClick={() => { markAllNotificationsAsRead(); setShowNotificationModal(false); }} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
               </div>
             </div>
             <div className="p-4">
@@ -349,44 +337,32 @@ const HomePage = () => {
                 <p className="text-gray-500 text-center">Aucune notification pour le moment</p>
               ) : (
                 <ul className="space-y-3">
-                  {notifications.map((notification, index) => {
-                    const order = orders.find(o => o.id === notification.orderId);
-                    const itemsList = order?.label || "Articles non spécifiés"; // Utilisation uniquement de label
-                    const orderNumber = formatOrderId(notification.orderId);
-                    
-                    return (
-                      <li
-                        key={index}
-                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                          notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
-                        }`}
-                        onClick={() => {
-                          markNotificationAsRead(notification.id);
-                          setShowNotificationModal(false);
-                          window.location.href = `/complete_order/${notification.orderId}`;
-                        }}
-                      >
-                        <p className="text-sm text-gray-700">
-                          Commande #{orderNumber} ({itemsList}) :{' '}
-                          <span className={`font-medium ${STATUS_COLORS[notification.oldStatus]}`}>
-                            {STATUS_LABELS[notification.oldStatus] || "Nouveau"}
-                          </span>{' '}
-                          →{' '}
-                          <span className={`font-medium ${STATUS_COLORS[notification.newStatus]}`}>
-                            {STATUS_LABELS[notification.newStatus]}
-                          </span>
-                        </p>
-                        {notification.newStatus === "echec" && notification.reason && (
-                          <p className="text-sm text-red-600 mt-1">
-                            Motif : {notification.reason}
-                          </p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-1">
-                          {notification.timestamp.toLocaleString('fr-FR')}
-                        </p>
-                      </li>
-                    );
-                  })}
+                  {notifications.map((notification, index) => (
+                    <li
+                      key={index}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 ${notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'}`}
+                      onClick={() => {
+                        if (!notification.read) markNotificationAsRead(notification.id);
+                        setShowNotificationModal(false);
+                        window.location.href = `/complete_order/${notification.orderId}`;
+                      }}
+                    >
+                      <p className="text-sm text-gray-700">
+                        Commande #{formatOrderId(notification.orderId)} :{' '}
+                        <span className={`font-medium ${STATUS_COLORS[notification.oldStatus]}`}>
+                          {STATUS_LABELS[notification.oldStatus] || "Nouveau"}
+                        </span>{' '}
+                        →{' '}
+                        <span className={`font-medium ${STATUS_COLORS[notification.newStatus]}`}>
+                          {STATUS_LABELS[notification.newStatus]}
+                        </span>
+                      </p>
+                      {notification.newStatus === "echec" && notification.reason && (
+                        <p className="text-sm text-red-600 mt-1">Motif : {notification.reason}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">{notification.timestamp.toLocaleString('fr-FR')}</p>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -396,118 +372,81 @@ const HomePage = () => {
 
       <section className="p-3">
         <h6 className="mb-2 font-medium">Que recherchez-vous ?</h6>
-        <div className="grid grid-cols-4 gap-2">
-          {categories.map((category) => (
-            <div key={category.id} className="bg-white shadow-sm rounded text-center p-2">
-              <Link to={`/category/${category.id}`}>
-                <img
-                  src={category.icon}
-                  alt={category.name}
-                  className="w-10 h-10 mx-auto"
-                />
-                <p className="mt-2 text-sm text-gray-600">{category.name}</p>
-              </Link>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="py-3 bg-white shadow-sm">
-        <div className="flex items-center px-3 mb-2">
-          <h6 className="m-0 font-medium">Promotions</h6>
-          <Link to="/promos" className="ml-auto text-green-600">
-            Voir plus
-          </Link>
-        </div>
-        {promos.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
-            <i className="fas fa-info-circle text-2xl"></i>
-            <p>Aucune promotion disponible</p>
-          </div>
+        {loading.categories ? (
+          <Loader />
         ) : (
-          <Slider {...promoSliderSettings}>
-            {promos.map((promo) => (
-              <div key={promo.id}>
-                <img 
-                  src={promo.image || '/img/default.png'} 
-                  alt={promo.name} 
-                  className="w-full h-48 object-cover rounded"
-                />
-                <div className="p-3 bg-green-50">
-                  <h4 className="text-green-600">{promo.title}</h4>
-                  <p className="text-sm text-gray-600">{promo.description}</p>
-                </div>
+          <div className="grid grid-cols-4 gap-2">
+            {categories.map((category) => (
+              <div key={category.id} className="bg-white shadow-sm rounded text-center p-2 transition-transform duration-300 hover:scale-105">
+                <Link to={`/category/${category.id}`}>
+                  <img src={category.icon} alt={category.name} className="w-10 h-10 mx-auto" />
+                  <p className="mt-2 text-sm text-gray-600">{category.name}</p>
+                </Link>
               </div>
             ))}
-          </Slider>
+          </div>
         )}
       </section>
 
       <section className="px-3">
         <div className="flex items-center mt-4 mb-2">
           <h6 className="m-0 font-medium">Sélection du jour</h6>
-          <Link to="/picks_today" className="ml-auto text-green-600">
-            Voir plus
-          </Link>
+          <Link to="/picks_today" className="ml-auto text-green-600 hover:text-green-700 transition-colors duration-200">Voir plus</Link>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          {items
-            .filter(item => item.scheduledDay?.includes(getCurrentDay()))
-            .map((item) => (
-              <div key={item.id} className="bg-white rounded shadow-sm overflow-hidden relative">
-                <Link to={`/detail/${item.id}`} className="no-underline text-black">
-                  <div className="relative">
-                    {item.covers?.length > 0 ? (
-                      <Slider {...itemSliderSettings}>
-                        {item.covers.map((cover, index) => (
-                          <div key={index}>
-                            <img 
-                              src={cover} 
-                              alt={`${item.name} ${index + 1}`} 
-                              className="w-full h-32 object-cover"
-                            />
-                          </div>
-                        ))}
-                      </Slider>
-                    ) : (
-                      <img 
-                        src="/img/default.png" 
-                        alt={item.name} 
-                        className="w-full h-32 object-cover"
-                      />
-                    )}
+        {loading.items ? (
+          <Loader />
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {filteredItems.length === 0 ? (
+              <p className="text-gray-500 text-center col-span-2">Aucun produit trouvé</p>
+            ) : (
+              filteredItems
+                .filter(item => item.scheduledDay?.includes(getCurrentDay()))
+                .map((item) => (
+                  <div key={item.id} className="bg-white rounded shadow-sm overflow-hidden relative transition-transform duration-300 hover:scale-105">
+                    <Link
+                      to={`/detail/${item.id}`}
+                      className="no-underline text-black"
+                      onClick={() => handleViewContent(item)} // Ajout de ViewContent
+                    >
+                      <div className="relative w-48 h-48 mx-auto bg-gray-100 rounded-t">
+                        {item.covers?.length > 0 ? (
+                          <Slider {...itemSliderSettings}>
+                            {item.covers.map((cover, index) => (
+                              <div key={index}>
+                                <img src={cover} alt={`${item.name} ${index + 1}`} className="w-48 h-48 object-cover" />
+                              </div>
+                            ))}
+                          </Slider>
+                        ) : (
+                          <img src="/img/default.png" alt={item.name} className="w-48 h-48 object-cover" />
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <h6 className="font-medium">{item.name}</h6>
+                        <h6 className="text-green-600">{convertPrice(item.price).toLocaleString()} Fcfa</h6>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={(e) => handleAddClick(item, e)}
+                      className="bg-green-600 text-white px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 hover:bg-green-700 transition-colors duration-200"
+                    >
+                      +
+                    </button>
                   </div>
-                  <div className="p-3">
-                    <h6 className="font-medium">{item.name}</h6>
-                    <div className="flex items-center justify-between">
-                      <h6 className="text-green-600">{convertPrice(item.price).toLocaleString()} Fcfa</h6>
-                    </div>
-                  </div>
-                </Link>
-                <button 
-                  onClick={(e) => handleAddClick(item, e)}
-                  className="bg-green-600 text-white px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 hover:bg-green-700"
-                >
-                  +
-                </button>
-              </div>
-            ))}
-        </div>
+                ))
+            )}
+          </div>
+        )}
       </section>
 
       {selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-transform duration-300 scale-95 hover:scale-100">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-semibold">Options disponibles</h3>
-              <button 
-                onClick={() => setSelectedItem(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
+              <button onClick={() => setSelectedItem(null)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
             </div>
-            
             <div className="p-4">
               {selectedItem.assortments.map(assortmentId => {
                 const extraList = extraLists.find(el => el.id === assortmentId);
@@ -517,19 +456,14 @@ const HomePage = () => {
                   <div key={extraList.id} className="mb-6">
                     <h4 className="font-medium mb-3 text-gray-700">
                       {extraList.name}
-                      {extraList.extraListElements?.some(el => el.required) && (
-                        <span className="text-red-500 ml-1">*</span>
-                      )}
+                      {extraList.extraListElements?.some(el => el.required) && <span className="text-red-500 ml-1">*</span>}
                     </h4>
-                    
                     <div className="space-y-2">
                       {extraList.extraListElements?.map((el, index) => (
-                        <label 
+                        <label
                           key={index}
-                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${
-                            selectedExtras[assortmentId]?.includes(index)
-                              ? 'bg-green-50 border-2 border-green-200'
-                              : 'border border-gray-200 hover:border-green-200'
+                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                            selectedExtras[assortmentId]?.includes(index) ? 'bg-green-50 border-2 border-green-200' : 'border border-gray-200 hover:border-green-200'
                           }`}
                         >
                           <input
@@ -538,52 +472,33 @@ const HomePage = () => {
                             onChange={(e) => {
                               const newSelection = [...(selectedExtras[assortmentId] || [])];
                               if (el.multiple) {
-                                e.target.checked 
-                                  ? newSelection.push(index)
-                                  : newSelection.splice(newSelection.indexOf(index), 1);
+                                e.target.checked ? newSelection.push(index) : newSelection.splice(newSelection.indexOf(index), 1);
                               } else {
                                 newSelection.length = 0;
                                 newSelection.push(index);
                               }
-                              setSelectedExtras({
-                                ...selectedExtras,
-                                [assortmentId]: newSelection
-                              });
+                              setSelectedExtras({ ...selectedExtras, [assortmentId]: newSelection });
                             }}
                             className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
                           />
                           <div className="ml-3 flex-1">
                             <span className="text-gray-700">{el.name}</span>
-                            {el.price && (
-                              <span className="text-sm text-gray-500 ml-2">+ {convertPrice(el.price).toLocaleString()} FCFA</span>
-                            )}
+                            {el.price && <span className="text-sm text-gray-500 ml-2">+ {convertPrice(el.price).toLocaleString()} FCFA</span>}
                           </div>
-                          {el.required && (
-                            <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
-                              Obligatoire
-                            </span>
-                          )}
+                          {el.required && <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">Obligatoire</span>}
                         </label>
                       ))}
                     </div>
                   </div>
                 );
               })}
-
               <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => setSelectedItem(null)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex-1"
-                >
-                  Annuler
-                </button>
+                <button onClick={() => setSelectedItem(null)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex-1 transition-colors duration-200">Annuler</button>
                 <button
                   onClick={handleAddToCart}
                   disabled={!validateExtras()}
-                  className={`px-4 py-2 rounded-lg flex-1 ${
-                    validateExtras()
-                      ? 'bg-green-600 text-white hover:bg-green-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  className={`px-4 py-2 rounded-lg flex-1 transition-all duration-200 ${
+                    validateExtras() ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
                 >
                   Confirmer ({calculateTotalPrice().toLocaleString()} FCFA)
@@ -596,29 +511,21 @@ const HomePage = () => {
 
       <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
         <div className="grid grid-cols-4">
-          <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-            <i className="fas fa-home text-lg"></i>
-            <span className="block text-xs mt-1">Accueil</span>
+          <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-home text-lg"></i><span className="block text-xs mt-1">Accueil</span>
           </Link>
-          
-          <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors">
+          <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
             <i className="fas fa-shopping-cart text-lg"></i>
             {cartItems.length > 0 && (
-              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full">
-                {cartItems.length}
-              </span>
+              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full animate-pulse">{cartItems.length}</span>
             )}
             <span className="block text-xs mt-1">Panier</span>
           </Link>
-          
-          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-            <i className="fas fa-shopping-bag text-lg"></i>
-            <span className="block text-xs mt-1">Commandes</span>
+          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-shopping-bag text-lg"></i><span className="block text-xs mt-1">Commandes</span>
           </Link>
-          
-          <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-            <i className="fas fa-user text-lg"></i>
-            <span className="block text-xs mt-1">Compte</span>
+          <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-user text-lg"></i><span className="block text-xs mt-1">Compte</span>
           </Link>
         </div>
       </footer>
@@ -626,4 +533,4 @@ const HomePage = () => {
   );
 };
 
-export default HomePage;
+export default HomePage; 
