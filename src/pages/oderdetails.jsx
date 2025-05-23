@@ -36,7 +36,7 @@ const addressTypeIcons = {
 
 const paymentMethods = [
   {
-    id: "payemnt_mobile",
+    id: "payment_mobile",
     name: "Paiement Mobile",
     icon: "fa-solid fa-mobile-screen-button",
     description: "via Orange Money ou MTN Mobile Money",
@@ -76,6 +76,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const [addresses, setAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState("");
   const [selectedPayment, setSelectedPayment] = useState("");
+  const [mobilePaymentPhone, setMobilePaymentPhone] = useState("");
   const [editingAddress, setEditingAddress] = useState(null);
   const [data, setData] = useState({
     nickname: "Home",
@@ -84,7 +85,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     completeAddress: "",
     instructions: "",
     phone: "",
-    name: "", // Non obligatoire pour utilisateur connecté
+    name: "",
   });
   const [errors, setErrors] = useState({});
   const [actionError, setActionError] = useState("");
@@ -95,7 +96,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     addressSubmitLoading: false,
     continueLoading: false,
   });
-  const [deliveryFee, setDeliveryFee] = useState(0); // État pour les frais de livraison
+  const [deliveryFee, setDeliveryFee] = useState(0);
 
   const navigate = useNavigate();
 
@@ -146,9 +147,9 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       } else {
         const docRef = await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
           ...address,
-          default: true, // Toujours par défaut si nouvelle
+          default: true,
         });
-        return docRef.id; // Retourne l'ID pour sélection automatique
+        return docRef.id;
       }
     },
     deleteAddress: async (userId, addressId) => {
@@ -219,10 +220,10 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       const selectedQuartier = quartiersList.find(
         (q) => q.name.toLowerCase() === data.area.toLowerCase()
       );
-      const fee = selectedQuartier ? selectedQuartier.fee : 0; // 0 si aucun quartier correspondant
+      const fee = selectedQuartier ? selectedQuartier.fee : 0;
       setDeliveryFee(fee);
     } else {
-      setDeliveryFee(0); // Réinitialiser si aucun quartier n'est sélectionné
+      setDeliveryFee(0);
     }
   }, [data.area, quartiersList]);
 
@@ -232,6 +233,12 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     setData((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "" }));
     if (actionError) setActionError("");
+  };
+
+  // Gestion du numéro de paiement mobile
+  const handleMobilePaymentPhoneChange = (e) => {
+    setMobilePaymentPhone(e.target.value);
+    setErrors((prev) => ({ ...prev, mobilePaymentPhone: "" }));
   };
 
   // Sélection d'un quartier
@@ -370,6 +377,15 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const handleContinue = async () => {
     setSubmitState((prev) => ({ ...prev, continueLoading: true }));
     try {
+      if (selectedPayment === "payment_mobile" && !/^\+?[0-9]{9,15}$/.test(mobilePaymentPhone)) {
+        setErrors((prev) => ({
+          ...prev,
+          mobilePaymentPhone: "Numéro de téléphone invalide pour le paiement mobile",
+        }));
+        setSubmitState((prev) => ({ ...prev, continueLoading: false }));
+        return;
+      }
+
       let orderData = {};
       let navState = {};
 
@@ -411,19 +427,22 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         orderData = {
           userId: user.uid,
           address: addressToUse,
-          paymentMethod: paymentMethods.find((p) => p.id === selectedPayment),
+          paymentMethod: {
+            ...paymentMethods.find((p) => p.id === selectedPayment),
+            phone: selectedPayment === "payment_mobile" ? mobilePaymentPhone : null,
+          },
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
           subtotal: cartTotal || 0,
-          deliveryFee: deliveryFee, // Ajout des frais de livraison
-          total: cartTotal + deliveryFee, // Total mis à jour
+          deliveryFee,
+          total: cartTotal + deliveryFee,
         };
         navState = {
           selectedAddress: addressToUse,
           selectedPayment: orderData.paymentMethod,
           orderId: null,
-          deliveryFee: deliveryFee, // Passer les frais
+          deliveryFee,
         };
         await firestoreActions.setDefaultAddress(user.uid, addressToUse.id);
       } else {
@@ -469,20 +488,23 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
             instructions: data.instructions,
             phone: data.phone,
           },
-          paymentMethod: paymentMethods.find((p) => p.id === selectedPayment),
+          paymentMethod: {
+            ...paymentMethods.find((p) => p.id === selectedPayment),
+            phone: selectedPayment === "payment_mobile" ? mobilePaymentPhone : null,
+          },
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
           subtotal: cartTotal || 0,
-          deliveryFee: deliveryFee, // Ajout des frais de livraison
-          total: cartTotal + deliveryFee, // Total mis à jour
+          deliveryFee,
+          total: cartTotal + deliveryFee,
         };
         navState = {
           selectedAddress: orderData.address,
           selectedPayment: orderData.paymentMethod,
           contact: contactInfo,
           orderId: null,
-          deliveryFee: deliveryFee, // Passer les frais
+          deliveryFee,
         };
       }
 
@@ -508,7 +530,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         </div>
       )}
 
-      {/* Formulaire pour utilisateur connecté sans adresses */}
       {user && addresses.length === 0 ? (
         <>
           <AddressForm
@@ -572,6 +593,9 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         methods={paymentMethods}
         selected={selectedPayment}
         onSelect={setSelectedPayment}
+        mobilePaymentPhone={mobilePaymentPhone}
+        handleMobilePaymentPhoneChange={handleMobilePaymentPhoneChange}
+        errors={errors}
       />
 
       <div className="p-3 space-y-2">
@@ -601,7 +625,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
               className="w-full py-3 rounded-lg bg-white text-green-600 border border-green-600 hover:bg-gray-100"
               disabled={submitState.continueLoading}
             >
-              {submitState.continueLoading ? <Spinner /> : "Continuer sans compte"}
+              {submitState.continueLoading ? <Spinner /> : "Continuer "}
             </button>
           </>
         )}
@@ -637,7 +661,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           quartiers={quartiersList}
           filteredQuartiers={filteredQuartiers}
           onQuartierSelect={handleQuartierSelect}
-          deliveryFee={deliveryFee} // Passer les frais à la modale
+          deliveryFee={deliveryFee}
         />
       )}
     </div>
@@ -781,28 +805,42 @@ const AddressForm = ({ data, onChange, errors, filteredQuartiers, onQuartierSele
   </section>
 );
 
-const PaymentMethods = ({ methods, selected, onSelect }) => (
+const PaymentMethods = ({ methods, selected, onSelect, mobilePaymentPhone, handleMobilePaymentPhoneChange, errors }) => (
   <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mx-3">
     <h6 className="font-bold mb-3 text-lg">Méthode de paiement *</h6>
     <div className="space-y-3">
       {methods.map((method) => (
-        <label key={method.id} className="flex items-center bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-gray-50">
-          <input
-            type="radio"
-            name="payment-method"
-            value={method.id}
-            checked={selected === method.id}
-            onChange={(e) => onSelect(e.target.value)}
-            className="h-5 w-5 text-green-600"
-          />
-          <div className="ml-3 flex-1 flex items-center">
-            <i className={`${method.icon} text-green-600 text-xl mr-3`}></i>
-            <div>
-              <p className="font-semibold">{method.name}</p>
-              <p className="text-sm text-gray-500">{method.description}</p>
+        <div key={method.id}>
+          <label className="flex items-center bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-gray-50">
+            <input
+              type="radio"
+              name="payment-method"
+              value={method.id}
+              checked={selected === method.id}
+              onChange={(e) => onSelect(e.target.value)}
+              className="h-5 w-5 text-green-600"
+            />
+            <div className="ml-3 flex-1 flex items-center">
+              <i className={`${method.icon} text-green-600 text-xl mr-3`}></i>
+              <div>
+                <p className="font-semibold">{method.name}</p>
+                <p className="text-sm text-gray-500">{method.description}</p>
+              </div>
             </div>
-          </div>
-        </label>
+          </label>
+          {method.id === "payment_mobile" && selected === "payment_mobile" && (
+            <InputField
+              label="Numéro pour paiement mobile"
+              name="mobilePaymentPhone"
+              value={mobilePaymentPhone}
+              onChange={handleMobilePaymentPhoneChange}
+              error={errors.mobilePaymentPhone}
+              placeholder="Ex: +237698123456"
+              required
+              type="tel"
+            />
+          )}
+        </div>
       ))}
     </div>
   </section>

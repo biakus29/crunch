@@ -439,15 +439,19 @@ const OrderCard = ({
   onDrop,
 }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
   const navigate = useNavigate();
 
   const user = order.userId
     ? usersData.byId[order.userId]
     : order.contact?.phone && usersData.byPhone[order.contact.phone];
-  const clientName = user
-    ? `${user.lastName || "" } ${user.firstName || "" } ${user.email || ""} `.trim() || "Utilisateur inconnu"
-    : order.contact?.name || "Client inconnu";
-  const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
+  const clientName =
+    user
+      ? `${user.lastName || ""} ${user.firstName || ""} ${user.email || ""}`.trim() ||
+        "Utilisateur inconnu"
+      : order.contact?.name || "Client inconnu";
+  const phoneNumber =
+    user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
 
   const handleConfirmDelivery = async () => {
     try {
@@ -470,6 +474,7 @@ const OrderCard = ({
       navigate(`/thank-you/${order.id}`);
     } catch (error) {
       console.error("Erreur lors de la confirmation de la livraison:", error);
+      setPaymentError("Erreur lors de la confirmation de la livraison");
     }
   };
 
@@ -537,7 +542,7 @@ const OrderCard = ({
       {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
         <button
           onClick={() => setShowConfirmModal(true)}
-          className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition mt-2"
         >
           Confirmer la livraison
         </button>
@@ -621,7 +626,7 @@ const Footer = () => (
   <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
     <div className="grid grid-cols-4">
       {[
-        { to: "/", icon: "fas fa-home", label: "Accueil" },
+        { to: "/accueil", icon: "fas fa-home", label: "Accueil" },
         { to: "/cart", icon: "fas fa-shopping-cart", label: "Panier" },
         { to: "/complete_order", icon: "fas fa-shopping-bag", label: "Commandes" },
         { to: "/profile", icon: "fas fa-user", label: "Compte" },
@@ -635,7 +640,6 @@ const Footer = () => (
   </footer>
 );
 
-// Le reste du code pour ThankYouPage reste inchangé
 const ThankYouPage = () => {
   const { orderId } = useParams();
   const [feedback, setFeedback] = useState({
@@ -665,10 +669,8 @@ const ThankYouPage = () => {
           setDeliveryPersonName(orderData.deliveryPersonName || "votre livreur");
         }
       } catch (err) {
-        console.error("Erreur lors de la récupération des détails de la commande:", err);
-        setOrderName("votre commande");
-        setRestaurantName("le restaurant");
-        setDeliveryPersonName("votre livreur");
+        console.error("Erreur lors de la récupération des détails ou du paiement:", err);
+        setError("Erreur lors du chargement des détails de la commande.");
       }
     };
 
@@ -740,9 +742,9 @@ const ThankYouPage = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-between p-4">
       <div className="w-full max-w-md flex-1 flex flex-col justify-start">
         <div className="flex justify-between items-center mb-8">
-          <Link to="/" className="text-gray-600 text-lg"></Link>
+          <Link to="/accueil" className="text-gray-600 text-lg"></Link>
           <h2 className="text-sm text-gray-500">Noter votre livraison</h2>
-          <Link to="/" className="text-gray-600 text-sm"></Link>
+          <Link to="/accueil" className="text-gray-600 text-sm"></Link>
         </div>
         <div className="text-center mb-8">
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">

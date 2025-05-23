@@ -14,16 +14,23 @@ import OrderAddress from "./pages/oderdetails";
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import CategoryListing from "./pages/categorieslist";
 import FinalOrderStatus from "./pages/ordersstatuts";
-import RemplacerRestaurantId from "./pages/exo";
 import Profile from "./pages/profile";
 import Auth from "./pages/login";
-
+import QuartiersAdmin from "./pages/quartieradmin";
+import EmployeeManager from "./pages/employer";
+import { ThankYouPage } from './pages/ordersstatuts';
+import Logins from "./pages/loginstart";
+import MenuPage from "./pages/menu";
+import PaymentSuccess from "./pages/payementsuccess";
+import PaymentFailure from "./pages/payementfailed";
+import SuperAdmin from "./pages/superadmin";
 function App() {
   return (
     <CartProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Accueil />} />
+          <Route path="/" element={<Login />} />
+          <Route path="/accueil" element={<Accueil />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/details/:id" element={<Detail />} />
           <Route path="/panier" element={<Panier />} />
@@ -36,12 +43,17 @@ function App() {
           <Route path="/order-details" element={<OrderAddress />} />
           <Route path="/category/:id" element={<CategoryListing />} />
           <Route path="/complete_order" element={<FinalOrderStatus />} />
-                    {/* Nouvelle route pour la mise à jour de l'ID */}
-          <Route path="/update-restaurant-id" element={<RemplacerRestaurantId />} />
           <Route path="/profile" element={<Profile />} />
-          {/* Ajoutez d'autres routes ici si nécessaire */}
-          <Route path="/login"element={<Auth /> }/>  
-
+          <Route path="/login" element={<Auth />} />
+          <Route path="/quartiersadmin" element={<QuartiersAdmin />} />
+          <Route path="/employer" element={<EmployeeManager />} />
+          <Route path="/thank-you/:orderId" element={<ThankYouPage />} />
+          <Route path="/menu/:id" element={<MenuPage />} />
+          <Route path="/payment/success" element={<PaymentSuccess />} />
+          <Route path="/payment/failure" element={<PaymentFailure />} />
+         
+          <Route path="/superadmin" element={<SuperAdmin />} />
+          {/* <Route path="*" element={<NotFoundPage />} /> Route pour les URLs non trouvées */}
         </Routes>
       </Router>
     </CartProvider>

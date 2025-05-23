@@ -1,0 +1,85 @@
+[debug] [2025-05-22T11:29:31.974Z] ----------------------------------------------------------------------
+[debug] [2025-05-22T11:29:31.976Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Tonybiakus\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2025-05-22T11:29:31.977Z] CLI Version:   14.4.0
+[debug] [2025-05-22T11:29:31.977Z] Platform:      win32
+[debug] [2025-05-22T11:29:31.977Z] Node Version:  v23.11.0
+[debug] [2025-05-22T11:29:31.977Z] Time:          Thu May 22 2025 12:29:31 GMT+0100 (heure normale d’Afrique de l’Ouest)
+[debug] [2025-05-22T11:29:31.977Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-05-22T11:29:32.181Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-05-22T11:29:32.182Z] > authorizing via signed-in user (tonybiakus@gmail.com)
+[debug] [2025-05-22T11:29:32.182Z] [iam] checking project papersbook-f3826 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2025-05-22T11:29:32.183Z] Checked if tokens are valid: false, expires at: 1747914133567
+[debug] [2025-05-22T11:29:32.183Z] Checked if tokens are valid: false, expires at: 1747914133567
+[debug] [2025-05-22T11:29:32.183Z] > refreshing access token with scopes: []
+[debug] [2025-05-22T11:29:32.185Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-05-22T11:29:32.185Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-05-22T11:30:04.613Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-05-22T11:30:04.613Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-05-22T11:30:04.623Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/papersbook-f3826:testIamPermissions [none]
+[debug] [2025-05-22T11:30:04.623Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/papersbook-f3826:testIamPermissions x-goog-quota-user=projects/papersbook-f3826
+[debug] [2025-05-22T11:30:04.623Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/papersbook-f3826:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-05-22T11:30:15.342Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/papersbook-f3826:testIamPermissions 200
+[debug] [2025-05-22T11:30:15.342Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/papersbook-f3826:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-05-22T11:30:15.343Z] Checked if tokens are valid: true, expires at: 1747917003613
+[debug] [2025-05-22T11:30:15.343Z] Checked if tokens are valid: true, expires at: 1747917003613
+[debug] [2025-05-22T11:30:15.343Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2025-05-22T11:30:15.343Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2025-05-22T11:30:22.691Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2025-05-22T11:30:22.691Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[info] 
+[info] === Deploying to 'papersbook-f3826'...
+[info] 
+[info] i  deploying functions 
+[info] Running command: npm --prefix "$RESOURCE_DIR" run lint
+[debug] [2025-05-22T11:30:31.757Z] Error: Timed out.
+    at Timeout._onTimeout (C:\Users\Tonybiakus\AppData\Roaming\npm\node_modules\firebase-tools\lib\utils.js:267:49)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2025-05-22T12:15:08.886Z] ----------------------------------------------------------------------
+[debug] [2025-05-22T12:15:08.889Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Tonybiakus\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2025-05-22T12:15:08.890Z] CLI Version:   14.4.0
+[debug] [2025-05-22T12:15:08.890Z] Platform:      win32
+[debug] [2025-05-22T12:15:08.890Z] Node Version:  v23.11.0
+[debug] [2025-05-22T12:15:08.890Z] Time:          Thu May 22 2025 13:15:08 GMT+0100 (heure normale d’Afrique de l’Ouest)
+[debug] [2025-05-22T12:15:08.890Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-05-22T12:15:09.081Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-05-22T12:15:09.081Z] > authorizing via signed-in user (tonybiakus@gmail.com)
+[debug] [2025-05-22T12:15:09.082Z] [iam] checking project papersbook-f3826 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2025-05-22T12:15:09.083Z] Checked if tokens are valid: false, expires at: 1747917003613
+[debug] [2025-05-22T12:15:09.083Z] Checked if tokens are valid: false, expires at: 1747917003613
+[debug] [2025-05-22T12:15:09.083Z] > refreshing access token with scopes: []
+[debug] [2025-05-22T12:15:09.085Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-05-22T12:15:09.085Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-05-22T12:15:21.167Z] *** [apiv2] error from fetch(https://www.googleapis.com/oauth2/v3/token, {"headers":{},"method":"POST","body":{"_overheadLength":545,"_valueLength":212,"_valuesToMeasure":[],"writable":false,"readable":true,"dataSize":0,"maxDataSize":2097152,"pauseStreams":true,"_released":true,"_streams":[],"_currentStream":null,"_insideLoop":false,"_pendingNext":false,"_boundary":"--------------------------255920290515974378529385","_events":{},"_eventsCount":1}}): FetchError: request to https://www.googleapis.com/oauth2/v3/token failed, reason: getaddrinfo ENOTFOUND www.googleapis.com
+[error] Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2025-05-22T12:15:21.168Z] [iam] error while checking permissions, command may fail: Authentication Error: Your credentials are no longer valid. Please run firebase login --reauth
+
+For CI servers and headless environments, generate a new token with firebase login:ci
+[debug] [2025-05-22T12:15:21.168Z] Checked if tokens are valid: false, expires at: 1747917003613
+[debug] [2025-05-22T12:15:21.168Z] Checked if tokens are valid: false, expires at: 1747917003613
+[debug] [2025-05-22T12:15:21.168Z] > refreshing access token with scopes: []
+[debug] [2025-05-22T12:15:21.169Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-05-22T12:15:21.169Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-05-22T12:15:42.084Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-05-22T12:15:42.084Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-05-22T12:15:42.092Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2025-05-22T12:15:42.092Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2025-05-22T12:16:29.124Z] *** [apiv2] error from fetch(https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions, {"headers":{},"method":"POST","body":"{\"permissions\":[\"iam.serviceAccounts.actAs\"]}"}): FetchError: request to https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions failed, reason: read ECONNRESET
+[debug] [2025-05-22T12:16:29.124Z] [functions] service account IAM check errored, deploy may fail: Failed to make request to https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions {"name":"FirebaseError","children":[],"exit":1,"message":"Failed to make request to https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions","original":{"message":"request to https://iam.googleapis.com/v1/projects/papersbook-f3826/serviceAccounts/papersbook-f3826@appspot.gserviceaccount.com:testIamPermissions failed, reason: read ECONNRESET","type":"system","errno":"ECONNRESET","code":"ECONNRESET"},"status":500}
+[info] 
+[info] === Deploying to 'papersbook-f3826'...
+[info] 
+[info] i  deploying functions 
+[info] Running command: npm --prefix "$RESOURCE_DIR" run lint
+[debug] [2025-05-22T12:16:38.158Z] Error: Timed out.
+    at Timeout._onTimeout (C:\Users\Tonybiakus\AppData\Roaming\npm\node_modules\firebase-tools\lib\utils.js:267:49)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+[error] 
+[error] Error: An unexpected error has occurred.
