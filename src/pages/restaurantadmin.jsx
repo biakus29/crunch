@@ -2503,8 +2503,8 @@ const startEditing = (item) => {
     {/* Modale pour gérer les commandes en attente */}
     {filteredOrders.some(
       (order) => !order.status || order.status === ORDER_STATUS.PENDING
-    ) && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    ) && !selectedOrder && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40" role="dialog" aria-modal="true">
         <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-lg">
           <h3 className="text-xl font-semibold mb-4 text-red-600">
             Traitement des commandes en attente requis
@@ -2776,6 +2776,7 @@ const startEditing = (item) => {
         </table>
       )}
 
+      {/* Afficher la modale des détails si une commande est sélectionnée */}
       {selectedOrder && (
         <OrderDetailsModal
           order={selectedOrder}
@@ -2791,7 +2792,6 @@ const startEditing = (item) => {
     </div>
   </div>
 )}
-
           {activeTab === "extras" && (
             <>
               <h3>Créer une Extra List</h3>
