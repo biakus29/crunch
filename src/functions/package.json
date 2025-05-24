@@ -1,0 +1,17 @@
+{
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "npm run lint"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "firebase-functions": "^5.1.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
+  }
+}

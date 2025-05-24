@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Styles de base */
+@layer base {
+  body {
+    @apply font-sans text-sm bg-gray-100;
+    font-family: 'Ubuntu', sans-serif;
+  }
+
+  a {
+    @apply text-black no-underline;
+  }
+
+  a:hover {
+    @apply text-green-600;
+  }
+
+  /* Scrollbar personnalisée */
+  ::-webkit-scrollbar {
+    @apply w-1 bg-white;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 rounded-full;
+  }
+}
+
+/* Styles des composants */
+@layer components {
+  /* Boutons */
+  .btn {
+    @apply text-sm transition duration-200 ease-in-out;
+  }
+
+  .btn-success {
+    @apply bg-gradient-to-br from-green-600 to-green-400 text-white;
+  }
+
+  .btn-danger {
+    @apply bg-gradient-to-br from-orange-600 to-yellow-400 text-white;
+  }
+
+  .btn-info {
+    @apply bg-gradient-to-br from-cyan-600 to-blue-600 text-white;
+  }
+
+  /* Badges */
+  .badge {
+    @apply text-xs font-medium px-2 py-1 rounded-full;
+  }
+
+  .badge-success {
+    @apply text-green-600 bg-green-100;
+  }
+
+  .badge-warning {
+    @apply text-yellow-500 bg-yellow-100;
+  }
+
+  .badge-danger {
+    @apply text-orange-600 bg-orange-100;
+  }
+
+  .badge-info {
+    @apply text-cyan-600 bg-cyan-100;
+  }
+
+  .badge-primary {
+    @apply text-blue-600 bg-blue-100;
+  }
+
+  .badge-dark {
+    @apply text-gray-800 bg-gray-200;
+  }
+
+  /* Formulaire */
+  .form-control {
+    @apply border-b border-gray-300 bg-transparent rounded-none focus:border-green-600 focus:ring-0;
+  }
+
+  /* Cartes */
+  .list-card {
+    @apply bg-white rounded shadow-sm overflow-hidden;
+  }
+
+  .list-card-image img {
+    @apply w-full h-32 object-cover;
+  }
+
+  /* Carrousel */
+  .slick-dots {
+    @apply bottom-4;
+  }
+
+  .slick-dots li button:before {
+    @apply text-gray-400;
+  }
+
+  .slick-dots li.slick-active button:before {
+    @apply text-green-600;
+  }
+
+  /* Thème switch */
+  .theme-switch-wrapper {
+    @apply fixed bottom-4 right-4 z-50 w-10 h-10 bg-black text-white rounded-full flex items-center justify-center cursor-pointer;
+  }
+
+  .theme-switch {
+    @apply w-10 h-10 bg-black text-white rounded-full flex items-center justify-center cursor-pointer transition duration-200 ease-in-out;
+  }
+
+  .dark .theme-switch {
+    @apply bg-white text-black;
+  }
+}
+
+/* Styles utilitaires */
+@layer utilities {
+  /* Mode sombre */
+  .dark body {
+    @apply bg-black text-white;
+  }
+
+  .dark .bg-white {
+    @apply bg-gray-900;
+  }
+
+  .dark .border-bottom,
+  .dark .border-top,
+  .dark .border-start,
+  .dark .border-end {
+    @apply border-gray-800;
+  }
+
+  .dark .text-dark {
+    @apply text-gray-200;
+  }
+
+  .dark .modal-content {
+    @apply bg-black;
+  }
+
+  .dark .bg-light {
+    @apply bg-gray-800;
+  }
+
+  .dark .modal-header {
+    @apply border-gray-800;
+  }
+
+  .dark .close {
+    @apply text-white;
+  }
+
+  .dark .btn {
+    @apply text-white;
+  }
+
+  .dark a.text-dark:hover {
+    @apply text-white;
+  }
+
+  .dark .list-card-image .btn,
+  .dark .cart-items-number .btn {
+    @apply border-gray-800 bg-black shadow-none;
+  }
+
+  .dark .cart-items-number {
+    @apply bg-black;
+  }
+
+  .dark .form-control {
+    @apply border-gray-800 text-white;
+  }
+
+  .dark .text-muted {
+    @apply text-gray-400;
+  }
+
+  .dark .list-card-image img {
+    @apply bg-white p-4 rounded-lg shadow-md;
+  }
+
+  .dark .slick-dots li.slick-active button:before {
+    @apply text-white opacity-75;
+  }
+
+  .dark .slick-dots li button:before {
+    @apply text-white;
+  }
+}

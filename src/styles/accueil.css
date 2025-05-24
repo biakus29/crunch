@@ -1,0 +1,107 @@
+/* accueil.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Styles globaux */
+body {
+  margin: 0;
+  font-family: 'Arial', sans-serif;
+  background-color: #f8f9fa;
+  color: #343a40;
+}
+
+.home-container {
+  padding-bottom: 60px; /* Pour éviter que le contenu soit masqué par le footer */
+}
+
+/* En-tête */
+.header {
+  background-color: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Titre de sections */
+h6 {
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+/* Cartes de produits */
+.card {
+  border: none;
+  border-radius: 10px;
+}
+
+.card-img-top {
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+.card-body {
+  padding: 1rem;
+}
+
+/* Typographie */
+.text-primary {
+  color: #ff0000 !important;
+}
+
+.text-warning {
+  color: #ffc107 !important;
+}
+
+/* Boutons */
+.btn {
+  border-radius: 5px;
+}
+
+.btn-success {
+  background-color: #e8e9e8;
+}
+
+.btn-warning {
+  background-color: #ffc107;
+}
+
+/* Barre de recherche */
+.input-group {
+  margin-bottom: 1rem;
+}
+
+/* Footer */
+.osahan-menu-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px solid #dee2e6;
+}
+
+.osahan-menu-footer .row {
+  margin: 0;
+}
+
+.osahan-menu-footer a {
+  text-align: center;
+  color: #6c757d;
+}
+
+.osahan-menu-footer a:hover {
+  color: #007bff;
+}
+
+/* Styles pour les écrans plus grands */
+@media (min-width: 768px) {
+  .home-container {
+      padding-bottom: 80px; /* Ajustement pour les écrans plus grands */
+  }
+
+  .col-6 {
+      flex: 0 0 50%; /* Deux colonnes sur les écrans moyens et plus */
+      max-width: 50%;
+  }
+
+  .header {
+      padding: 1rem 2rem; /* Plus de rembourrage pour les grands écrans */
+  }
+}

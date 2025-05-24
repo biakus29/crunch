@@ -1,0 +1,113 @@
+/* panier.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Styles globaux */
+body {
+  margin: 0;
+  font-family: 'Arial', sans-serif;
+  background-color: #f8f9fa;
+  color: #343a40;
+}
+
+.container {
+  padding: 1rem;
+}
+
+/* Titre du panier */
+.panier-container h2 {
+  margin-bottom: 1.5rem;
+}
+
+/* Style des cartes de produit */
+.product-item {
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #ffffff;
+  transition: box-shadow 0.2s;
+}
+
+.product-item:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.card-body {
+  padding: 1rem;
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.card-text {
+  margin: 0.5rem 0;
+}
+
+/* Contrôles de quantité */
+.quantity-controls {
+  display: flex;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.quantity-controls button {
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+}
+
+/* Bouton Supprimer */
+.remove-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 5px;
+}
+
+.remove-button:hover {
+  background-color: #c82333;
+}
+
+/* Total */
+.text-right {
+  text-align: right;
+  margin-top: 1rem;
+}
+
+/* Bouton Passer la commande */
+.checkout-button {
+  background-color: #28a745;
+  color: white;
+  padding: 0.75rem;
+  border-radius: 5px;
+  width: 100%;
+}
+
+.checkout-button:hover {
+  background-color: #218838;
+}
+
+/* Styles pour les écrans plus grands */
+@media (min-width: 768px) {
+  .container {
+      max-width: 750px;
+      margin: auto;
+  }
+
+  .product-item {
+      display: flex;
+      flex-direction: row;
+  }
+
+  .product-item .card-body {
+      flex: 1;
+  }
+
+  .product-item img {
+      max-width: 150px;
+      object-fit: cover;
+  }
+}

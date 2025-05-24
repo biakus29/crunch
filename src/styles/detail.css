@@ -1,0 +1,112 @@
+/* detail.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Styles globaux */
+body {
+  margin: 0;
+  font-family: 'Arial', sans-serif;
+  background-color: #f8f9fa;
+  color: #343a40;
+}
+
+.container {
+  padding: 1rem;
+}
+
+/* Boutons */
+.btn {
+  border-radius: 5px;
+}
+
+.btn-link {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Carte du produit */
+.card {
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.card-text {
+  font-size: 1rem;
+}
+
+/* Sélecteurs de quantité */
+.quantity-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.btn-group {
+  display: flex;
+  align-items: center;
+}
+
+.btn-outline-secondary {
+  margin: 0 0.5rem;
+}
+
+/* Suppléments */
+.supplements {
+  margin-top: 1rem;
+}
+
+.form-check {
+  margin: 0.5rem 0;
+}
+
+/* Bouton Ajouter au Panier */
+.btn-success {
+  background-color: #28a745;
+  border: none;
+}
+
+.btn-success:hover {
+  background-color: #218838;
+}
+
+/* Styles pour les écrans plus grands */
+@media (min-width: 768px) {
+  .container {
+      max-width: 750px;
+      margin: auto;
+  }
+
+  .card {
+      display: flex;
+      flex-direction: row;
+  }
+
+  .product-image {
+      flex: 1;
+      max-width: 300px;
+  }
+
+  .product-image img {
+      max-height: 300px;
+      object-fit: cover;
+  }
+
+  .card-body {
+      flex: 2;
+      padding: 2rem;
+  }
+
+  .quantity-selector {
+      flex-direction: row;
+  }
+}
