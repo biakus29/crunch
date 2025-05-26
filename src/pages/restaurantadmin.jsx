@@ -87,7 +87,7 @@ const calculateTimeDifferenceInMinutes = (start, end) => {
 };
 
 const calculateOrderTotals = (order, extraLists, items) => {
-  console.log("Calcul des totaux pour la commande:", order.id, { items: order.items, itemsProp: items });
+  console.log("Calcul des totaux pour la commande:", order.id, { items: order.items, pointsUsed: order.pointsUsed, pointsReduction: order.pointsReduction });
   const subtotal = order.items.reduce((sum, item) => {
     const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
     const itemPrice = item.price !== undefined && !isNaN(convertPrice(item.price))
@@ -97,7 +97,6 @@ const calculateOrderTotals = (order, extraLists, items) => {
       : currentItem?.price
       ? convertPrice(currentItem.price)
       : 0;
-    console.log(`Article ${item.dishId}: price=${itemPrice}, dishPrice=${item.dishPrice}, currentItemPrice=${currentItem?.price}`);
     const extrasTotal = item.selectedExtras
       ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
           const extraList = extraLists.find((el) => el.id === extraListId)?.extraListElements || [];
@@ -107,11 +106,55 @@ const calculateOrderTotals = (order, extraLists, items) => {
     return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
   }, 0);
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-  const totalWithDelivery = subtotal + deliveryFee;
-  console.log("Résultat des totaux:", { subtotal, deliveryFee, totalWithDelivery });
-  return { subtotal, totalWithDelivery };
+  const pointsReduction = Number(order.pointsReduction) || 0;
+  const totalWithDelivery = subtotal + deliveryFee - pointsReduction;
+  console.log("Résultat des totaux:", { subtotal, deliveryFee, pointsReduction, totalWithDelivery });
+  return { subtotal, totalWithDelivery, pointsReduction };
 };
-
+const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) => {
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Commandes en attente</h3>
+          <button
+            className="text-gray-500 hover:text-gray-700 text-xl"
+            onClick={onClose}
+            aria-label="Fermer"
+          >
+            ×
+          </button>
+        </div>
+        <div className="max-h-96 overflow-y-auto">
+          {orders.length === 0 ? (
+            <p className="text-gray-500 text-center">Aucune commande en attente</p>
+          ) : (
+            orders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                items={items}
+                extraLists={extraLists}
+                usersData={usersData}
+                onShowDetails={() => {}}
+                onDragStart={() => {}}
+                onDragEnd={() => {}}
+              />
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button
+            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
+            onClick={onClose}
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
   console.log("Rendu d'OrderCard pour la commande:", order.id, { status: order.status, items: order.items });
@@ -209,6 +252,12 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
             <span>Frais:</span>
             <span>{formatPrice(deliveryFee)} FCFA</span>
           </div>
+          <div className="flex justify-between">
+            <span>Prix reduit:</span>
+            <span className="text-red-600">
+        {formatPrice(Number(order.pointsReduction) || 0)} FCFA
+        </span>
+          </div>
           <div className="flex justify-between text-green-600 font-semibold">
             <span>Total:</span>
             <span>{formatPrice(totalWithDelivery)} FCFA</span>
@@ -245,6 +294,16 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
             <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
           </label>
         </div>
+      <div className="flex items-center justify-between">
+  <span className="text-sm text-gray-600">
+    Points utilisés: {(Number(order.pointsUsed) || 0) > 0 ? (
+      <>
+        ✅ {order.pointsUsed}{" "}
+        
+      </>
+    ) : "-"}
+  </span>
+</div>
       </div>
     </div>
   );
@@ -792,23 +851,29 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
                 </>
               )}
             </div>
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
-              <div className="text-xs text-gray-700 space-y-0.5">
-                <div className="flex justify-between">
-                  <span>Sous-total :</span>
-                  <span>{formatPrice(subtotal)} FCFA</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Frais :</span>
-                  <span>{formatPrice(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)} FCFA</span>
-                </div>
-                <div className="flex justify-between font-bold text-sm text-green-600">
-                  <span>Total :</span>
-                  <span>{formatPrice(totalWithDelivery)} FCFA</span>
+              <div className="bg-gray-50 p-2 rounded-lg">
+                <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
+                <div className="text-xs text-gray-700 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span>Sous-total :</span>
+                    <span>{formatPrice(subtotal)} FCFA</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Frais :</span>
+                    <span>{formatPrice(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)} FCFA</span>
+                  </div>
+                  {(Number(order.pointsReduction) || 0) > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Réduction (points) :</span>
+                      <span>-{formatPrice(Number(order.pointsReduction))} FCFA</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-sm text-green-600">
+                    <span>Total :</span>
+                    <span>{formatPrice(totalWithDelivery)} FCFA</span>
+                  </div>
                 </div>
               </div>
-            </div>
             <div className="space-y-1">
               <label className="block font-bold text-xs">Statut :</label>
               <select
@@ -965,6 +1030,8 @@ const RestaurantAdmin = () => {
   const [dateFilterMode, setDateFilterMode] = useState('day');
   const [editingMenu, setEditingMenu] = useState(null);
   const daysOfWeek = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  const [showPendingOrdersModal, setShowPendingOrdersModal] = useState(true);
+
   const [editingCategory, setEditingCategory] = useState(null);
   const [menuData, setMenuData] = useState({ 
     name: "", 
@@ -1173,7 +1240,11 @@ const RestaurantAdmin = () => {
     return urls;
   }, []);
 
-
+const pendingOrders = useMemo(() => {
+    return filteredOrders.filter(
+      (order) => !order.status || order.status === ORDER_STATUS.PENDING
+    );
+  }, [filteredOrders]);
   const addMenu = async () => {
     if (!menuData.name) {
       setError("Le nom du menu est requis.");
@@ -1824,6 +1895,15 @@ const startEditing = (item) => {
       )}
       {!loading && (
         <>
+        {showPendingOrdersModal && pendingOrders.length > 0 && (
+            <PendingOrdersModal
+              orders={pendingOrders}
+              items={items}
+              extraLists={extraLists}
+              usersData={usersData}
+              onClose={() => setShowPendingOrdersModal(false)}
+            />
+          )}
           <ul className="nav nav-tabs mb-4">
             {["restaurant", "menus", "items", "categories", "orders", "extras","loyalty"].map((tab) => (
               <li key={tab} className="nav-item">
@@ -2498,197 +2578,204 @@ const startEditing = (item) => {
     </div>
   </div>
 )}
-          {activeTab === "orders" && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                      onClick={handlePreviousPeriod}
-                    >
-                      {"<"}
-                    </button>
-                    <input
-                      type="date"
-                      value={formatDateForComparison(selectedDate)}
-                      onChange={(e) => setSelectedDate(new Date(e.target.value))}
+            {activeTab === "orders" && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                        onClick={handlePreviousPeriod}
+                      >
+                        {"<"}
+                      </button>
+                      <input
+                        type="date"
+                        value={formatDateForComparison(selectedDate)}
+                        onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                        className="border rounded px-2 py-1"
+                      />
+                      <button
+                        className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                        onClick={handleNextPeriod}
+                      >
+                        {">"}
+                      </button>
+                    </div>
+                    <select
+                      value={dateFilterMode}
+                      onChange={(e) => setDateFilterMode(e.target.value)}
                       className="border rounded px-2 py-1"
-                    />
-                    <button
-                      className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                      onClick={handleNextPeriod}
                     >
-                      {">"}
+                      <option value="day">Jour</option>
+                      <option value="week">Semaine</option>
+                      <option value="month">Mois</option>
+                    </select>
+                    <button
+                      className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300"
+                      onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
+                    >
+                      {viewMode === "table" ? "Vue Kanban" : "Vue Tableau"}
                     </button>
                   </div>
-                  <select
-                    value={dateFilterMode}
-                    onChange={(e) => setDateFilterMode(e.target.value)}
-                    className="border rounded px-2 py-1"
-                  >
-                    <option value="day">Jour</option>
-                    <option value="week">Semaine</option>
-                    <option value="month">Mois</option>
-                  </select>
-                  <button
-                    className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300"
-                    onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
-                  >
-                    {viewMode === "table" ? "Vue Kanban" : "Vue Tableau"}
-                  </button>
                 </div>
-              </div>
 
-              <div className="mb-4 text-sm text-gray-600">
-                {dateFilterMode === "day" && `Commandes du ${selectedDate.toLocaleDateString("fr-FR")}`}
-                {dateFilterMode === "week" && (
-                  (() => {
-                    const start = new Date(selectedDate);
-                    start.setDate(start.getDate() - start.getDay());
-                    const end = new Date(start);
-                    end.setDate(start.getDate() + 6);
-                    return `Commandes de la semaine du ${start.toLocaleDateString("fr-FR")} au ${end.toLocaleDateString("fr-FR")}`;
-                  })()
+                <div className="mb-4 text-sm text-gray-600">
+                  {dateFilterMode === "day" && `Commandes du ${selectedDate.toLocaleDateString("fr-FR")}`}
+                  {dateFilterMode === "week" && (
+                    (() => {
+                      const start = new Date(selectedDate);
+                      start.setDate(start.getDate() - start.getDay());
+                      const end = new Date(start);
+                      end.setDate(start.getDate() + 6);
+                      return `Commandes de la semaine du ${start.toLocaleDateString("fr-FR")} au ${end.toLocaleDateString("fr-FR")}`;
+                    })()
+                  )}
+                  {dateFilterMode === "month" && (
+                    `Commandes de ${selectedDate.toLocaleString("fr-FR", { month: "long", year: "numeric" })}`
+                  )}
+                  {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? "s" : ""})`}
+                </div>
+
+                {viewMode === "kanban" ? (
+                  <div className="overflow-x-auto whitespace-nowrap pb-4">
+                    <div className="inline-flex gap-6">
+                      {statusColumns.map((column) => (
+                        <div
+                          key={column.id}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, column.id)}
+                          className={`p-4 rounded-lg border ${column.color} min-h-[500px] w-[350px] flex-shrink-0 shadow-sm`}
+                        >
+                          <h4 className="font-semibold text-lg mb-4 text-gray-800 sticky top-0 bg-inherit z-10 py-2">
+                            {column.name} (
+                            {
+                              filteredOrders.filter((order) =>
+                                column.id === ORDER_STATUS.PENDING
+                                  ? !order.status || order.status === ORDER_STATUS.PENDING
+                                  : order.status === column.id
+                              ).length
+                            }
+                            )
+                          </h4>
+                          <div className="space-y-3 overflow-y-auto max-h-[450px]">
+                            {filteredOrders
+                              .filter((order) =>
+                                column.id === ORDER_STATUS.PENDING
+                                  ? !order.status || order.status === ORDER_STATUS.PENDING
+                                  : order.status === column.id
+                              )
+                              .map((order) => (
+                                <OrderCard
+                                  key={order.id}
+                                  order={order}
+                                  items={items}
+                                  extraLists={extraLists}
+                                  usersData={usersData}
+                                  onShowDetails={showOrderDetails}
+                                  onDragStart={(e) => handleDragStart(e, order)}
+                                  onDragEnd={handleDragEnd}
+                                />
+                              ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <table className="table w-full text-xs">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Quartier</th>
+                        <th>Adresse</th>
+                        <th>Frais de livraison</th>
+                        <th>ID Commande</th>
+                        <th>Date</th>
+                        <th>Total</th>
+                        <th>Points</th> {/* Nouvelle colonne pour indiquer l'utilisation des points */}
+                        <th>Statut</th>
+                        <th>Payé</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredOrders?.map((order) => {
+                        const user = order.userId
+                          ? usersData.byId[order.userId]
+                          : order.contact?.phone && usersData.byPhone[order.contact.phone];
+                        const clientName = user
+                          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
+                          : order.contact?.name || "Client inconnu";
+                        const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non spécifié";
+                        const address = order.address || {};
+                        const quartier = address.area || "Non spécifié";
+                        const description = address.completeAddress || "Non spécifié";
+                        const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
+                        const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
+
+                        return (
+                          <tr key={order.id}>
+                            <td className="truncate">{clientName}</td>
+                            <td className="truncate">{quartier}</td>
+                            <td className="truncate">{description}</td>
+                            <td>{formatPrice(deliveryFee)} FCFA</td>
+                            <td className="truncate">#{order.id.slice(0, 6)}</td>
+                            <td>
+                              {order.timestamp
+                                ? new Date(order.timestamp.seconds * 1000).toLocaleDateString("fr-FR")
+                                : "N/A"}
+                            </td>
+                            <td className="text-green-600 font-semibold">{formatPrice(totalWithDelivery)} FCFA</td>
+                            {/* Indicateur simple pour les points utilisés */}
+                           <td>
+                              {(Number(order.pointsUsed) || 0) > 0 
+                                ? `✅ ${formatPrice(Number(order.pointsReduction) || 0)} FCFA` 
+                                : "-"}
+                            </td>
+                            <td>
+                              <span
+                                className={`text-xs px-2 py-1 rounded-full ${
+                                  STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {STATUS_LABELS[order.status] || "En attente"}
+                              </span>
+                            </td>
+                            <td className={order.isPaid ? "text-green-600" : "text-red-600"}>
+                              {order.isPaid ? "Oui" : "Non"}
+                            </td>
+                            <td>
+                              <button
+                                className="btn btn-primary btn-sm text-xs bg-green-600 text-white rounded-lg px-3 py-1 hover:bg-green-700"
+                                onClick={() => showOrderDetails(order)}
+                              >
+                                Détails
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 )}
-                {dateFilterMode === "month" && (
-                  `Commandes de ${selectedDate.toLocaleString("fr-FR", { month: "long", year: "numeric" })}`
+
+                {selectedOrder && (
+                  <OrderDetailsModal
+                    order={selectedOrder}
+                    items={items}
+                    extraLists={extraLists}
+                    usersData={usersData}
+                    onClose={closeOrderDetails}
+                    onUpdateFees={updateOrderDeliveryFees}
+                    onDelete={deleteOrder}
+                    onUpdateStatus={updateOrderStatus}
+                  />
                 )}
-                {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? "s" : ""})`}
               </div>
-
-              {viewMode === "kanban" ? (
-  <div className="overflow-x-auto whitespace-nowrap pb-4">
-    <div className="inline-flex gap-6">
-      {statusColumns.map((column) => (
-        <div
-          key={column.id}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, column.id)}
-          className={`p-4 rounded-lg border ${column.color} min-h-[500px] w-[350px] flex-shrink-0 shadow-sm`}
-        >
-          <h4 className="font-semibold text-lg mb-4 text-gray-800 sticky top-0 bg-inherit z-10 py-2">
-            {column.name} (
-            {
-              filteredOrders.filter((order) =>
-                column.id === ORDER_STATUS.PENDING
-                  ? !order.status || order.status === ORDER_STATUS.PENDING
-                  : order.status === column.id
-              ).length
-            }
-            )
-          </h4>
-          <div className="space-y-3 overflow-y-auto max-h-[450px]">
-            {filteredOrders
-              .filter((order) =>
-                column.id === ORDER_STATUS.PENDING
-                  ? !order.status || order.status === ORDER_STATUS.PENDING
-                  : order.status === column.id
-              )
-              .map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  items={items}
-                  extraLists={extraLists}
-                  usersData={usersData}
-                  onShowDetails={showOrderDetails}
-                  onDragStart={(e) => handleDragStart(e, order)}
-                  onDragEnd={handleDragEnd}
-                />
-              ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-) : (
-  <table className="table w-full text-xs">
-    <thead>
-      <tr>
-        <th>Client</th>
-        <th>Quartier</th>
-        <th>Adresse</th>
-        <th>Frais de livraison</th>
-        <th>ID Commande</th>
-        <th>Date</th>
-        <th>Total</th>
-        <th>Statut</th>
-        <th>Payé</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {filteredOrders.map((order) => {
-        const user = order.userId
-          ? usersData.byId[order.userId]
-          : order.contact?.phone && usersData.byPhone[order.contact.phone];
-        const clientName = user
-          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
-          : order.contact?.name || "Client inconnu";
-        const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non spécifié";
-        const address = order.address || {};
-        const quartier = address.area || "Non spécifié";
-        const description = address.completeAddress || "Non spécifié";
-        const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-        const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
-
-        return (
-          <tr key={order.id}>
-            <td className="truncate">{clientName}</td>
-            <td className="truncate">{quartier}</td>
-            <td className="truncate">{description}</td>
-            <td>{formatPrice(deliveryFee)} FCFA</td>
-            <td className="truncate">#{order.id.slice(0, 6)}</td>
-            <td>
-              {order.timestamp
-                ? new Date(order.timestamp.seconds * 1000).toLocaleDateString("fr-FR")
-                : "N/A"}
-            </td>
-            <td className="text-green-600 font-semibold">{formatPrice(totalWithDelivery)} FCFA</td>
-            <td>
-              <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {STATUS_LABELS[order.status] || "En attente"}
-              </span>
-            </td>
-            <td className={order.isPaid ? "text-green-600" : "text-red-600"}>
-              {order.isPaid ? "Oui" : "Non"}
-            </td>
-            <td>
-              <button
-                className="btn btn-primary btn-sm text-xs bg-green-600 text-white rounded-lg px-3 py-1 hover:bg-green-700"
-                onClick={() => showOrderDetails(order)}
-              >
-                Détails
-              </button>
-            </td>
-          </tr>
-        );
-      })}
-    </tbody>
-  </table>
-)}
-
-              {selectedOrder && (
-                <OrderDetailsModal
-                  order={selectedOrder}
-                  items={items}
-                  extraLists={extraLists}
-                  usersData={usersData}
-                  onClose={closeOrderDetails}
-                  onUpdateFees={updateOrderDeliveryFees}
-                  onDelete={deleteOrder}
-                  onUpdateStatus={updateOrderStatus}
-                />
-              )}
-            </div>
-          )}
+            )}
 
           {activeTab === "extras" && (
             <>

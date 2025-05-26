@@ -153,7 +153,6 @@ const OrderStatus = ({ isAdmin = false }) => {
   };
 
   useEffect(() => {
-    // Réinitialiser l’erreur au début pour éviter qu’un ancien message persiste
     setError("");
 
     if (!isAdmin && effectiveUserId === null) {
@@ -211,6 +210,7 @@ const OrderStatus = ({ isAdmin = false }) => {
     return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
   };
 
+  // Mise à jour de calculateTotal pour inclure pointsReduction
   const calculateTotal = (order) => {
     const itemsTotal = order.items?.reduce((sum, item) => {
       const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
@@ -225,7 +225,8 @@ const OrderStatus = ({ isAdmin = false }) => {
       return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
     }, 0) || 0;
     const deliveryFee = Number(order.deliveryFee) || getDeliveryFee(order.address?.area);
-    return itemsTotal + deliveryFee;
+    const pointsReduction = Number(order.pointsReduction) || 0; // Inclure la réduction par points
+    return Math.max(0, itemsTotal + deliveryFee - pointsReduction); // Total après réduction
   };
 
   const handleDragStart = (e, order) => {
@@ -264,6 +265,9 @@ const OrderStatus = ({ isAdmin = false }) => {
           oldStatus: oldStatus,
           newStatus: newStatus,
           itemNames: itemNames,
+          // Ajouter des informations sur les points pour les notifications admin
+          pointsUsed: order.pointsUsed || 0,
+          pointsReduction: order.pointsReduction || 0,
           timestamp: Timestamp.now(),
           read: false,
         });
@@ -502,6 +506,12 @@ const OrderCard = ({
         <div>
           <p className="text-sm text-gray-500">Total (avec livraison)</p>
           <p className="font-medium text-green-600">{formatPrice(calculateTotal(order))} FCFA</p>
+          {/* Affichage des points utilisés et de la réduction */}
+          {order.pointsUsed > 0 && (
+            <p className="text-sm text-gray-600">
+              Réduction : {formatPrice(order.pointsReduction)} FCFA ({formatPrice(order.pointsUsed)} points)
+            </p>
+          )}
         </div>
         <div>
           <p className="text-sm text-gray-500">Livraison</p>
@@ -527,6 +537,16 @@ const OrderCard = ({
           </div>
         </div>
       </div>
+      {/* Affichage des points gagnés */}
+      {order.loyaltyPoints > 0 && (
+        <div className="mb-4 bg-gray-50 p-2 rounded">
+          <p className="text-sm font-bold">Points de fidélité :</p>
+          <p className="text-sm">
+            Gagnés : {formatPrice(order.loyaltyPoints)} points
+            {isAdmin ? " (à valider après paiement)" : " (crédités après validation du paiement)"}
+          </p>
+        </div>
+      )}
       <div className="mb-4 bg-gray-50 p-2 rounded">
         <p className="text-sm font-bold">Coordonnées :</p>
         <p className="text-sm">{clientName} - {phoneNumber}</p>
@@ -646,12 +666,18 @@ const ThankYouPage = () => {
     recommend: null,
     deliveryService: 0,
     foodQuality: 0,
+    // Ajout d'un champ pour le feedback sur les points
+    pointsExperience: "", // Commentaire textuel facultatif sur l'expérience des points
   });
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
   const [orderName, setOrderName] = useState("votre commande");
   const [restaurantName, setRestaurantName] = useState("le restaurant");
   const [deliveryPersonName, setDeliveryPersonName] = useState("votre livreur");
+  // Ajout des états pour les points
+  const [pointsUsed, setPointsUsed] = useState(0);
+  const [pointsReduction, setPointsReduction] = useState(0);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
 
   useEffect(() => {
     if (!orderId) return;
@@ -667,6 +693,10 @@ const ThankYouPage = () => {
           setOrderName(`${firstItemName}${items.length > 1 ? " et plus" : ""}`);
           setRestaurantName(orderData.restaurantName || "le restaurant");
           setDeliveryPersonName(orderData.deliveryPersonName || "votre livreur");
+          // Récupérer les informations sur les points
+          setPointsUsed(orderData.pointsUsed || 0);
+          setPointsReduction(orderData.pointsReduction || 0);
+          setLoyaltyPoints(orderData.loyaltyPoints || 0);
         }
       } catch (err) {
         console.error("Erreur lors de la récupération des détails ou du paiement:", err);
@@ -683,6 +713,10 @@ const ThankYouPage = () => {
 
   const handleRecommendationChange = (value) => {
     setFeedback((prev) => ({ ...prev, recommend: value }));
+  };
+
+  const handlePointsExperienceChange = (e) => {
+    setFeedback((prev) => ({ ...prev, pointsExperience: e.target.value }));
   };
 
   const handleSubmitFeedback = async (e) => {
@@ -754,6 +788,24 @@ const ThankYouPage = () => {
             Bon appétit à vous !
           </p>
         </div>
+        {/* Affichage des informations sur les points */}
+        {(pointsUsed > 0 || loyaltyPoints > 0) && (
+          <div className="mb-8 text-center bg-gray-100 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              Points de fidélité
+            </h3>
+            {pointsUsed > 0 && (
+              <p className="text-sm text-gray-600">
+                Vous avez utilisé {formatPrice(pointsUsed)} points pour une réduction de {formatPrice(pointsReduction)} FCFA.
+              </p>
+            )}
+            {loyaltyPoints > 0 && (
+              <p className="text-sm text-gray-600">
+                Vous avez gagné {formatPrice(loyaltyPoints)} points pour cette commande (crédités après validation).
+              </p>
+            )}
+          </div>
+        )}
         <div className="w-full border-t border-gray-300 mb-8"></div>
         <div className="mb-12 text-center">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">
@@ -785,7 +837,7 @@ const ThankYouPage = () => {
           </div>
         </div>
         <div className="mb-12 text-center">
-          <h3 className="text-xl font-semibold text-gray-800 mb-4">
+          <h3 className="$text-xl font-semibold text-gray-800 mb-4">
             Comment était votre livraison avec {deliveryPersonName} ?
           </h3>
           <div className="flex justify-center gap-2">
@@ -818,6 +870,21 @@ const ThankYouPage = () => {
             ))}
           </div>
         </div>
+        {/* Champ pour le feedback sur l'expérience des points */}
+        {(pointsUsed > 0 || loyaltyPoints > 0) && (
+          <div className="mb-12 text-center">
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">
+              Comment était votre expérience avec les points de fidélité ?
+            </h3>
+            <textarea
+              value={feedback.pointsExperience}
+              onChange={handlePointsExperienceChange}
+              className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Partagez vos commentaires sur l'utilisation des points (facultatif)"
+              rows="4"
+            />
+          </div>
+        )}
         {error && <p className="text-red-600 text-center mb-4">{error}</p>}
       </div>
       <button

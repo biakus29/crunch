@@ -92,7 +92,7 @@ const Profile = () => {
   const fetchUserData = useCallback(async (uid, currentUserEmail) => {
     try {
       setLoading(true);
-      const userDocRef = doc(db, 'users', uid);
+      const userDocRef = doc(db, 'usersrestau', uid);
       const userDoc = await getDoc(userDocRef);
 
       console.log('Profile: Chargement userDoc pour uid =', uid);
