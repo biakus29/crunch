@@ -9,7 +9,6 @@ import Login from "./pages/loginrestau";
 import OrdersPage from "./pages/oders";
 import ProductDetails from "./pages/detail";
 import { CartProvider } from "./context/cartcontext";
-import CartPage from "./pages/panier";
 import OrderAddress from "./pages/oderdetails";
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import CategoryListing from "./pages/categorieslist";
@@ -21,9 +20,11 @@ import EmployeeManager from "./pages/employer";
 import { ThankYouPage } from './pages/ordersstatuts';
 import Logins from "./pages/loginstart";
 import MenuPage from "./pages/menu";
-import PaymentSuccess from "./pages/payementsuccess";
-import PaymentFailure from "./pages/payementfailed";
+import PaymentSuccess from "./pages/payementsuccess"; // Standardisé
+import PaymentFailure from "./pages/payementfailed"; // Standardisé
 import SuperAdmin from "./pages/superadmin";
+import CartPage from "./pages/panier"; // Assurez-vous que le chemin est correct
+
 function App() {
   return (
     <CartProvider>
@@ -51,9 +52,8 @@ function App() {
           <Route path="/menu/:id" element={<MenuPage />} />
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/failure" element={<PaymentFailure />} />
-         
           <Route path="/superadmin" element={<SuperAdmin />} />
-          {/* <Route path="*" element={<NotFoundPage />} /> Route pour les URLs non trouvées */}
+          {/* <Route path="*" element={<NotFoundPage />} /> */}
         </Routes>
       </Router>
     </CartProvider>

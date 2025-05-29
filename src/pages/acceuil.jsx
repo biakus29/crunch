@@ -7,6 +7,7 @@ import { collection, getDocs, onSnapshot, doc, updateDoc, query, where, deleteDo
 import { auth, db } from '../firebase';
 import { useCart } from '../context/cartcontext';
 import { onAuthStateChanged } from 'firebase/auth';
+import { getMessaging, getToken } from 'firebase/messaging';
 import logo from '../image/logo.png';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -196,7 +197,28 @@ const HomePage = () => {
   };
 
   const formatOrderId = (orderId) => `C${orderId.slice(-4).padStart(4, '0')}`;
+  const registerFCMToken = async (userId) => {
+    try {
+      const messaging = getMessaging();
+      const token = await getToken(messaging, {
+        vapidKey: "BHnVLhfreD5NmV_RYjOvSkJoh2NtJNV1hFOxi__f-SFz9Cf_iatVJC807jWukr6TicgDNHVx-rErZkWBA84rq88",
+      });
+      console.log("Token FCM:", token);
+      await db.collection("usersrestau").doc(userId).set(
+        { fcmToken: token },
+        { merge: true }
+      );
+      return token;
+    } catch (err) {
+      console.error("Erreur lors de l'obtention du token FCM:", err);
+    }
+  };
 
+  useEffect(() => {
+    if (user) {
+      registerFCMToken(user.uid);
+    }
+  }, [user]);
   // Recherche d'articles
   const handleSearch = (e) => {
     const query = e.target.value.toLowerCase();

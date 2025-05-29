@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, db } from '../firebase';
@@ -8,7 +7,8 @@ import logo from '../image/logo.png';
 import { useCart } from '../context/cartcontext';
 
 const Profile = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(null); // Peut être un utilisateur Firebase ou un objet invité
+  const [isGuest, setIsGuest] = useState(false); // Indique si l'utilisateur est un invité
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -52,14 +52,14 @@ const Profile = () => {
   // Actions Firestore
   const firestoreActions = {
     loadAddresses: async (userId) => {
-      const snapshot = await getDocs(collection(db, `users/${userId}/addresses`));
+      const snapshot = await getDocs(collection(db, `usersrestau/${userId}/addresses`));
       return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     },
     saveAddress: async (userId, address, isEdit = false) => {
       if (isEdit) {
-        await updateDoc(doc(db, `users/${userId}/addresses/${address.id}`), address);
+        await updateDoc(doc(db, `usersrestau/${userId}/addresses/${address.id}`), address);
       } else {
-        const docRef = await addDoc(collection(db, `users/${userId}/addresses`), {
+        const docRef = await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
           ...address,
           default: addresses.length === 0,
         });
@@ -67,10 +67,10 @@ const Profile = () => {
       }
     },
     deleteAddress: async (userId, addressId) => {
-      await deleteDoc(doc(db, `users/${userId}/addresses/${addressId}`));
+      await deleteDoc(doc(db, `usersrestau/${userId}/addresses/${addressId}`));
     },
     setDefaultAddress: async (userId, addressId) => {
-      const addressesRef = collection(db, `users/${userId}/addresses`);
+      const addressesRef = collection(db, `usersrestau/${userId}/addresses`);
       const snapshot = await getDocs(addressesRef);
       snapshot.forEach(async (doc) => {
         await updateDoc(doc.ref, { default: doc.id === addressId });
@@ -89,7 +89,7 @@ const Profile = () => {
   };
 
   // Récupérer les données utilisateur, adresses, points et commandes
-  const fetchUserData = useCallback(async (uid, currentUserEmail) => {
+  const fetchUserData = useCallback(async (uid, currentUserEmail = '', isGuestUser = false) => {
     try {
       setLoading(true);
       const userDocRef = doc(db, 'usersrestau', uid);
@@ -106,6 +106,7 @@ const Profile = () => {
           phone: '',
           points: 0,
           createdAt: new Date().toISOString(),
+          isGuest: isGuestUser,
         });
         setFormData({
           firstName: '',
@@ -114,6 +115,7 @@ const Profile = () => {
           phone: '',
         });
         setUserPoints(0);
+        setIsGuest(isGuestUser);
       } else {
         const userData = userDoc.data();
         console.log('Profile: userData =', userData);
@@ -125,6 +127,7 @@ const Profile = () => {
         });
         const points = typeof userData.points === 'number' ? userData.points : 0;
         setUserPoints(points);
+        setIsGuest(!!userData.isGuest);
         console.log('Profile: userPoints =', points);
       }
 
@@ -170,17 +173,73 @@ const Profile = () => {
     }
   }, []);
 
-  // Vérifier l'état d'authentification
+  // Vérifier l'état d'authentification ou utilisateur invité
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        await fetchUserData(currentUser.uid, currentUser.email);
-      } else {
-        navigate('/login');
-      }
-    });
-    return () => unsubscribe();
+    const checkUser = async () => {
+      // Vérifier d'abord l'utilisateur Firebase
+      const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+          // Utilisateur authentifié via Firebase
+          setUser(currentUser);
+          await fetchUserData(currentUser.uid, currentUser.email, false);
+        } else {
+          // Aucun utilisateur Firebase, vérifier utilisateur invité
+          const guestUserId = localStorage.getItem('guestUserId');
+          const guestPhone = localStorage.getItem('guestPhone');
+
+          if (guestUserId || guestPhone) {
+            try {
+              setLoading(true);
+              let guestDocRef;
+              let guestDoc;
+
+              if (guestUserId && guestUserId.startsWith('guest-')) {
+                // Rechercher par UID
+                guestDocRef = doc(db, 'usersrestau', guestUserId);
+                guestDoc = await getDoc(guestDocRef);
+              } else if (guestPhone) {
+                // Rechercher par numéro de téléphone
+                const usersQuery = query(
+                  collection(db, 'usersrestau'),
+                  where('phone', '==', guestPhone),
+                  where('isGuest', '==', true)
+                );
+                const querySnapshot = await getDocs(usersQuery);
+                guestDoc = querySnapshot.docs[0];
+                guestDocRef = guestDoc?.ref;
+              }
+
+              if (guestDoc?.exists()) {
+                const guestData = guestDoc.data();
+                console.log('Profile: Utilisateur invité trouvé =', guestData);
+                setUser({
+                  uid: guestDoc.id,
+                  email: guestData.email || '',
+                  phone: guestData.phone || '',
+                });
+                await fetchUserData(guestDoc.id, guestData.email || '', true);
+              } else {
+                console.log('Profile: Aucun utilisateur invité trouvé');
+                navigate('/login');
+              }
+            } catch (err) {
+              console.error('Erreur lors de la vérification de l’utilisateur invité:', err);
+              setError('Erreur lors de la vérification de l’utilisateur invité');
+              navigate('/login');
+            } finally {
+              setLoading(false);
+            }
+          } else {
+            // Aucun utilisateur (ni Firebase ni invité)
+            navigate('/login');
+          }
+        }
+      });
+
+      return () => unsubscribe();
+    };
+
+    checkUser();
   }, [navigate, fetchUserData]);
 
   // Gestion des changements de formulaire utilisateur
@@ -291,12 +350,13 @@ const Profile = () => {
     if (!user) return;
     setLoading(true);
     try {
-      const userDocRef = doc(db, 'users', user.uid);
+      const userDocRef = doc(db, 'usersrestau', user.uid);
       await updateDoc(userDocRef, {
         firstName: formData.firstName,
         lastName: formData.lastName,
         phone: formData.phone,
         updatedAt: new Date().toISOString(),
+        isGuest: isGuest, // Conserver le statut d'invité
       });
       setSuccessMessage('Profil mis à jour avec succès !');
       setEditMode(false);
@@ -308,11 +368,19 @@ const Profile = () => {
     }
   };
 
-  // Déconnexion
+  // Déconnexion (pour utilisateurs Firebase ou invités)
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
-      navigate('/login');
+      if (isGuest) {
+        // Pour les invités, nettoyer localStorage
+        localStorage.removeItem('guestUserId');
+        localStorage.removeItem('guestPhone');
+        navigate('/login');
+      } else {
+        // Pour les utilisateurs Firebase, déconnexion classique
+        await signOut(auth);
+        navigate('/login');
+      }
     } catch (err) {
       setError('Erreur lors de la déconnexion');
     }
@@ -375,22 +443,34 @@ const Profile = () => {
       </header>
 
       {/* Photo de profil et nom */}
-      <div className="bg-white py-6 text-center border-b">
-        <div className="relative inline-block">
-          <img
-            src={user?.photoURL || 'https://via.placeholder.com/100'}
-            alt="Profil"
-            className="w-24 h-24 rounded-full border-2 border-green-600 object-cover"
-          />
-          {editMode && (
-            <button className="absolute bottom-0 right-0 bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center">
-              <i className="fas fa-camera"></i>
-            </button>
-          )}
-        </div>
-        <h5 className="mt-3 text-xl font-bold">{formData.firstName} {formData.lastName}</h5>
-        <p className="text-sm text-gray-500">{formData.email}</p>
+{/* Photo de profil et nom */}
+<div className="bg-white py-6 text-center border-b">
+  <div className="relative inline-block">
+    {user?.photoURL ? (
+      <img
+        src={user.photoURL}
+        alt="Profil"
+        className="w-24 h-24 rounded-full border-2 border-green-600 object-cover"
+      />
+    ) : (
+      <div className="w-24 h-24 rounded-full border-2 border-green-600 bg-gray-200 flex items-center justify-center">
+        <i className="fas fa-user text-4xl text-gray-500"></i>
       </div>
+    )}
+    {editMode && !isGuest && (
+      <button className="absolute bottom-0 right-0 bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center">
+        <i className="fas fa-camera"></i>
+      </button>
+    )}
+  </div>
+  <h5 className="mt-3 text-xl font-bold">{formData.firstName} {formData.lastName}</h5>
+  <p className="text-sm text-gray-500">{formData.email || formData.phone || 'Invité'}</p>
+  {isGuest && (
+    <p className="text-xs text-gray-500 mt-1">
+      Compte simple - <Link to="/logins" className="text-green-600 hover:underline">Créer un compte complet</Link>
+    </p>
+  )}
+</div>
 
       {/* Contenu principal avec onglets */}
       <div className="container mx-auto px-4 mt-4">
@@ -718,7 +798,7 @@ const Profile = () => {
           onClick={handleSignOut}
           className="w-full py-2 border border-red-600 text-red-600 rounded-lg hover:bg-red-50 transition mt-4"
         >
-          <i className="fas fa-sign-out-alt mr-2"></i> Déconnexion
+          <i className="fas fa-sign-out-alt mr-2"></i> {isGuest ? 'Quitter le mode invité' : 'Déconnexion'}
         </button>
       </div>
 
@@ -869,9 +949,8 @@ const Profile = () => {
           </div>
         </div>
       )}
-
       {/* Footer */}
-      <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
+      <footer className="fixed bottom-0 w-full bg-white border-t bg-gray-100 border-t z-40 shadow-lg">
         <div className="grid grid-cols-4">
           <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
             <i className="fas fa-home text-lg"></i>
@@ -879,7 +958,7 @@ const Profile = () => {
           </Link>
           <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors">
             <i className="fas fa-shopping-cart text-lg"></i>
-            {cartItems.length > 0 && (
+            {cartItems?.length > 0 && (
               <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full">
                 {cartItems.length}
               </span>
