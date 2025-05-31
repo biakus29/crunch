@@ -71,6 +71,7 @@ const InputField = ({ label, name, value, onChange, error, placeholder, required
 // Composant principal
 const OrderAddress = ({ cartItems, cartTotal }) => {
   const [user, setUser] = useState(null);
+  const [guestId, setGuestId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [addresses, setAddresses] = useState([]);
@@ -116,6 +117,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   // Actions Firestore
   const firestoreActions = useMemo(() => ({
     saveGuestUser: async (data) => {
+      const guestId = `guest-${data.phone}`;
       const guestUsersRef = doc(db, "guestUsers", "group1");
       const docSnap = await getDoc(guestUsersRef);
       const newGuestUser = {
@@ -131,36 +133,155 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         },
         createdAt: new Date(),
       };
+
       if (docSnap.exists()) {
         await updateDoc(guestUsersRef, { users: arrayUnion(newGuestUser) });
       } else {
         await setDoc(guestUsersRef, { users: [newGuestUser] });
       }
+
+      const userRef = doc(db, "usersrestau", guestId);
+      await setDoc(userRef, {
+        createdAt: new Date(),
+        email: "",
+        firstName: data.name,
+        isGuest: true,
+        phone: data.phone,
+        uid: guestId,
+      }, { merge: true });
+
+      await addDoc(collection(db, `usersrestau/${guestId}/addresses`), {
+        area: data.area,
+        city: data.city,
+        completeAddress: data.completeAddress,
+        default: true,
+        instructions: data.instructions || "",
+        nickname: data.nickname,
+        phone: `237${data.phone}`,
+      });
+
+      await addDoc(collection(db, `usersRestau/${guestId}/addresses`), {
+        area: data.area,
+        city: data.city,
+        completeAddress: data.completeAddress,
+        default: true,
+        instructions: data.instructions || "",
+        nickname: data.nickname,
+        phone: `237${data.phone}`,
+      });
+
+      localStorage.setItem("guestUid", guestId);
     },
     loadAddresses: async (userId) => {
-      const snapshot = await getDocs(collection(db, `usersrestau/${userId}/addresses`));
-      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      try {
+        const usersrestauSnapshot = await getDocs(collection(db, `usersrestau/${userId}/addresses`));
+        const usersrestauAddresses = usersrestauSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          source: "usersrestau",
+        }));
+
+        const usersRestauSnapshot = await getDocs(collection(db, `usersRestau/${userId}/addresses`));
+        const usersRestauAddresses = usersRestauSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          source: "usersRestau",
+        }));
+
+        const combinedAddresses = [];
+        const addressIds = new Set();
+
+        usersrestauAddresses.forEach((addr) => {
+          combinedAddresses.push(addr);
+          addressIds.add(addr.id);
+        });
+
+        usersRestauAddresses.forEach((addr) => {
+          if (!addressIds.has(addr.id)) {
+            combinedAddresses.push(addr);
+            addressIds.add(addr.id);
+          }
+        });
+
+        return combinedAddresses;
+      } catch (error) {
+        console.error("Erreur lors de la récupération des adresses :", error);
+        return [];
+      }
     },
     saveAddress: async (userId, address, isEdit = false) => {
-      if (isEdit) {
-        await updateDoc(doc(db, `usersrestau/${userId}/addresses/${address.id}`), address);
-      } else {
-        const docRef = await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
-          ...address,
-          default: true,
-        });
-        return docRef.id;
+      try {
+        if (isEdit) {
+          await updateDoc(doc(db, `usersrestau/${userId}/addresses/${address.id}`), {
+            area: address.area,
+            city: address.city,
+            completeAddress: address.completeAddress,
+            default: address.default || false,
+            instructions: address.instructions || "",
+            nickname: address.nickname,
+            phone: address.phone,
+          });
+          await updateDoc(doc(db, `usersRestau/${userId}/addresses/${address.id}`), {
+            area: address.area,
+            city: address.city,
+            completeAddress: address.completeAddress,
+            default: address.default || false,
+            instructions: address.instructions || "",
+            nickname: address.nickname,
+            phone: address.phone,
+          });
+        } else {
+          const docRef = await addDoc(collection(db, `usersrestau/${userId}/addresses`), {
+            area: address.area,
+            city: address.city,
+            completeAddress: address.completeAddress,
+            default: true,
+            instructions: address.instructions || "",
+            nickname: address.nickname,
+            phone: address.phone,
+          });
+          await addDoc(collection(db, `usersRestau/${userId}/addresses`), {
+            area: address.area,
+            city: address.city,
+            completeAddress: address.completeAddress,
+            default: true,
+            instructions: address.instructions || "",
+            nickname: address.nickname,
+            phone: address.phone,
+          });
+          return docRef.id;
+        }
+      } catch (error) {
+        console.error("Erreur lors de l'enregistrement de l'adresse :", error);
+        throw error;
       }
     },
     deleteAddress: async (userId, addressId) => {
-      await deleteDoc(doc(db, `usersrestau/${userId}/addresses/${addressId}`));
+      try {
+        await deleteDoc(doc(db, `usersrestau/${userId}/addresses/${addressId}`));
+        await deleteDoc(doc(db, `usersRestau/${userId}/addresses/${addressId}`));
+      } catch (error) {
+        console.error("Erreur lors de la suppression de l'adresse :", error);
+        throw error;
+      }
     },
     setDefaultAddress: async (userId, addressId) => {
-      const addressesRef = collection(db, `usersrestau/${userId}/addresses`);
-      const snapshot = await getDocs(addressesRef);
-      snapshot.forEach(async (doc) => {
-        await updateDoc(doc.ref, { default: doc.id === addressId });
-      });
+      try {
+        const usersrestauAddressesRef = collection(db, `usersrestau/${userId}/addresses`);
+        const usersrestauSnapshot = await getDocs(usersrestauAddressesRef);
+        usersrestauSnapshot.forEach(async (doc) => {
+          await updateDoc(doc.ref, { default: doc.id === addressId });
+        });
+
+        const usersRestauAddressesRef = collection(db, `usersRestau/${userId}/addresses`);
+        const usersRestauSnapshot = await getDocs(usersRestauAddressesRef);
+        usersRestauSnapshot.forEach(async (doc) => {
+          await updateDoc(doc.ref, { default: doc.id === addressId });
+        });
+      } catch (error) {
+        console.error("Erreur lors de la définition de l'adresse par défaut :", error);
+        throw error;
+      }
     },
   }), []);
 
@@ -182,10 +303,27 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           });
         }
         const loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
-        setAddresses(loadedAddresses);
+        setAddresses(loadedAddresses || []);
         const defaultAddress = loadedAddresses.find((addr) => addr.default);
         if (defaultAddress) setSelectedAddress(defaultAddress.id);
       } else {
+        const storedGuestId = localStorage.getItem("guestUid");
+        const storedGuestPhone = localStorage.getItem("guestPhone");
+        if (storedGuestId || storedGuestPhone) {
+          const guestId = storedGuestId || `guest-${storedGuestPhone}`;
+          setGuestId(guestId);
+          const loadedAddresses = await firestoreActions.loadAddresses(guestId);
+          setAddresses(loadedAddresses || []);
+          const defaultAddress = loadedAddresses.find((addr) => addr.default);
+          if (defaultAddress) setSelectedAddress(defaultAddress.id);
+          if (storedGuestPhone) {
+            setData((prev) => ({
+              ...prev,
+              phone: storedGuestPhone,
+              name: prev.name || "",
+            }));
+          }
+        }
         setUser(null);
       }
       setLoading(false);
@@ -264,7 +402,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       setUser(currentUser);
 
       let loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
-      setAddresses(loadedAddresses);
+      setAddresses(loadedAddresses || []);
 
       if (loadedAddresses.length === 0) {
         const newAddressId = await firestoreActions.saveAddress(currentUser.uid, {
@@ -276,7 +414,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           phone: data.phone,
         });
         loadedAddresses = await firestoreActions.loadAddresses(currentUser.uid);
-        setAddresses(loadedAddresses);
+        setAddresses(loadedAddresses || []);
         setSelectedAddress(newAddressId);
       } else {
         const defaultAddress = loadedAddresses.find((addr) => addr.default);
@@ -302,26 +440,29 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     }
     setSubmitState((prev) => ({ ...prev, addressSubmitLoading: true }));
     try {
-      if (user) {
+      const userId = user ? user.uid : guestId;
+      if (userId) {
         await firestoreActions.saveAddress(
-          user.uid,
+          userId,
           {
             nickname: data.nickname,
             city: data.city,
             area: data.area,
             completeAddress: data.completeAddress,
             instructions: data.instructions,
-            phone: data.phone,
+            phone: `237${data.phone}`,
             ...(editingAddress ? { id: editingAddress.id } : {}),
           },
           !!editingAddress
         );
-        const updatedAddresses = await firestoreActions.loadAddresses(user.uid);
-        setAddresses(updatedAddresses);
+        const updatedAddresses = await firestoreActions.loadAddresses(userId);
+        setAddresses(updatedAddresses || []);
         if (!selectedAddress && updatedAddresses.length === 1) {
           setSelectedAddress(updatedAddresses[0].id);
         }
         setShowModal(false);
+      } else {
+        setActionError("Aucun utilisateur ou invité détecté. Veuillez réessayer.");
       }
     } catch (error) {
       setActionError("Erreur lors de l'enregistrement de l'adresse.");
@@ -334,10 +475,15 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const handleDeleteAddress = async (addressId) => {
     if (window.confirm("Voulez-vous vraiment supprimer cette adresse ?")) {
       try {
-        await firestoreActions.deleteAddress(user.uid, addressId);
-        const updatedAddresses = addresses.filter((a) => a.id !== addressId);
-        setAddresses(updatedAddresses);
-        if (selectedAddress === addressId) setSelectedAddress("");
+        const userId = user ? user.uid : guestId;
+        if (userId) {
+          await firestoreActions.deleteAddress(userId, addressId);
+          const updatedAddresses = addresses.filter((a) => a.id !== addressId);
+          setAddresses(updatedAddresses || []);
+          if (selectedAddress === addressId) setSelectedAddress("");
+        } else {
+          setActionError("Aucun utilisateur ou invité détecté.");
+        }
       } catch (error) {
         setActionError("Erreur lors de la suppression.");
       }
@@ -353,7 +499,8 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       area: address.area,
       completeAddress: address.completeAddress,
       instructions: address.instructions || "",
-      phone: address.phone || "",
+      phone: address.phone.replace(/^237/, ""),
+      name: data.name,
     });
     setShowModal(true);
   };
@@ -366,8 +513,8 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
       area: "",
       completeAddress: "",
       instructions: "",
-      phone: "",
-      name: "",
+      phone: user ? "" : data.phone,
+      name: user ? "" : data.name,
     });
     setErrors({});
     setEditingAddress(null);
@@ -404,10 +551,10 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
             area: data.area,
             completeAddress: data.completeAddress,
             instructions: data.instructions,
-            phone: data.phone,
+            phone: `237${data.phone}`,
           });
           const updatedAddresses = await firestoreActions.loadAddresses(user.uid);
-          setAddresses(updatedAddresses);
+          setAddresses(updatedAddresses || []);
           setSelectedAddress(newAddressId);
           addressToUse = updatedAddresses.find((addr) => addr.id === newAddressId);
         } else if (!selectedAddress) {
@@ -446,17 +593,37 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         };
         await firestoreActions.setDefaultAddress(user.uid, addressToUse.id);
       } else {
-        const validationErrors = validateData(data, false);
-        if (Object.keys(validationErrors).length > 0) {
-          setErrors(validationErrors);
+        let addressToUse;
+        if (addresses.length === 0) {
+          const validationErrors = validateData(data, false);
+          if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
+            setSubmitState((prev) => ({ ...prev, continueLoading: false }));
+            return;
+          }
+          await firestoreActions.saveGuestUser({
+            ...data,
+            phone: data.phone,
+          });
+          const updatedAddresses = await firestoreActions.loadAddresses(`guest-${data.phone}`);
+          setAddresses(updatedAddresses || []);
+          setGuestId(`guest-${data.phone}`);
+          addressToUse = updatedAddresses.find((addr) => addr.default);
+          setSelectedAddress(addressToUse?.id);
+        } else if (!selectedAddress) {
+          setActionError("Veuillez sélectionner une adresse.");
           setSubmitState((prev) => ({ ...prev, continueLoading: false }));
           return;
+        } else {
+          addressToUse = addresses.find((a) => a.id === selectedAddress);
         }
+
         if (!selectedPayment) {
           setActionError("Veuillez sélectionner une méthode de paiement.");
           setSubmitState((prev) => ({ ...prev, continueLoading: false }));
           return;
         }
+
         const guestId = `guest-${data.phone}`;
         const guestRecord = {
           uid: guestId,
@@ -468,11 +635,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         };
         await setDoc(doc(db, "usersrestau", guestId), guestRecord);
 
-        await firestoreActions.saveGuestUser({
-          ...data,
-          guestId,
-        });
-
         localStorage.setItem("guestUid", guestId);
         localStorage.setItem("guestPhone", data.phone);
 
@@ -480,14 +642,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         orderData = {
           guestId,
           contact: contactInfo,
-          address: {
-            nickname: data.nickname,
-            city: data.city,
-            area: data.area,
-            completeAddress: data.completeAddress,
-            instructions: data.instructions,
-            phone: data.phone,
-          },
+          address: addressToUse,
           paymentMethod: {
             ...paymentMethods.find((p) => p.id === selectedPayment),
             phone: selectedPayment === "payment_mobile" ? mobilePaymentPhone : null,
@@ -500,12 +655,15 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           total: cartTotal + deliveryFee,
         };
         navState = {
-          selectedAddress: orderData.address,
+          selectedAddress: addressToUse,
           selectedPayment: orderData.paymentMethod,
           contact: contactInfo,
           orderId: null,
           deliveryFee,
         };
+        if (addressToUse.id) {
+          await firestoreActions.setDefaultAddress(guestId, addressToUse.id);
+        }
       }
 
       const orderRef = await addDoc(collection(db, "orders"), orderData);
@@ -522,43 +680,41 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header user={user} onAddAddress={() => setShowModal(true)} />
-
+      <Header user={user} onAddAddress={() => setShowModal(true)} addresses={addresses} />
       {actionError && (
         <div className="p-3">
           <div className="bg-red-100 text-red-700 p-2 rounded">{actionError}</div>
         </div>
       )}
 
-      {user && addresses.length === 0 ? (
-        <>
-          <AddressForm
-            data={data}
-            onChange={handleInputChange}
-            errors={errors}
-            quartiers={quartiersList}
-            filteredQuartiers={filteredQuartiers}
-            onQuartierSelect={handleQuartierSelect}
-            showPhone={true}
-          />
-          {deliveryFee > 0 && (
-            <div className="p-3 mx-3 text-gray-700">
-              Frais de livraison : {deliveryFee} FCFA
-            </div>
-          )}
-        </>
-      ) : !user ? (
+      {addresses.length > 0 ? (
+        <AddressList
+          addresses={addresses}
+          selectedAddress={selectedAddress}
+          onSelect={(addressId) => {
+            setSelectedAddress(addressId);
+            const userId = user ? user.uid : guestId;
+            if (userId) {
+              firestoreActions.setDefaultAddress(userId, addressId);
+            }
+          }}
+          onEdit={handleEditAddress}
+          onDelete={handleDeleteAddress}
+        />
+      ) : (
         <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mt-3 mx-3">
-          <h2 className="text-xl font-bold mb-3">Vos coordonnées</h2>
-          <InputField
-            label="Nom"
-            name="name"
-            value={data.name}
-            onChange={handleInputChange}
-            error={errors.name}
-            placeholder="Votre nom"
-            required
-          />
+          <h2 className="text-xl font-bold mb-3">{user ? "Nouvelle adresse" : "Vos coordonnées"}</h2>
+          {!user && (
+            <InputField
+              label="Nom"
+              name="name"
+              value={data.name}
+              onChange={handleInputChange}
+              error={errors.name}
+              placeholder="Votre nom"
+              required
+            />
+          )}
           <AddressForm
             data={data}
             onChange={handleInputChange}
@@ -574,19 +730,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
             </div>
           )}
         </section>
-      ) : (
-        <AddressList
-          addresses={addresses}
-          selectedAddress={selectedAddress}
-          onSelect={(addressId) => {
-            setSelectedAddress(addressId);
-            if (user) {
-              firestoreActions.setDefaultAddress(user.uid, addressId);
-            }
-          }}
-          onEdit={handleEditAddress}
-          onDelete={handleDeleteAddress}
-        />
       )}
 
       <PaymentMethods
@@ -646,7 +789,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         )}
       </div>
 
-      {user && addresses.length > 0 && showModal && (
+      {showModal && (
         <AddressModal
           data={data}
           onChange={handleInputChange}
@@ -677,13 +820,13 @@ const LoadingSpinner = () => (
 
 const Spinner = () => <i className="fa-solid fa-spinner animate-spin mr-2"></i>;
 
-const Header = ({ user, onAddAddress }) => (
+const Header = ({ user, onAddAddress, addresses = [] }) => (
   <div className="bg-white p-3 border-b flex items-center">
     <Link to="/cart" className="text-green-600 font-bold">
       <i className="fa-solid fa-arrow-left"></i>
     </Link>
-    <h5 className="font-bold mx-3">{user ? "Sélectionnez une adresse" : "Vos coordonnées et adresse"}</h5>
-    {user && (
+    <h5 className="font-bold mx-3">{user || addresses.length > 0 ? "Sélectionnez une adresse" : "Vos coordonnées et adresse"}</h5>
+    {(user || addresses.length > 0) && (
       <button onClick={onAddAddress} className="ml-auto bg-green-600 text-white px-3 py-1 rounded text-sm">
         Nouvelle adresse
       </button>
@@ -694,7 +837,7 @@ const Header = ({ user, onAddAddress }) => (
 const AddressList = ({ addresses, selectedAddress, onSelect, onEdit, onDelete }) => (
   <div className="p-3">
     {addresses.map((address) => (
-      <div key={address.id} className="bg-white rounded-lg shadow-sm p-3 mb-3 flex items-start">
+      <div key={`${address.source}-${address.id}`} className="bg-white rounded-lg shadow-sm p-3 mb-3 flex items-start">
         <input
           type="radio"
           checked={selectedAddress === address.id}

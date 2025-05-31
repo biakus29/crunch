@@ -950,28 +950,23 @@ const Profile = () => {
         </div>
       )}
       {/* Footer */}
-      <footer className="fixed bottom-0 w-full bg-white border-t bg-gray-100 border-t z-40 shadow-lg">
+      <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
         <div className="grid grid-cols-4">
-          <Link to="/" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-            <i className="fas fa-home text-lg"></i>
-            <span className="block text-xs mt-1">Accueil</span>
+          <Link to="/accueil" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-home text-lg"></i><span className="block text-xs mt-1">Accueil</span>
           </Link>
-          <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors">
+          <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
             <i className="fas fa-shopping-cart text-lg"></i>
-            {cartItems?.length > 0 && (
-              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full">
-                {cartItems.length}
-              </span>
+            {cartItems.length > 0 && (
+              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full animate-pulse">{cartItems.length}</span>
             )}
             <span className="block text-xs mt-1">Panier</span>
           </Link>
-          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-            <i className="fas fa-shopping-bag text-lg"></i>
-            <span className="block text-xs mt-1">Commandes</span>
+          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-shopping-bag text-lg"></i><span className="block text-xs mt-1">Commandes</span>
           </Link>
-          <Link to="/profile" className="text-green-600 p-2 transition-colors">
-            <i className="fas fa-user text-lg"></i>
-            <span className="block text-xs mt-1">Compte</span>
+          <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+            <i className="fas fa-user text-lg"></i><span className="block text-xs mt-1">Compte</span>
           </Link>
         </div>
       </footer>

@@ -15,6 +15,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 
+// Constants
 const DEFAULT_DELIVERY_FEE = 1000;
 const LOYALTY_THRESHOLD = 5000;
 const FIRST_RATE = 0.10;
@@ -46,13 +47,22 @@ const OrderSummary = () => {
     deliveryFee: passedDeliveryFee = 0,
   } = location.state || {};
 
+  // Validate location.state
+  useEffect(() => {
+    if (!location.state) {
+      setError("Données de commande manquantes. Redirection vers le panier...");
+      const timer = setTimeout(() => navigate("/cart"), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state, navigate]);
+
   // Monitor network status
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener("online", handleOnline);
-    window.removeEventListener("offline", handleOffline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
       window.removeEventListener("online", handleOnline);
@@ -76,8 +86,8 @@ const OrderSummary = () => {
         console.error("Error fetching data:", err);
         setError(
           err.code === "unavailable"
-            ? "You are offline. Data will load when connected."
-            : "Failed to load necessary data."
+            ? "Vous êtes hors ligne. Les données se chargeront lors de la reconnexion."
+            : "Échec du chargement des données nécessaires."
         );
       } finally {
         setDataLoading(false);
@@ -86,20 +96,13 @@ const OrderSummary = () => {
     fetchData();
   }, []);
 
-  // Load user points and eligible orders
+  // Load user points and eligible orders for authenticated users
   useEffect(() => {
-    if (isGuest) {
-      setUserPoints(0);
-      setEligibleCount(0);
-      setDataLoading(false);
-      return;
-    }
-
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (!currentUser) {
         setUserPoints(0);
         setEligibleCount(0);
-        setError("You must be logged in to use loyalty points.");
+        // setError("Vous devez être connecté pour utiliser les points de fidélité.");
         setDataLoading(false);
         return;
       }
@@ -137,10 +140,10 @@ const OrderSummary = () => {
         console.error("Error loading user data:", err);
         setError(
           err.code === "unavailable"
-            ? "You are offline. Points will load when connected."
+            ? "Vous êtes hors ligne. Les points se chargeront lors de la reconnexion."
             : err.code === "failed-precondition" && err.message.includes("index")
-            ? "Database configuration required. Please contact support."
-            : "Error loading points."
+            ? "Configuration de la base de données requise. Veuillez contacter le support."
+            : "Erreur lors du chargement des points."
         );
         setUserPoints(0);
         setEligibleCount(0);
@@ -150,7 +153,7 @@ const OrderSummary = () => {
     });
 
     return () => unsubscribe();
-  }, [isGuest]);
+  }, []);
 
   // Normalize address and payment
   const normalizedAddress = useMemo(
@@ -165,7 +168,7 @@ const OrderSummary = () => {
   // Redirect if cart is empty
   useEffect(() => {
     if (!cartItems || cartItems.length === 0) {
-      setError("Your cart is empty. Redirecting to home...");
+      setError("Votre panier est vide. Redirection vers l'accueil...");
       const timer = setTimeout(() => navigate("/"), 2000);
       return () => clearTimeout(timer);
     }
@@ -175,7 +178,7 @@ const OrderSummary = () => {
   useEffect(() => {
     if (!normalizedAddress?.area || !normalizedPayment?.name) {
       setMissingData(true);
-      setError("Missing address or payment information. Redirecting to cart...");
+      setError("Informations d'adresse ou de paiement manquantes. Redirection vers le panier...");
       const timer = setTimeout(() => navigate("/cart"), 2000);
       return () => clearTimeout(timer);
     }
@@ -217,10 +220,11 @@ const OrderSummary = () => {
   // Get extra names for display
   const getExtraName = (extraListId, index) => {
     const extraList = extraLists.find((el) => el.id === extraListId);
-    const element = extraList?.extraListElements?.[index];
-    return element
-      ? `${element.name}${element.price ? ` (+${convertPrice(element.price).toLocaleString()} Fcfa)` : ""}`
-      : "Unknown extra";
+    if (!extraList || !extraList.extraListElements || !extraList.extraListElements[index]) {
+      return "Extra inconnu";
+    }
+    const element = extraList.extraListElements[index];
+    return `${element.name}${element.price ? ` (+${formatPrice(convertPrice(element.price))} Fcfa)` : ""}`;
   };
 
   // Calculate delivery fee
@@ -281,11 +285,11 @@ const OrderSummary = () => {
   // Handle order confirmation
   const handleConfirmOrder = useCallback(async () => {
     if (!isValidOrder()) {
-      setError("Invalid order data.");
+      setError("Données de commande invalides.");
       return;
     }
     if (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
-      setError("You are offline. Mobile payments require an internet connection.");
+      setError("Vous êtes hors ligne. Les paiements mobiles nécessitent une connexion Internet.");
       return;
     }
     setLoading(true);
@@ -299,39 +303,37 @@ const OrderSummary = () => {
       let paymentData = null;
       if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
         if (!isOnline) {
-          throw new Error("Internet connection required for mobile payment.");
+          throw new Error("Connexion Internet requise pour le paiement mobile.");
         }
 
-        // Initialize payment with backend
-     const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
-    const response = await fetch(`${API_URL}/api/payment/init`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount: finalTotal,
-        currency: "XOF",
-        order_id: `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
-        customer_phone: normalizedAddress?.phone || contact?.phone || "",
-        description: `Order: ${orderLabel}`,
-        success_url: `${window.location.origin}/payment/success`,
-        failure_url: `${window.location.origin}/payment/failure`,
-      }),
-    });
+        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
+        const response = await fetch(`${API_URL}/api/payment/init`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: finalTotal,
+            currency: "XOF",
+            order_id: `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
+            customer_phone: normalizedAddress?.phone || contact?.phone || "",
+            description: `Commande : ${orderLabel}`,
+            success_url: `${window.location.origin}/payment/success`,
+            failure_url: `${window.location.origin}/payment/failure`,
+          }),
+        });
 
         if (!response.ok) {
-          throw new Error("Failed to initialize payment.");
+          throw new Error("Échec de l'initialisation du paiement.");
         }
 
         const paymentResponse = await response.json();
 
         if (!paymentResponse.success || !paymentResponse.paymentUrl) {
-          throw new Error(paymentResponse.message || "Error initializing payment.");
+          throw new Error(paymentResponse.message || "Erreur lors de l'initialisation du paiement.");
         }
 
-        // Store temporary order data
         const tempOrderData = {
           userId: uid,
           items: cartItems.map((i) => ({
@@ -340,29 +342,27 @@ const OrderSummary = () => {
             price: convertPrice(i.price),
             selectedExtras: i.selectedExtras || null,
           })),
-             address: normalizedAddress,
-        paymentMethod: normalizedPayment,
-        total: finalTotal,
-        deliveryFee,
-        pointsUsed: pointsToUse, // Explicit marker for admin
-        pointsReduction,
-        loyaltyPoints,
-        loyaltyEligible: total >= LOYALTY_THRESHOLD,
-        status: normalizedPayment?.id === "payment_mobile" && paymentData?.transactionId ? "pending" : "en_attente",
-        isPaid: normalizedPayment?.id === "cash_delivery" ? false : !paymentData?.transactionId,
-        timestamp: Timestamp.now(),
-        isGuest: !!isGuest,
-        label: orderLabel,
-        paymentRef: paymentData?.transactionId || null,
+          address: normalizedAddress,
+          paymentMethod: normalizedPayment,
+          total: finalTotal,
+          deliveryFee,
+          pointsUsed: pointsToUse,
+          pointsReduction,
+          loyaltyPoints,
+          loyaltyEligible: total >= LOYALTY_THRESHOLD,
+          status: normalizedPayment?.id === "payment_mobile" && paymentData?.transactionId ? "pending" : "en_attente",
+          isPaid: normalizedPayment?.id === "cash_delivery" ? false : !paymentData?.transactionId,
+          timestamp: Timestamp.now(),
+          isGuest: !!isGuest,
+          label: orderLabel,
+          paymentRef: paymentData?.transactionId || null,
         };
         localStorage.setItem("tempOrderData", JSON.stringify(tempOrderData));
 
-        // Redirect to payment URL
         window.location.href = paymentResponse.paymentUrl;
         return;
       }
 
-      // Handle non-mobile payment (e.g., cash on delivery)
       const orderRef = await addDoc(collection(db, "orders"), {
         userId: uid,
         items: cartItems.map((i) => ({
@@ -375,7 +375,7 @@ const OrderSummary = () => {
         paymentMethod: normalizedPayment,
         total: finalTotal,
         deliveryFee,
-        pointsUsed: pointsToUse, // Explicit marker for admin
+        pointsUsed: pointsToUse,
         pointsReduction,
         loyaltyPoints,
         loyaltyEligible: total >= LOYALTY_THRESHOLD,
@@ -387,34 +387,31 @@ const OrderSummary = () => {
         paymentRef: paymentData?.transactionId || null,
       });
 
-      // Update user points if not a guest
-      if (!isGuest && pointsToUse > 0) {
+      if (auth.currentUser && pointsToUse > 0) {
         await updateDoc(doc(db, "usersrestau", uid), {
           points: userPoints - pointsToUse,
         });
       }
 
-      // Record points transaction
-      if (!isGuest && loyaltyPoints > 0) {
+      if (auth.currentUser && loyaltyPoints > 0) {
         await addDoc(collection(db, "pointsTransactions"), {
           userId: uid,
           orderId: orderRef.id,
           pointsAmount: loyaltyPoints,
           status: "pending",
           timestamp: Timestamp.now(),
-          message: `Points earned for order #${orderRef.id.slice(0, 6)}`,
+          message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
           type: "points_grant",
         });
       }
 
-      // Clear cart and redirect
       clearCart();
       navigate("/complete_order", {
         state: { orderId: orderRef.id, isGuest, paymentStatus: "pending" },
       });
     } catch (err) {
       console.error("Error submitting order:", err);
-      setError(err.message || "Error submitting order. Please try again.");
+      setError(err.message || "Erreur lors de la soumission de la commande. Veuillez réessayer.");
     } finally {
       setLoading(false);
     }
@@ -437,102 +434,97 @@ const OrderSummary = () => {
   ]);
 
   // Check payment return on mount
- useEffect(() => {
-  const checkPaymentReturn = async () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment_status');
-    const transactionId = urlParams.get('transaction_id');
-    const orderId = urlParams.get('order_id');
+  useEffect(() => {
+    const checkPaymentReturn = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentStatus = urlParams.get("payment_status");
+      const transactionId = urlParams.get("transaction_id");
+      const orderId = urlParams.get("order_id");
 
-    if (!paymentStatus || !transactionId || !orderId) return;
+      if (!paymentStatus || !transactionId || !orderId) return;
 
-    try {
-      setLoading(true);
-      const tempOrderData = JSON.parse(localStorage.getItem('tempOrderData'));
+      try {
+        setLoading(true);
+        const tempOrderData = JSON.parse(localStorage.getItem("tempOrderData"));
 
-      if (!tempOrderData) {
-        throw new Error('Order data not found.');
-      }
+        if (!tempOrderData) {
+          throw new Error("Données de la commande non trouvées. Veuillez réessayer.");
+        }
 
-      // Vérifier le statut du paiement avec le backend
-      const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
-      const response = await fetch(`${API_URL}/api/payment/status?transaction_id=${transactionId}`);
-      if (!response.ok) {
-        throw new Error('Failed to verify payment status.');
-      }
+        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
+        const response = await fetch(`${API_URL}/api/payment/status?transaction_id=${transactionId}`);
+        if (!response.ok) {
+          throw new Error("Échec de la vérification du statut du paiement. Veuillez réessayer.");
+        }
 
-      const statusData = await response.json();
-      if (!statusData.success) {
-        throw new Error(statusData.message || 'Payment verification failed.');
-      }
+        const statusData = await response.json();
+        if (!statusData.success) {
+          throw new Error(statusData.message || "Échec de la vérification du paiement.");
+        }
 
-      const isPaymentSuccess = statusData.status === 'success';
-      const finalStatus = isPaymentSuccess ? 'confirmed' : 'failed';
+        const isPaymentSuccess = statusData.status === "success";
+        const finalStatus = isPaymentSuccess ? "confirmed" : "failed";
 
-      // Créer la commande dans Firestore
-      const orderRef = await addDoc(collection(db, 'orders'), {
-        ...tempOrderData,
-        status: finalStatus,
-        isPaid: isPaymentSuccess,
-        paymentRef: transactionId,
-        timestamp: Timestamp.now(),
-      });
-
-      // Mettre à jour les points si non-guest
-      if (!tempOrderData.isGuest && tempOrderData.pointsUsed > 0) {
-        await updateDoc(doc(db, 'usersrestau', tempOrderData.userId), {
-          points: userPoints - tempOrderData.pointsUsed,
-        });
-      }
-
-      // Enregistrer la transaction de points
-      if (!tempOrderData.isGuest && isPaymentSuccess && tempOrderData.loyaltyPoints > 0) {
-        await addDoc(collection(db, 'pointsTransactions'), {
-          userId: tempOrderData.userId,
-          orderId: orderRef.id,
-          pointsAmount: tempOrderData.loyaltyPoints,
-          status: 'pending',
+        const orderRef = await addDoc(collection(db, "orders"), {
+          ...tempOrderData,
+          status: finalStatus,
+          isPaid: isPaymentSuccess,
+          paymentRef: transactionId,
           timestamp: Timestamp.now(),
-          message: `Points earned for order #${orderRef.id.slice(0, 6)}`,
-          type: 'points_grant',
         });
+
+        if (auth.currentUser && tempOrderData.pointsUsed > 0) {
+          await updateDoc(doc(db, "usersrestau", tempOrderData.userId), {
+            points: userPoints - tempOrderData.pointsUsed,
+          });
+        }
+
+        if (auth.currentUser && isPaymentSuccess && tempOrderData.loyaltyPoints > 0) {
+          await addDoc(collection(db, "pointsTransactions"), {
+            userId: tempOrderData.userId,
+            orderId: orderRef.id,
+            pointsAmount: tempOrderData.loyaltyPoints,
+            status: "pending",
+            timestamp: Timestamp.now(),
+            message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
+            type: "points_grant",
+          });
+        }
+
+        localStorage.removeItem("tempOrderData");
+        clearCart();
+        navigate("/complete_order", {
+          state: {
+            orderId: orderRef.id,
+            isGuest: tempOrderData.isGuest,
+            paymentStatus: finalStatus,
+            transactionId,
+          },
+        });
+      } catch (err) {
+        console.error("Erreur après retour de paiement :", err);
+        setError(`Erreur de traitement du paiement : ${err.message}. Veuillez contacter le support.`);
+        navigate("/payment/failure", { state: { error: err.message } });
+      } finally {
+        setLoading(false);
       }
+    };
 
-      // Nettoyer et rediriger
-      localStorage.removeItem('tempOrderData');
-      clearCart();
-      navigate('/complete_order', {
-        state: {
-          orderId: orderRef.id,
-          isGuest: tempOrderData.isGuest,
-          paymentStatus: finalStatus,
-          transactionId,
-        },
-      });
-    } catch (err) {
-      console.error('Error after payment return:', err);
-      setError(`Payment processing error: ${err.message}`);
-      navigate('/payment/failure', { state: { error: err.message } });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  checkPaymentReturn();
-}, [navigate, clearCart, userPoints]); 
+    checkPaymentReturn();
+  }, [navigate, clearCart, userPoints, setLoading]);
 
   // Render loading or error states
   if (dataLoading || !cartItems || cartItems.length === 0 || missingData || !isValidOrder()) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="bg-white p-6 rounded-lg shadow-md text-center">
-          {dataLoading && <p>Loading data...</p>}
-          {!cartItems?.length && <p className="text-red-600 mb-4">Your cart is empty.</p>}
+          {dataLoading && <p>Chargement des données...</p>}
+          {!cartItems?.length && <p className="text-red-600 mb-4">Votre panier est vide.</p>}
           {missingData && (
-            <p className="text-red-600 mb-4">Missing order information.</p>
+            <p className="text-red-600 mb-4">Informations de commande manquantes.</p>
           )}
-          {!isValidOrder() && <p className="text-red-600 mb-4">Invalid order data.</p>}
-          <p>Redirecting...</p>
+          {!isValidOrder() && <p className="text-red-600 mb-4">Données de commande invalides.</p>}
+          <p>Redirection...</p>
         </div>
       </div>
     );
@@ -543,7 +535,7 @@ const OrderSummary = () => {
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
       <header className="bg-white border-b p-3 sticky top-0 z-10">
-        <h2 className="text-center font-bold text-xl">Order Summary</h2>
+        <h2 className="text-center font-bold text-xl">Récapitulatif de la commande</h2>
       </header>
       <div className="p-3">
         {!isOnline && (
@@ -552,7 +544,7 @@ const OrderSummary = () => {
             role="alert"
           >
             <span className="block sm:inline">
-              You are offline. Some actions will sync when connected.
+              Vous êtes hors ligne. Certaines actions seront synchronisées lors de la reconnexion.
             </span>
           </div>
         )}
@@ -565,63 +557,63 @@ const OrderSummary = () => {
           </div>
         )}
         <div className="bg-white p-3 rounded shadow-sm mb-3">
-          <h4 className="font-bold mb-2">Order Details</h4>
+          <h4 className="font-bold mb-2">Détails de la commande</h4>
           <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-            <h6 className="font-bold text-gray-800 mb-2">Delivery Address:</h6>
+            <h6 className="font-bold text-gray-800 mb-2">Adresse de livraison :</h6>
             <div className="text-sm text-gray-700">
               <p>
-                <span className="font-medium">Type:</span> {normalizedAddress?.nickname}
+                <span className="font-medium">Type :</span> {normalizedAddress?.nickname}
               </p>
               <p>
-                <span className="font-medium">City:</span> YAOUNDE
+                <span className="font-medium">Ville :</span> YAOUNDE
               </p>
               <p>
-                <span className="font-medium">Area:</span> {normalizedAddress?.area}
+                <span className="font-medium">Quartier :</span> {normalizedAddress?.area}
               </p>
               <p>
-                <span className="font-medium">Description:</span>{" "}
+                <span className="font-medium">Description :</span>{" "}
                 {normalizedAddress?.completeAddress}
               </p>
               {normalizedAddress?.instructions && (
                 <p>
-                  <span className="font-medium">Instructions:</span>{" "}
+                  <span className="font-medium">Instructions :</span>{" "}
                   {normalizedAddress.instructions}
                 </p>
               )}
               <p>
-                <span className="font-medium">Phone:</span>{" "}
+                <span className="font-medium">Téléphone :</span>{" "}
                 {normalizedAddress?.phone || contact?.phone}
               </p>
               {isGuest && contact?.name && (
                 <p>
-                  <span className="font-medium">Name:</span> {contact.name}
+                  <span className="font-medium">Nom :</span> {contact.name}
                 </p>
               )}
             </div>
           </div>
           <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-            <h6 className="font-bold text-gray-800 mb-2">Payment Method:</h6>
+            <h6 className="font-bold text-gray-800 mb-2">Méthode de paiement :</h6>
             <div className="flex items-center">
-              <i className={`${normalizedPayment?.icon} text-green-600 text-xl mr-3`}></i>
+              <i className={`${normalizedPayment?.icon || "fa fa-question"} text-green-600 text-xl mr-3`}></i>
               <div>
                 <p className="font-semibold">{normalizedPayment?.name}</p>
                 <p className="text-sm text-gray-500">{normalizedPayment?.description}</p>
                 {normalizedPayment?.phone && (
                   <p className="text-sm text-gray-500">
-                    Phone: {normalizedPayment.phone}
+                    Téléphone : {normalizedPayment.phone}
                   </p>
                 )}
               </div>
             </div>
           </div>
-          {!isGuest && userPoints > 0 && (
+          {auth.currentUser && userPoints > 0 && (
             <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-              <h6 className="font-bold text-gray-800 mb-2">Loyalty Points</h6>
+              <h6 className="font-bold text-gray-800 mb-2">Points de fidélité</h6>
               <div className="flex flex-col space-y-2">
                 <div>
-                  <p className="font-semibold">Your Points: {formatPrice(userPoints)}</p>
+                  <p className="font-semibold">Vos points : {formatPrice(userPoints)}</p>
                   <p className="text-sm text-gray-500">
-                    Use points to reduce total (1 point = 100 Fcfa). Max usable:{" "}
+                    Utilisez les points pour réduire le total (1 point = 100 Fcfa). Max utilisable :{" "}
                     {formatPrice(maxPointsUsable)} points.
                   </p>
                 </div>
@@ -635,15 +627,15 @@ const OrderSummary = () => {
                   <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                   <span className="ms-3 text-sm font-medium text-gray-900">
                     {usePoints
-                      ? `Use ${formatPrice(pointsToUse)} points for ${formatPrice(
+                      ? `Utiliser ${formatPrice(pointsToUse)} points pour ${formatPrice(
                           pointsReduction
-                        )} Fcfa off`
-                      : "Pay without points"}
+                        )} Fcfa de réduction`
+                      : "Payer sans points"}
                   </span>
                 </label>
                 {usePoints && pointsToUse > 0 && (
                   <p className="text-sm text-green-600 mt-1">
-                    Automatic discount: {formatPrice(pointsReduction)} Fcfa (
+                    Réduction automatique : {formatPrice(pointsReduction)} Fcfa (
                     {formatPrice(pointsToUse)} points)
                   </p>
                 )}
@@ -651,24 +643,26 @@ const OrderSummary = () => {
             </div>
           )}
           <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-            <h6 className="font-bold text-gray-800 mb-2">Points Earned</h6>
+            <h6 className="font-bold text-gray-800 mb-2">Points gagnés</h6>
             <p className="text-sm">
               {loyaltyPoints > 0
-                ? `You will earn ${formatPrice(
+                ? `Vous gagnerez ${formatPrice(
                     loyaltyPoints
-                  )} point(s) for this order after payment confirmation.`
-                : "Order not eligible for points (minimum amount: 5000 Fcfa)."}
+                  )} point(s) pour cette commande après confirmation du paiement.`
+                : "Commande non éligible aux points (montant minimum : 5000 Fcfa)."}
             </p>
             {loyaltyPoints > 0 && (
               <p className="text-xs text-gray-600 mt-1">
-                Points will be credited to your account once payment is validated.
+                Les points seront crédités sur votre compte après validation du paiement.
               </p>
             )}
           </div>
-          <h6 className="font-bold text-gray-800 mb-2">Ordered Items:</h6>
+          <h6 className="font-bold text-gray-800 mb-2">Articles commandés :</h6>
           {cartItems.map((item) => (
             <div
-              key={`${item.id}-${JSON.stringify(item.selectedExtras)}`}
+              key={`${item.id}-${Object.entries(item.selectedExtras || {})
+                .map(([listId, indexes]) => `${listId}:${indexes.join(",")}`)
+                .join("|")}`}
               className="border-b py-3 last:border-b-0"
             >
               <div className="flex items-start">
@@ -681,7 +675,7 @@ const OrderSummary = () => {
                   <div className="flex justify-between">
                     <h5 className="font-semibold">{item.name}</h5>
                     <p className="text-green-600">
-                      {convertPrice(item.price).toLocaleString()} Fcfa × {item.quantity}
+                      {formatPrice(convertPrice(item.price))} Fcfa × {item.quantity}
                     </p>
                   </div>
                   {item.selectedExtras && (
@@ -689,7 +683,7 @@ const OrderSummary = () => {
                       {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
                         <div key={extraListId} className="mb-1">
                           <span className="font-medium">
-                            {extraLists.find((el) => el.id === extraListId)?.name || "Extras"}:
+                            {extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :
                           </span>
                           {indexes.map((index) => (
                             <div key={index} className="ml-2">
@@ -707,34 +701,34 @@ const OrderSummary = () => {
         </div>
         {pointsReduction < total + deliveryFee && (
           <div className="bg-gray-50 p-3 rounded-lg mb-4">
-            <h6 className="font-bold text-gray-800 mb-2">Delivery Fee</h6>
+            <h6 className="font-bold text-gray-800 mb-2">Frais de livraison</h6>
             <p className="text-sm">
               {normalizedAddress?.area
-                ? `${normalizedAddress.area}: ${formatPrice(deliveryFee)} Fcfa`
-                : `Unknown: ${formatPrice(DEFAULT_DELIVERY_FEE)} Fcfa`}
+                ? `${normalizedAddress.area} : ${formatPrice(deliveryFee)} Fcfa`
+                : `Inconnu : ${formatPrice(DEFAULT_DELIVERY_FEE)} Fcfa`}
             </p>
             <p className="text-xs text-gray-600">
-              Note: This price is based on the area and may be adjusted if access is difficult.
+              Note : Ce prix est basé sur le quartier et peut être ajusté si l'accès est difficile.
             </p>
           </div>
         )}
         <div className="bg-white p-3 rounded shadow-sm">
           <div className="flex justify-between font-bold text-lg">
-            <span>Total:</span>
+            <span>Total :</span>
             <span className="text-green-600">
               {isNaN(finalTotal) || !extraLists.length
-                ? "Calculating..."
+                ? "Calcul en cours..."
                 : `${formatPrice(finalTotal)} Fcfa`}
             </span>
           </div>
           {pointsReduction > 0 && (
             <div className="mt-2 text-sm text-gray-600">
               <p>
-                <span className="font-semibold">Points Discount:</span>{" "}
+                <span className="font-semibold">Réduction points :</span>{" "}
                 {formatPrice(pointsReduction)} Fcfa ({formatPrice(pointsToUse)} points)
               </p>
               <p className="text-xs">
-                Discount will be applied after administrator validation.
+                La réduction sera appliquée après validation par l'administrateur.
               </p>
             </div>
           )}
@@ -748,10 +742,10 @@ const OrderSummary = () => {
           }
           aria-label={
             loading
-              ? "Processing order"
+              ? "Traitement de la commande"
               : pointsReduction >= total + deliveryFee
-              ? "Confirm with points"
-              : "Confirm order"
+              ? "Confirmer avec points"
+              : "Confirmer la commande"
           }
           className={`w-full py-3 text-white rounded-lg transition-colors ${
             loading || (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0)
@@ -766,7 +760,7 @@ const OrderSummary = () => {
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
-                aria-label="Loading"
+                aria-label="Chargement"
               >
                 <circle
                   className="opacity-25"
@@ -782,12 +776,12 @@ const OrderSummary = () => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              Processing...
+              Traitement...
             </span>
           ) : pointsReduction >= total + deliveryFee ? (
-            "Confirm with points"
+            "Confirmer avec points"
           ) : (
-            "Confirm order"
+            "Confirmer la commande"
           )}
         </button>
       </div>
