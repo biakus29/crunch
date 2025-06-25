@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 // Composant réutilisable pour les champs de saisie
@@ -32,18 +32,101 @@ const QuartiersAdmin = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
-  // Charger les quartiers depuis Firestore
+  // Données initiales des quartiers extraites individuellement par zone, sans doublons
+  const initialQuartierData = [
+    // Zone 1 - 1000 FCFA
+    ..."Biyem Assi, Melen, Emia, Mendong, Simbock, Obili, Meec, Oyomabang, Cite Verte, Mokolo, Messa, Briqueterie, Poste Centrale, Carriere, Madagascar, Nkomkana, Tsinga, Ngoa-Ekelle, Bonas, Nvog-BI, Coron, Efoulan, Nsimeyong, Damas, Ebom, Nsam, Obam, Carrefour Barriere, Dakar, Olezoa, Atangana Mballa, Marche Central, Avenue Kennedy, Warda, Province, Ecole De Police, Elig-Essono, Etoug Ebe, Mvogbetsi, Intendance, Nvog-Ada, Jouvence, Etam Bafia, Nkolso'o"
+      .split(", ")
+      .map(name => ({ id: name.toLowerCase().replace(/ /g, "-"), name, fee: 1000 })),
+    // Zone 2 - 1500 FCFA
+    ..."Odza Happy, Odza Borne 10, Odza Petit Marche, Mvan Messamendongo, Etoa, Ekounou, Ekoumndoum, Nkolodongo, Anguissa, Kodengui, Etoudi, Emana, Manguier, Ngousso, Eleveur, Santa Barbara, Biteng, Nkomo, Nbanokolo, Febe, Manguier, Omnisport, Essos, Essomba, Bastos Nlonkak, Mballa II, Tongolo, Ucac Nkolbisson, Messassi, Emombo, Mimbonan, Tropicana, Amitie, Nkolmesseng, Au Dela Carrefour Barriere"
+      .split(", ")
+      .map(name => ({ id: name.toLowerCase().replace(/ /g, "-"), name, fee: 1500 })),
+    // Zone 3 - 2000 FCFA
+    ..."Olembe, Nkozoa, Nomayos, Awae, Nkoabang, Odza Borne 12, Plaque L&B, Nkoloulou, Usine Des Eaux Nkolbisson, Nyom"
+      .split(", ")
+      .map(name => ({ id: name.toLowerCase().replace(/ /g, "-"), name, fee: 2000 })),
+    // Zone 4 - 2500 FCFA
+    ..."Akak, Mbankomo, Eban, Awae Carriere, Abon, Tsinga, Soa, Leboudi"
+      .split(", ")
+      .map(name => ({ id: name.toLowerCase().replace(/ /g, "-"), name, fee: 2500 })),
+    // Zone 5 - 3000 FCFA
+    ..."Nkométou, Nfou"
+      .split(", ")
+      .map(name => ({ id: name.toLowerCase().replace(/ /g, "-"), name, fee: 3000 })),
+  ].filter((quartier, index, self) =>
+    index === self.findIndex((q) => q.id === quartier.id)
+  ); // Filtrer les doublons basés sur l'ID
+
+  // Charger et synchroniser les quartiers avec Firestore, en supprimant les doublons
   useEffect(() => {
-    const fetchQuartiers = async () => {
+    const syncQuartiers = async () => {
       try {
+        setLoading(true);
+        console.log("Tentative de chargement des quartiers depuis Firestore...");
         const snapshot = await getDocs(collection(db, "quartiers"));
-        const quartiersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setQuartiers(quartiersList);
+        const existingQuartiers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        console.log("Quartiers existants:", existingQuartiers);
+
+        // Synchroniser les données initiales avec Firestore, en gérant les doublons
+        const uniqueIds = new Set();
+        for (const initialQuartier of initialQuartierData) {
+          if (!uniqueIds.has(initialQuartier.id)) {
+            uniqueIds.add(initialQuartier.id);
+            const existing = existingQuartiers.find((q) => q.id === initialQuartier.id);
+            if (!existing) {
+              console.log(`Ajout de ${initialQuartier.id} avec frais ${initialQuartier.fee} FCFA...`);
+              await addDoc(collection(db, "quartiers"), {
+                id: initialQuartier.id,
+                name: initialQuartier.name,
+                fee: initialQuartier.fee,
+              });
+            } else if (existing.name !== initialQuartier.name || existing.fee !== initialQuartier.fee) {
+              console.log(`Mise à jour de ${initialQuartier.id} avec frais ${initialQuartier.fee} FCFA...`);
+              await setDoc(doc(db, "quartiers", initialQuartier.id), {
+                id: initialQuartier.id,
+                name: initialQuartier.name,
+                fee: initialQuartier.fee,
+              }, { merge: true });
+            }
+          }
+        }
+
+        // Supprimer les doublons existants dans Firestore (basés sur le nom)
+        const nameMap = new Map();
+        existingQuartiers.forEach((q) => {
+          if (nameMap.has(q.name)) {
+            nameMap.get(q.name).push(q.id);
+          } else {
+            nameMap.set(q.name, [q.id]);
+          }
+        });
+        for (const [name, ids] of nameMap) {
+          if (ids.length > 1) {
+            // Garder le premier ID, supprimer les autres
+            const keepId = ids[0];
+            for (const id of ids.slice(1)) {
+              console.log(`Suppression du doublon ${id} pour ${name}...`);
+              await deleteDoc(doc(db, "quartiers", id));
+            }
+          }
+        }
+
+        // Recharger les données après synchronisation
+        const updatedSnapshot = await getDocs(collection(db, "quartiers"));
+        const updatedQuartiers = updatedSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        console.log("Quartiers synchronisés sans doublons:", updatedQuartiers);
+        setQuartiers(updatedQuartiers);
       } catch (error) {
-        setActionError("Erreur lors du chargement des quartiers.");
+        console.error("Erreur lors de la synchronisation:", error);
+        setActionError("Erreur lors de la synchronisation avec Firestore. Vérifiez la console pour plus de détails.");
+        // Fallback local en cas d'échec
+        setQuartiers(initialQuartierData);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchQuartiers();
+    syncQuartiers();
   }, []);
 
   // Validation des données
@@ -156,32 +239,40 @@ const QuartiersAdmin = () => {
 
         {/* Liste des quartiers */}
         <div className="grid gap-4">
-          {quartiers.map((quartier) => (
-            <div
-              key={quartier.id}
-              className="flex justify-between items-center p-4 bg-white shadow rounded-lg"
-            >
-              <div>
-                <p className="font-semibold">{quartier.name}</p>
-                <p className="text-gray-600">ID: {quartier.id}</p>
-                <p className="text-gray-600">Frais: {quartier.fee} FCFA</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEdit(quartier)}
-                  className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-                >
-                  Modifier
-                </button>
-                <button
-                  onClick={() => handleDelete(quartier.id)}
-                  className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-                >
-                  Supprimer
-                </button>
-              </div>
+          {loading ? (
+            <div className="flex justify-center items-center h-32">
+              <i className="fas fa-spinner fa-spin text-4xl text-green-600 animate-spin"></i>
             </div>
-          ))}
+          ) : quartiers.length === 0 ? (
+            <p className="text-center text-gray-500">Aucun quartier chargé.</p>
+          ) : (
+            quartiers.map((quartier) => (
+              <div
+                key={quartier.id}
+                className="flex justify-between items-center p-4 bg-white shadow rounded-lg"
+              >
+                <div>
+                  <p className="font-semibold line-clamp-1">{quartier.name}</p>
+                  <p className="text-gray-600">ID: {quartier.id}</p>
+                  <p className="text-gray-600">Frais: {quartier.fee} FCFA</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(quartier)}
+                    className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                  >
+                    Modifier
+                  </button>
+                  <button
+                    onClick={() => handleDelete(quartier.id)}
+                    className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Modale pour ajouter/modifier un quartier */}
@@ -209,7 +300,7 @@ const QuartiersAdmin = () => {
                   value={quartierData.id}
                   onChange={handleInputChange}
                   error={errors.id}
-                  placeholder="Ex: quartier44"
+                  placeholder="Ex: biyem-assi"
                   disabled={!!editingQuartier}
                 />
                 <InputField
@@ -218,7 +309,7 @@ const QuartiersAdmin = () => {
                   value={quartierData.name}
                   onChange={handleInputChange}
                   error={errors.name}
-                  placeholder="Ex: Odza happy"
+                  placeholder="Ex: Biyem Assi"
                 />
                 <InputField
                   label="Frais (FCFA)"

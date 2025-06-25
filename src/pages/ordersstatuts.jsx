@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   collection,
   getDocs,
@@ -15,8 +15,9 @@ import { db, auth } from "../firebase";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaStar } from "react-icons/fa";
+import PropTypes from "prop-types";
 
-const ORDER_STATUS = {
+export const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
   READY_TO_DELIVER: "pret_a_livrer",
@@ -26,7 +27,7 @@ const ORDER_STATUS = {
   FAILED: "echec",
 };
 
-const STATUS_LABELS = {
+export const STATUS_LABELS = {
   [ORDER_STATUS.PENDING]: "En attente",
   [ORDER_STATUS.PREPARING]: "En préparation",
   [ORDER_STATUS.DELIVERING]: "En livraison",
@@ -35,7 +36,7 @@ const STATUS_LABELS = {
   [ORDER_STATUS.FAILED]: "Échec",
 };
 
-const STATUS_COLORS = {
+export const STATUS_COLORS = {
   [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
   [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
   [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
@@ -44,7 +45,7 @@ const STATUS_COLORS = {
   [ORDER_STATUS.FAILED]: "bg-gray-600 text-white",
 };
 
-const STATUS_COMMENTS = {
+export const STATUS_COMMENTS = {
   [ORDER_STATUS.PENDING]: "Commande en attente d’être validée",
   [ORDER_STATUS.PREPARING]: "Un livreur vous appelera dès que votre commande sera prête",
   [ORDER_STATUS.DELIVERING]: "Commande en route pour la livraison",
@@ -55,13 +56,13 @@ const STATUS_COMMENTS = {
 
 const DEFAULT_DELIVERY_FEE = 1000;
 
-const formatPrice = (number) =>
+export const formatPrice = (number) =>
   Number(number).toLocaleString("fr-FR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
 
-const formatDate = (timestamp) =>
+export const formatDate = (timestamp) =>
   timestamp?.seconds
     ? new Date(timestamp.seconds * 1000).toLocaleString("fr-FR", {
         day: "2-digit",
@@ -72,7 +73,7 @@ const formatDate = (timestamp) =>
       })
     : "Date non disponible";
 
-const formatDateForComparison = (date) => date.toISOString().split("T")[0];
+export const formatDateForComparison = (date) => date.toISOString().split("T")[0];
 
 const OrderStatus = ({ isAdmin = false }) => {
   const [orders, setOrders] = useState([]);
@@ -96,12 +97,14 @@ const OrderStatus = ({ isAdmin = false }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log("onAuthStateChanged:", user ? user.uid : null); // Debug
       setCurrentUserId(user ? user.uid : null);
     });
     return () => unsubscribe();
   }, []);
 
-  const fetchReferenceData = async () => {
+  const fetchReferenceData = useCallback(async () => {
+    console.log("fetchReferenceData appelé"); // Debug
     try {
       const [items, extras, quartiers, users] = await Promise.all([
         getDocs(collection(db, "items")),
@@ -124,9 +127,10 @@ const OrderStatus = ({ isAdmin = false }) => {
       console.error("Erreur de chargement des données:", err);
       setError("Erreur de chargement des données de référence");
     }
-  };
+  }, []);
 
-  const filterOrdersByDate = (orders, date, mode) => {
+  const filterOrdersByDate = useCallback((orders = [], date, mode) => {
+    console.log("filterOrdersByDate appelé"); // Debug
     const selected = new Date(date);
     return orders.filter((order) => {
       if (!order.timestamp) return false;
@@ -150,9 +154,10 @@ const OrderStatus = ({ isAdmin = false }) => {
           return true;
       }
     });
-  };
+  }, []);
 
   useEffect(() => {
+    console.log("useEffect principal exécuté, effectiveUserId:", effectiveUserId); // Debug
     setError("");
 
     if (!isAdmin && effectiveUserId === null) {
@@ -160,6 +165,12 @@ const OrderStatus = ({ isAdmin = false }) => {
       setLoading(false);
       const timer = setTimeout(() => navigate("/profile"), 2000);
       return () => clearTimeout(timer);
+    }
+
+    if (!effectiveUserId && !isAdmin) {
+      console.log("effectiveUserId non défini, arrêt du useEffect"); // Debug
+      setLoading(false);
+      return;
     }
 
     const ordersQuery = isAdmin
@@ -171,15 +182,22 @@ const OrderStatus = ({ isAdmin = false }) => {
       const unsubscribe = onSnapshot(
         ordersQuery,
         (snapshot) => {
-          const allOrders = snapshot.docs
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-              status: doc.data().status || ORDER_STATUS.PENDING,
-            }))
-            .filter((order) => order.items && order.items.length > 0)
-            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-          setOrders(allOrders);
+          console.log("onSnapshot déclenché, docs reçus:", snapshot.docs.length); // Debug
+          setOrders((prevOrders) => {
+            const newOrders = snapshot.docs
+              .map((doc) => ({
+                id: doc.id,
+                ...doc.data(),
+                status: doc.data().status || ORDER_STATUS.PENDING,
+              }))
+              .filter((order) => order.items && Array.isArray(order.items) && order.items.length > 0)
+              .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+            // Garde-fou pour éviter les rendus inutiles
+            if (JSON.stringify(prevOrders) !== JSON.stringify(newOrders)) {
+              return newOrders;
+            }
+            return prevOrders;
+          });
           setLoading(false);
         },
         (err) => {
@@ -188,31 +206,36 @@ const OrderStatus = ({ isAdmin = false }) => {
           setLoading(false);
         }
       );
-      return () => unsubscribe();
+      return () => {
+        console.log("Désabonnement de onSnapshot"); // Debug
+        unsubscribe();
+      };
     });
-  }, [isAdmin, effectiveUserId, navigate]);
+  }, [isAdmin, effectiveUserId, navigate, fetchReferenceData]);
 
   const filteredOrders = useMemo(() => {
+    if (!Array.isArray(orders)) return [];
     const dateFilteredOrders = isAdmin ? filterOrdersByDate(orders, selectedDate, dateFilterMode) : orders;
     return dateFilteredOrders.filter((order) => order.status === activeTab);
-  }, [orders, activeTab, isAdmin, selectedDate, dateFilterMode]);
+  }, [orders, activeTab, isAdmin, selectedDate, dateFilterMode, filterOrdersByDate]);
 
   const statusCounts = useMemo(() => {
+    if (!Array.isArray(orders)) return {};
     return Object.keys(STATUS_LABELS).reduce((acc, status) => {
       acc[status] = orders.filter((order) => order.status === status).length;
       return acc;
     }, {});
   }, [orders]);
 
-  const getDeliveryFee = (area) => {
+  const getDeliveryFee = useCallback((area) => {
     if (!area) return DEFAULT_DELIVERY_FEE;
     const quartier = quartiersList.find((q) => q.name.toLowerCase() === area.toLowerCase());
     return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
-  };
+  }, [quartiersList]);
 
-  // Mise à jour de calculateTotal pour inclure pointsReduction
-  const calculateTotal = (order) => {
-    const itemsTotal = order.items?.reduce((sum, item) => {
+  const calculateTotal = useCallback((order) => {
+    if (!order || !Array.isArray(order.items)) return 0;
+    const itemsTotal = order.items.reduce((sum, item) => {
       const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
       const extrasTotal = item.selectedExtras
         ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
@@ -223,49 +246,50 @@ const OrderStatus = ({ isAdmin = false }) => {
           }, 0)
         : 0;
       return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
-    }, 0) || 0;
+    }, 0);
     const deliveryFee = Number(order.deliveryFee) || getDeliveryFee(order.address?.area);
-    const pointsReduction = Number(order.pointsReduction) || 0; // Inclure la réduction par points
-    return Math.max(0, itemsTotal + deliveryFee - pointsReduction); // Total après réduction
-  };
+    const pointsReduction = Number(order.pointsReduction) || 0;
+    return Math.max(0, itemsTotal + deliveryFee - pointsReduction);
+  }, [itemsData, extraLists, getDeliveryFee]);
 
-  const handleDragStart = (e, order) => {
+  const handleDragStart = useCallback((e, order) => {
     e.dataTransfer.setData("orderId", order.id);
     setDraggedOrder(order);
     e.currentTarget.classList.add("opacity-50");
-  };
+  }, []);
 
-  const handleDragEnd = (e) => e.currentTarget.classList.remove("opacity-50");
+  const handleDragEnd = useCallback((e) => {
+    e.currentTarget.classList.remove("opacity-50");
+  }, []);
 
-  const handleDrop = async (e, newStatus) => {
+  const handleDrop = useCallback(async (e, newStatus) => {
     e.preventDefault();
     const orderId = e.dataTransfer.getData("orderId");
-    if (!orderId || draggedOrder?.status === newStatus) return;
+    if (!orderId || draggedOrder?.status === newStatus || !isAdmin) {
+      setError("Action non autorisée ou statut inchangé.");
+      return;
+    }
 
     try {
       const order = orders.find((o) => o.id === orderId);
       if (!order) throw new Error("Commande non trouvée");
 
       const oldStatus = order.status;
-
       await updateDoc(doc(db, "orders", orderId), {
         status: newStatus,
         updatedAt: Timestamp.now(),
       });
-
-      const itemNames = order.items
-        ?.map((item) => item.dishName || itemsData[item.dishId]?.name || "Article inconnu")
-        .join(", ");
 
       if (order.userId) {
         const notificationRef = doc(collection(db, "notifications"));
         await setDoc(notificationRef, {
           userId: order.userId,
           orderId: orderId,
-          oldStatus: oldStatus,
-          newStatus: newStatus,
-          itemNames: itemNames,
-          // Ajouter des informations sur les points pour les notifications admin
+          oldStatus,
+          newStatus,
+          itemNames: order.items
+            .map((item) => item.dishName || itemsData[item.dishId]?.name || "Article inconnu")
+            .join(", "),
           pointsUsed: order.pointsUsed || 0,
           pointsReduction: order.pointsReduction || 0,
           timestamp: Timestamp.now(),
@@ -273,16 +297,20 @@ const OrderStatus = ({ isAdmin = false }) => {
         });
       }
 
+      setError(null);
       setDraggedOrder(null);
     } catch (error) {
       console.error("Erreur de mise à jour du statut ou création de notification:", error);
       setError("Impossible de mettre à jour le statut ou d’envoyer la notification");
     }
-  };
+  }, [orders, isAdmin, itemsData, draggedOrder]);
 
-  const updateOrderDeliveryFees = async (orderId, area, newFee) => {
+  const updateOrderDeliveryFees = useCallback(async (orderId, area, newFee) => {
     const feeNumber = Number(newFee);
-    if (isNaN(feeNumber) || feeNumber < 0) return;
+    if (isNaN(feeNumber) || feeNumber < 0) {
+      setError("Frais de livraison invalides.");
+      return;
+    }
 
     try {
       const orderRef = doc(db, "orders", orderId);
@@ -296,23 +324,23 @@ const OrderStatus = ({ isAdmin = false }) => {
       console.error("Erreur de mise à jour des frais:", error);
       setError("Erreur lors de la mise à jour des frais");
     }
-  };
+  }, [isAdmin, quartiersList]);
 
-  const handlePreviousPeriod = () => {
+  const handlePreviousPeriod = useCallback(() => {
     const newDate = new Date(selectedDate);
     if (dateFilterMode === "day") newDate.setDate(newDate.getDate() - 1);
     else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() - 7);
     else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() - 1);
     setSelectedDate(newDate);
-  };
+  }, [dateFilterMode, selectedDate]);
 
-  const handleNextPeriod = () => {
+  const handleNextPeriod = useCallback(() => {
     const newDate = new Date(selectedDate);
     if (dateFilterMode === "day") newDate.setDate(newDate.getDate() + 1);
     else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() + 7);
     else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() + 1);
     setSelectedDate(newDate);
-  };
+  }, [dateFilterMode, selectedDate]);
 
   const renderTabs = () => (
     <div className="p-4">
@@ -324,6 +352,7 @@ const OrderStatus = ({ isAdmin = false }) => {
               <button
                 className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={handlePreviousPeriod}
+                aria-label="Période précédente"
               >
                 {"<"}
               </button>
@@ -332,10 +361,12 @@ const OrderStatus = ({ isAdmin = false }) => {
                 value={formatDateForComparison(selectedDate)}
                 onChange={(e) => setSelectedDate(new Date(e.target.value))}
                 className="border rounded px-2 py-1"
+                aria-label="Sélectionner une date"
               />
               <button
                 className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={handleNextPeriod}
+                aria-label="Période suivante"
               >
                 {">"}
               </button>
@@ -344,6 +375,7 @@ const OrderStatus = ({ isAdmin = false }) => {
               value={dateFilterMode}
               onChange={(e) => setDateFilterMode(e.target.value)}
               className="border rounded px-2 py-1"
+              aria-label="Mode de filtrage par date"
             >
               <option value="day">Jour</option>
               <option value="week">Semaine</option>
@@ -352,18 +384,20 @@ const OrderStatus = ({ isAdmin = false }) => {
           </div>
         </div>
       )}
-      <div className="flex flex-wrap gap-2 mb-6 border-b">
+      <div className="flex flex-wrap gap-2 mb-6 border-b" role="tablist">
         {Object.entries(STATUS_LABELS).map(([status, label]) => (
           <button
             key={status}
             onClick={() => setActiveTab(status)}
+            role="tab"
+            aria-selected={activeTab === status}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium ${
               activeTab === status
                 ? `${STATUS_COLORS[status]} border-b-2 border-white`
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            {label} ({statusCounts[status]})
+            {label} ({statusCounts[status] || 0})
           </button>
         ))}
       </div>
@@ -402,13 +436,29 @@ const OrderStatus = ({ isAdmin = false }) => {
         </h2>
       </header>
       {loading && (
-        <div className="text-center p-4">
-          <div
-            className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"
-            role="status"
+        <div className="flex flex-col items-center justify-center p-4">
+          <svg
+            className="animate-spin h-12 w-12 text-green-600"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-label="Chargement"
           >
-            <span className="sr-only">Chargement...</span>
-          </div>
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <span className="mt-2 text-gray-600">Chargement des commandes...</span>
         </div>
       )}
       {error && (
@@ -425,6 +475,14 @@ const OrderStatus = ({ isAdmin = false }) => {
       <Footer />
     </div>
   );
+};
+
+OrderStatus.propTypes = {
+  isAdmin: PropTypes.bool,
+};
+
+OrderStatus.defaultProps = {
+  isAdmin: false,
 };
 
 const OrderCard = ({
@@ -487,7 +545,11 @@ const OrderCard = ({
       draggable={isAdmin}
       onDragStart={(e) => isAdmin && onDragStart(e, order)}
       onDragEnd={onDragEnd}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.currentTarget.classList.add("bg-gray-200");
+      }}
+      onDragLeave={(e) => e.currentTarget.classList.remove("bg-gray-200")}
       onDrop={onDrop}
       className="mb-6 bg-white rounded-lg shadow-lg p-4 cursor-move"
     >
@@ -506,7 +568,6 @@ const OrderCard = ({
         <div>
           <p className="text-sm text-gray-500">Total (avec livraison)</p>
           <p className="font-medium text-green-600">{formatPrice(calculateTotal(order))} FCFA</p>
-          {/* Affichage des points utilisés et de la réduction */}
           {order.pointsUsed > 0 && (
             <p className="text-sm text-gray-600">
               Réduction : {formatPrice(order.pointsReduction)} FCFA ({formatPrice(order.pointsUsed)} points)
@@ -530,6 +591,7 @@ const OrderCard = ({
                   if (newFee !== null) onUpdateFees(order.id, order.address?.area || "inconnu", newFee);
                 }}
                 className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
+                aria-label="Modifier les frais de livraison"
               >
                 ✏️
               </button>
@@ -537,7 +599,6 @@ const OrderCard = ({
           </div>
         </div>
       </div>
-      {/* Affichage des points gagnés */}
       {order.loyaltyPoints > 0 && (
         <div className="mb-4 bg-gray-50 p-2 rounded">
           <p className="text-sm font-bold">Points de fidélité :</p>
@@ -554,18 +615,32 @@ const OrderCard = ({
       <div className="mb-4">
         <h6 className="font-bold mb-3">Articles :</h6>
         <ul className="space-y-4">
-          {order.items?.map((item, index) => (
-            <OrderItem key={index} item={item} itemsData={itemsData} extraLists={extraLists} />
-          )) || <li className="text-gray-500">Aucun article</li>}
+          {Array.isArray(order.items) && order.items.length > 0 ? (
+            order.items.map((item, index) => (
+              <OrderItem key={index} item={item} itemsData={itemsData} extraLists={extraLists} />
+            ))
+          ) : (
+            <li className="text-gray-500">Aucun article</li>
+          )}
         </ul>
       </div>
       {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
-        <button
-          onClick={() => setShowConfirmModal(true)}
-          className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition mt-2"
-        >
-          Confirmer la livraison
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={() => setShowConfirmModal(true)}
+            className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition mt-2"
+            aria-label="Confirmer la livraison"
+          >
+            Confirmer la livraison
+          </button>
+          <button
+            onClick={() => updateDoc(doc(db, "orders", order.id), { status: ORDER_STATUS.FAILED })}
+            className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition mt-2"
+            aria-label="Signaler un problème"
+          >
+            Signaler un problème
+          </button>
+        </div>
       )}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -578,12 +653,14 @@ const OrderCard = ({
               <button
                 onClick={() => setShowConfirmModal(false)}
                 className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
+                aria-label="Annuler la confirmation"
               >
                 Annuler
               </button>
               <button
                 onClick={handleConfirmDelivery}
                 className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                aria-label="Confirmer la réception"
               >
                 Oui, confirmer
               </button>
@@ -591,8 +668,29 @@ const OrderCard = ({
           </div>
         </div>
       )}
+      {paymentError && (
+        <p className="text-red-600 text-sm mt-2" role="alert">
+          {paymentError}
+        </p>
+      )}
     </div>
   );
+};
+
+OrderCard.propTypes = {
+  order: PropTypes.object.isRequired,
+  itemsData: PropTypes.object,
+  extraLists: PropTypes.object,
+  formatDate: PropTypes.func.isRequired,
+  badgeClasses: PropTypes.object.isRequired,
+  isAdmin: PropTypes.bool,
+  onUpdateFees: PropTypes.func.isRequired,
+  deliveryFee: PropTypes.number,
+  usersData: PropTypes.object.isRequired,
+  calculateTotal: PropTypes.func.isRequired,
+  onDragStart: PropTypes.func,
+  onDragEnd: PropTypes.func,
+  onDrop: PropTypes.func,
 };
 
 const OrderItem = ({ item, itemsData, extraLists }) => {
@@ -642,6 +740,12 @@ const OrderItem = ({ item, itemsData, extraLists }) => {
   );
 };
 
+OrderItem.propTypes = {
+  item: PropTypes.object.isRequired,
+  itemsData: PropTypes.object,
+  extraLists: PropTypes.object,
+};
+
 const Footer = () => (
   <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
     <div className="grid grid-cols-4">
@@ -652,7 +756,7 @@ const Footer = () => (
         { to: "/profile", icon: "fas fa-user", label: "Compte" },
       ].map(({ to, icon, label }) => (
         <Link key={to} to={to} className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-          <i className={`${icon} text-lg`}></i>
+          <i className={`${icon} text-lg`} aria-hidden="true"></i>
           <span className="block text-xs mt-1">{label}</span>
         </Link>
       ))}
@@ -666,21 +770,22 @@ const ThankYouPage = () => {
     recommend: null,
     deliveryService: 0,
     foodQuality: 0,
-    // Ajout d'un champ pour le feedback sur les points
-    pointsExperience: "", // Commentaire textuel facultatif sur l'expérience des points
+    pointsExperience: "",
   });
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
   const [orderName, setOrderName] = useState("votre commande");
   const [restaurantName, setRestaurantName] = useState("le restaurant");
   const [deliveryPersonName, setDeliveryPersonName] = useState("votre livreur");
-  // Ajout des états pour les points
   const [pointsUsed, setPointsUsed] = useState(0);
   const [pointsReduction, setPointsReduction] = useState(0);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId) {
+      setError("ID de commande manquant.");
+      return;
+    }
 
     const fetchOrderDetails = async () => {
       try {
@@ -688,18 +793,19 @@ const ThankYouPage = () => {
         const orderSnap = await getDoc(orderRef);
         if (orderSnap.exists()) {
           const orderData = orderSnap.data();
-          const items = orderData.items || [];
+          const items = Array.isArray(orderData.items) ? orderData.items : [];
           const firstItemName = items.length > 0 ? items[0].dishName || "Commande" : "Commande";
           setOrderName(`${firstItemName}${items.length > 1 ? " et plus" : ""}`);
           setRestaurantName(orderData.restaurantName || "le restaurant");
           setDeliveryPersonName(orderData.deliveryPersonName || "votre livreur");
-          // Récupérer les informations sur les points
           setPointsUsed(orderData.pointsUsed || 0);
           setPointsReduction(orderData.pointsReduction || 0);
           setLoyaltyPoints(orderData.loyaltyPoints || 0);
+        } else {
+          setError("Commande non trouvée.");
         }
       } catch (err) {
-        console.error("Erreur lors de la récupération des détails ou du paiement:", err);
+        console.error("Erreur lors de la récupération des détails:", err);
         setError("Erreur lors du chargement des détails de la commande.");
       }
     };
@@ -707,17 +813,17 @@ const ThankYouPage = () => {
     fetchOrderDetails();
   }, [orderId]);
 
-  const handleRatingChange = (category, value) => {
+  const handleRatingChange = useCallback((category, value) => {
     setFeedback((prev) => ({ ...prev, [category]: value }));
-  };
+  }, []);
 
-  const handleRecommendationChange = (value) => {
+  const handleRecommendationChange = useCallback((value) => {
     setFeedback((prev) => ({ ...prev, recommend: value }));
-  };
+  }, []);
 
-  const handlePointsExperienceChange = (e) => {
+  const handlePointsExperienceChange = useCallback((e) => {
     setFeedback((prev) => ({ ...prev, pointsExperience: e.target.value }));
-  };
+  }, []);
 
   const handleSubmitFeedback = async (e) => {
     e.preventDefault();
@@ -726,8 +832,8 @@ const ThankYouPage = () => {
       setError("ID de commande manquant.");
       return;
     }
-    if (feedback.recommend === null) {
-      setError("Veuillez indiquer si vous recommanderiez notre service.");
+    if (feedback.recommend === null || feedback.deliveryService === 0 || feedback.foodQuality === 0) {
+      setError("Veuillez compléter toutes les évaluations.");
       return;
     }
     try {
@@ -764,6 +870,7 @@ const ThankYouPage = () => {
           <Link
             to="/complete_order"
             className="text-gray-600 hover:text-gray-800 underline"
+            aria-label="Retour aux commandes"
           >
             Retour aux commandes
           </Link>
@@ -776,9 +883,9 @@ const ThankYouPage = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-between p-4">
       <div className="w-full max-w-md flex-1 flex flex-col justify-start">
         <div className="flex justify-between items-center mb-8">
-          <Link to="/accueil" className="text-gray-600 text-lg"></Link>
+          <Link to="/accueil" className="text-gray-600 text-lg" aria-label="Retour à l'accueil"></Link>
           <h2 className="text-sm text-gray-500">Noter votre livraison</h2>
-          <Link to="/accueil" className="text-gray-600 text-sm"></Link>
+          <Link to="/accueil" className="text-gray-600 text-sm" aria-label="Retour à l'accueil"></Link>
         </div>
         <div className="text-center mb-8">
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">
@@ -788,7 +895,6 @@ const ThankYouPage = () => {
             Bon appétit à vous !
           </p>
         </div>
-        {/* Affichage des informations sur les points */}
         {(pointsUsed > 0 || loyaltyPoints > 0) && (
           <div className="mb-8 text-center bg-gray-100 p-4 rounded-lg">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">
@@ -820,6 +926,7 @@ const ThankYouPage = () => {
                   ? "border-green-500 text-green-500"
                   : "border-gray-300 text-gray-500 hover:border-gray-400"
               }`}
+              aria-label="Recommander le service"
             >
               Oui
             </button>
@@ -831,13 +938,14 @@ const ThankYouPage = () => {
                   ? "border-red-500 text-red-500"
                   : "border-gray-300 text-gray-500 hover:border-gray-400"
               }`}
+              aria-label="Ne pas recommander le service"
             >
               Non
             </button>
           </div>
         </div>
         <div className="mb-12 text-center">
-          <h3 className="$text-xl font-semibold text-gray-800 mb-4">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">
             Comment était votre livraison avec {deliveryPersonName} ?
           </h3>
           <div className="flex justify-center gap-2">
@@ -849,6 +957,7 @@ const ThankYouPage = () => {
                   value <= feedback.deliveryService ? "text-yellow-400" : "text-gray-300"
                 }`}
                 onClick={() => handleRatingChange("deliveryService", value)}
+                aria-label={`Noter la livraison ${value} étoile${value > 1 ? "s" : ""}`}
               />
             ))}
           </div>
@@ -866,11 +975,11 @@ const ThankYouPage = () => {
                   value <= feedback.foodQuality ? "text-yellow-400" : "text-gray-300"
                 }`}
                 onClick={() => handleRatingChange("foodQuality", value)}
+                aria-label={`Noter la qualité des plats ${value} étoile${value > 1 ? "s" : ""}`}
               />
             ))}
           </div>
         </div>
-        {/* Champ pour le feedback sur l'expérience des points */}
         {(pointsUsed > 0 || loyaltyPoints > 0) && (
           <div className="mb-12 text-center">
             <h3 className="text-xl font-semibold text-gray-800 mb-4">
@@ -882,19 +991,29 @@ const ThankYouPage = () => {
               className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
               placeholder="Partagez vos commentaires sur l'utilisation des points (facultatif)"
               rows="4"
+              aria-label="Commentaires sur les points de fidélité"
             />
           </div>
         )}
-        {error && <p className="text-red-600 text-center mb-4">{error}</p>}
+        {error && (
+          <p className="text-red-600 text-center mb-4" role="alert">
+            {error}
+          </p>
+        )}
       </div>
       <button
         onClick={handleSubmitFeedback}
         className="w-full max-w-md py-4 bg-red-500 text-white text-lg font-semibold rounded-full hover:bg-red-600 transition duration-300"
+        aria-label="Soumettre le feedback"
       >
         Soumettre
       </button>
     </div>
   );
+};
+
+ThankYouPage.propTypes = {
+  orderId: PropTypes.string,
 };
 
 export { ThankYouPage };

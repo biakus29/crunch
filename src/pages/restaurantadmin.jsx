@@ -19,7 +19,7 @@ import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
 import LoyaltyPointsManager from "./LoyaltyPoints"; // Import du composant
-
+import CreateOrderForm from "./CreateOrderForm";
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
@@ -66,13 +66,13 @@ const FAILURE_REASONS = [
   "Autre",
 ];
 
-const formatPrice = (number) =>
+export const formatPrice = (number) =>
   Number(number).toLocaleString("fr-FR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
 
-const convertPrice = (price) => {
+export const convertPrice = (price) => {
   if (typeof price === "string") {
     return parseFloat(price.replace(/\./g, ""));
   }
@@ -1031,7 +1031,7 @@ const RestaurantAdmin = () => {
   const [editingMenu, setEditingMenu] = useState(null);
   const daysOfWeek = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
   const [showPendingOrdersModal, setShowPendingOrdersModal] = useState(true);
-
+  const [feedbacks, setFeedbacks] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);
   const [menuData, setMenuData] = useState({ 
     name: "", 
@@ -1133,51 +1133,70 @@ const RestaurantAdmin = () => {
     });
     return () => unsubscribe();
   }, []);
-  useEffect(() => {
-    if (!currentRestaurantId) return;
+useEffect(() => {
+  if (!currentRestaurantId) return;
 
-    const fetchStaticData = async () => {
-      try {
-        const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap] = await Promise.all([
-          getDocs(query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(collection(db, "quartiers")),
-        ]);
+  const fetchStaticData = async () => {
+    try {
+      const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap] = await Promise.all([
+        getDocs(query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))),
+        getDocs(query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))),
+        getDocs(query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))),
+        getDocs(query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))),
+        getDocs(collection(db, "quartiers")),
+      ]);
 
-        setMenus(menusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setCategories(categoriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setItems(itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setExtraLists(extraListsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setDeliveryFees(
-          feesSnap.docs.reduce((acc, doc) => ({
-            ...acc,
-            [doc.data().name]: doc.data().fee,
-          }), {})
-        );
-      } catch (err) {
-        console.error("Erreur lors de la récupération des données statiques:", err);
-        setError("Erreur lors du chargement des données statiques");
-      }
-    };
+      setMenus(menusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setCategories(categoriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setItems(itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setExtraLists(extraListsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setDeliveryFees(
+        feesSnap.docs.reduce((acc, doc) => ({
+          ...acc,
+          [doc.data().name]: doc.data().fee,
+        }), {})
+      );
+    } catch (err) {
+      console.error("Erreur lors de la récupération des données statiques:", err);
+      setError("Erreur lors du chargement des données statiques");
+    }
+  };
 
-    const ordersQuery = query(collection(db, "orders"));
-    const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
-      const allOrders = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        status: doc.data().status || ORDER_STATUS.PENDING,
-      }));
-      setOrders(allOrders);
-    }, (err) => {
-      console.error("Erreur dans l'écoute des commandes:", err);
-      setError("Erreur dans le suivi des commandes");
-    });
+  const ordersQuery = query(collection(db, "orders"));
+  const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
+    const allOrders = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      status: doc.data().status || ORDER_STATUS.PENDING,
+    }));
+    setOrders(allOrders);
+  }, (err) => {
+    console.error("Erreur dans l'écoute des commandes:", err);
+    setError("Erreur dans le suivi des commandes");
+  });
 
-    fetchStaticData();
-    return () => unsubscribeOrders();
-  }, [currentRestaurantId]);
+  // Écoute des feedbacks avec restaurantId
+  const feedbackQuery = query(
+    collection(db, "feedback"),
+    where("restaurantId", "==", currentRestaurantId)
+  );
+  const unsubscribeFeedback = onSnapshot(feedbackQuery, (snapshot) => {
+    const feedbackData = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setFeedbacks(feedbackData);
+  }, (err) => {
+    console.error("Erreur dans l'écoute des feedbacks:", err);
+    setError("Erreur dans le suivi des feedbacks");
+  });
+
+  fetchStaticData();
+  return () => {
+    unsubscribeOrders();
+    unsubscribeFeedback();
+  };
+}, [currentRestaurantId]);
 
   const formatDateForComparison = (date) => {
     return date.toISOString().split('T')[0];
@@ -1218,6 +1237,19 @@ const RestaurantAdmin = () => {
   const getDeliveryFee = (destination) => {
     return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
   };
+const ratedOrders = orders.filter((order) => {
+  const hasRating = order.rating && typeof order.rating === "object" && order.rating.rating !== undefined;
+  const matchesRestaurant = order.restaurantId === currentRestaurantId;
+  if (hasRating && matchesRestaurant) {
+    console.log("Commande notée trouvée:", {
+      orderId: order.id,
+      restaurantId: order.restaurantId,
+      rating: order.rating,
+      currentRestaurantId,
+    });
+  }
+  return hasRating && matchesRestaurant;
+});
 
   const uploadImages = useCallback(async (files) => {
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -1904,26 +1936,30 @@ const startEditing = (item) => {
               onClose={() => setShowPendingOrdersModal(false)}
             />
           )}
-          <ul className="nav nav-tabs mb-4">
-            {["restaurant", "menus", "items", "categories", "orders", "extras","loyalty"].map((tab) => (
+ <ul className="nav nav-tabs mb-4">
+            {["restaurant", "menus", "items", "categories", "orders", "extras", "create-order", "loyalty", "comments"].map((tab) => (
               <li key={tab} className="nav-item">
                 <button
                   className={`nav-link ${activeTab === tab ? "active" : ""}`}
                   onClick={() => setActiveTab(tab)}
                 >
                   {tab === "restaurant"
-          ? "Infos Restaurant"
-          : tab === "menus"
-          ? "Gestion des Menus"
-          : tab === "items"
-          ? "Gestion des Plats"
-          : tab === "categories"
-          ? "Gestion des Catégories"
-          : tab === "orders"
-          ? "Commandes"
-          : tab === "extras"
-          ? "Extras"
-          : "Points de fidélité"}
+                    ? "Infos Restaurant"
+                    : tab === "menus"
+                    ? "Gestion des Menus"
+                    : tab === "items"
+                    ? "Gestion des Plats"
+                    : tab === "categories"
+                    ? "Gestion des Catégories"
+                    : tab === "orders"
+                    ? "Commandes"
+                    : tab === "extras"
+                    ? "Extras"
+                    : tab === "create-order"
+                    ? "Créer une Commande"
+                    : tab === "loyalty"
+                    ? "Points de fidélité"
+                    : "Commentaires"}
                 </button>
               </li>
             ))}
@@ -2776,7 +2812,305 @@ const startEditing = (item) => {
                 )}
               </div>
             )}
+{activeTab === "comments" && (
+  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+    <div className="flex justify-between items-center mb-6">
+      <h3 className="text-xl font-semibold text-gray-800">Avis et Feedbacks Clients</h3>
+      <div className="flex items-center gap-4">
+        {/* Statistiques globales pour les avis */}
+        {ratedOrders.length > 0 && (
+          <div className="flex items-center bg-blue-50 px-4 py-2 rounded-lg">
+            <span className="text-2xl font-bold text-blue-600 mr-2">
+              {(
+                ratedOrders.reduce((sum, order) => sum + order.rating.rating, 0) /
+                ratedOrders.length
+              ).toFixed(1)}
+            </span>
+            <div className="flex">
+              {[...Array(5)].map((_, i) => (
+                <i
+                  key={i}
+                  className={`fas fa-star text-sm ${
+                    i <
+                    Math.round(
+                      ratedOrders.reduce((sum, order) => sum + order.rating.rating, 0) /
+                        ratedOrders.length
+                    )
+                      ? "text-yellow-400"
+                      : "text-gray-300"
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="ml-2 text-sm text-gray-600">
+              ({ratedOrders.length} avis)
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
 
+    {error && (
+      <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+        <p>{error}</p>
+      </div>
+    )}
+
+    {/* Section pour les avis (ratedOrders) */}
+    <div className="mb-8">
+      <h4 className="text-lg font-semibold text-gray-700 mb-4">Avis Clients</h4>
+      {ratedOrders.length === 0 ? (
+        <div className="text-center py-8">
+          <i className="fas fa-comment-slash text-4xl text-gray-300 mb-3"></i>
+          <p className="text-gray-500">Aucun avis client pour le moment</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {ratedOrders.map((order) => {
+            const user = order.userId
+              ? usersData.byId[order.userId]
+              : order.contact?.phone && usersData.byPhone[order.contact.phone];
+            const clientInfo = user
+              ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+                user.email ||
+                "Utilisateur inconnu"
+              : order.contact?.name ||
+                (order.contact?.phone ? `Client (${order.contact.phone})` : "Client anonyme");
+            const ratingDate = order.rating?.date
+              ? new Date(
+                  typeof order.rating.date === "object" && "seconds" in order.rating.date
+                    ? order.rating.date.seconds * 1000
+                    : order.rating.date
+                ).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Date inconnue";
+
+            return (
+              <div
+                key={order.id}
+                className="p-6 border rounded-lg hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{clientInfo}</h4>
+                    <p className="text-sm text-gray-500">
+                      Commande #{order.id.slice(0, 6)} • {ratingDate}
+                    </p>
+                  </div>
+                  <div className="flex items-center">
+                    {[...Array(5)].map((_, i) => (
+                      <i
+                        key={i}
+                        className={`fas fa-star ${
+                          i < order.rating.rating ? "text-yellow-400" : "text-gray-300"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {order.rating.comment && (
+                  <div className="bg-gray-50 p-4 rounded-lg mt-2">
+                    <p className="text-gray-700 italic">"{order.rating.comment}"</p>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">
+                    Articles commandés
+                  </h5>
+                  <ul className="space-y-1 text-sm text-gray-600">
+                    {order.items?.slice(0, 3).map((item, index) => {
+                      const dish = items.find((i) => i.id === item.dishId);
+                      return (
+                        <li key={index} className="flex justify-between">
+                          <span>
+                            {dish?.name || item.dishName || "Article inconnu"} × {item.quantity}
+                          </span>
+                          <span>
+                            {formatPrice(
+                              (item.price || item.dishPrice || dish?.price || 0) * item.quantity
+                            )}{" "}
+                            FCFA
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {order.items?.length > 3 && (
+                      <li className="text-blue-600">
+                        + {order.items.length - 3} autres articles
+                      </li>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    onClick={() => showOrderDetails(order)}
+                  >
+                    Voir la commande complète
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+
+    {/* Section pour les feedbacks */}
+    <div>
+      <h4 className="text-lg font-semibold text-gray-700 mb-4">Feedbacks Clients</h4>
+      {feedbacks.length === 0 ? (
+        <div className="text-center py-8">
+          <i className="fas fa-comment-slash text-4xl text-gray-300 mb-3"></i>
+          <p className="text-gray-500">Aucun feedback client pour le moment</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {feedbacks.map((feedback) => {
+            // Récupérer les informations de l'utilisateur ou du client
+            const user = feedback.userId
+              ? usersData.byId[feedback.userId]
+              : feedback.contact?.phone && usersData.byPhone[feedback.contact.phone];
+            const clientInfo = user
+              ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+                user.email ||
+                "Utilisateur inconnu"
+              : feedback.contact?.name ||
+                (feedback.contact?.phone ? `Client (${feedback.contact.phone})` : "Client anonyme");
+
+            // Formater la date du feedback
+            const feedbackDate = feedback.timestamp
+              ? new Date(
+                  typeof feedback.timestamp === "object" && "seconds" in feedback.timestamp
+                    ? feedback.timestamp.seconds * 1000
+                    : feedback.timestamp
+                ).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Date inconnue";
+
+            // Récupérer la commande associée pour afficher les articles
+            const order = orders.find((o) => o.id === feedback.orderId);
+
+            return (
+              <div
+                key={feedback.id}
+                className="p-6 border rounded-lg hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{clientInfo}</h4>
+                    <p className="text-sm text-gray-500">
+                      Commande #{feedback.orderId.slice(0, 6)} • {feedbackDate}
+                    </p>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-600">
+                      Recommande : {feedback.recommend ? "✅ Oui" : "❌ Non"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Afficher les notes */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Service de livraison :</p>
+                    <div className="flex">
+                      {[...Array(5)].map((_, i) => (
+                        <i
+                          key={i}
+                          className={`fas fa-star ${
+                            i < feedback.deliveryService ? "text-yellow-400" : "text-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Qualité des plats :</p>
+                    <div className="flex">
+                      {[...Array(5)].map((_, i) => (
+                        <i
+                          key={i}
+                          className={`fas fa-star ${
+                            i < feedback.foodQuality ? "text-yellow-400" : "text-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Afficher le commentaire sur les points de fidélité */}
+                {feedback.pointsExperience && (
+                  <div className="bg-gray-50 p-4 rounded-lg mt-2">
+                    <p className="text-gray-700 italic">
+                      Commentaire sur les points : "{feedback.pointsExperience}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Afficher les articles de la commande associée */}
+                {order && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">
+                      Articles commandés
+                    </h5>
+                    <ul className="space-y-1 text-sm text-gray-600">
+                      {order.items?.slice(0, 3).map((item, index) => {
+                        const dish = items.find((i) => i.id === item.dishId);
+                        return (
+                          <li key={index} className="flex justify-between">
+                            <span>
+                              {dish?.name || item.dishName || "Article inconnu"} × {item.quantity}
+                            </span>
+                            <span>
+                              {formatPrice(
+                                (item.price || item.dishPrice || dish?.price || 0) * item.quantity
+                              )}{" "}
+                              FCFA
+                            </span>
+                          </li>
+                        );
+                      })}
+                      {order.items?.length > 3 && (
+                        <li className="text-blue-600">
+                          + {order.items.length - 3} autres articles
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Action pour voir la commande complète */}
+                <div className="mt-4 flex justify-end">
+                  <button
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    onClick={() => showOrderDetails(order)}
+                  >
+                    Voir la commande complète
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  </div>
+)}
           {activeTab === "extras" && (
             <>
               <h3>Créer une Extra List</h3>
@@ -2867,6 +3201,17 @@ const startEditing = (item) => {
                 </tbody>
               </table>
             </>
+          )}
+          
+          {activeTab === "create-order" && (
+            <CreateOrderForm
+              restaurantId={currentRestaurantId}
+              items={items}
+              extraLists={extraLists}
+              usersData={usersData}
+              setUsersData={setUsersData}
+              setError={setError}
+            />
           )}
           {activeTab === "loyalty" && (
   <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">

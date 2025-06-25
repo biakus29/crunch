@@ -103,8 +103,8 @@ const CartPage = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-gray-50">
-        <div className="animate-pulse space-y-4 w-full max-w-md px-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="animate-pulse space-y-4 w-full max-w-md px-4 sm:px-6">
           <div className="h-10 bg-gray-200 rounded-lg"></div>
           <div className="h-24 bg-gray-200 rounded-lg"></div>
           <div className="h-24 bg-gray-200 rounded-lg"></div>
@@ -115,11 +115,13 @@ const CartPage = () => {
 
   if (cartItems.length === 0) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-gray-50 px-4">
-        <p className="text-center text-lg sm:text-xl text-gray-600 mb-6">Votre panier est vide</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 sm:px-6">
+        <p className="text-center text-base sm:text-lg md:text-xl text-gray-600 mb-6">
+          Votre panier est vide
+        </p>
         <Link
           to="/accueil"
-          className="bg-green-600 text-white px-6 sm:px-8 py-2 sm:py-3 rounded-full hover:bg-green-700 transition-all duration-300 shadow-lg"
+          className="bg-green-600 text-white px-6 py-2.5 sm:px-8 sm:py-3 rounded-full hover:bg-green-700 transition-all duration-300 shadow-lg text-sm sm:text-base"
         >
           Découvrir la boutique
         </Link>
@@ -128,32 +130,36 @@ const CartPage = () => {
   }
 
   return (
-    <div className="bg-gray-50">
+    <div className="bg-gray-50 min-h-screen flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-sm p-4 sticky top-0 z-10">
-        <h2 className="text-center font-bold text-xl sm:text-2xl text-gray-800">Votre Panier</h2>
+      <header className="bg-white shadow-sm p-4 sm:p-5 sticky top-0 z-10">
+        <h2 className="text-center font-bold text-lg sm:text-xl md:text-2xl text-gray-800">
+          Votre Panier
+        </h2>
       </header>
 
       {/* Main Content */}
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-32">
+      <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-5xl mx-auto space-y-4 sm:space-y-6">
         {/* Cart Items */}
         <ul className="space-y-4">
           {cartItems.map((item) => (
             <li
               key={item.id}
-              className="bg-white rounded-xl sm:rounded-2xl shadow-md p-4 flex items-start space-x-3 sm:space-x-4 transition-all hover:shadow-lg"
+              className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 flex items-start space-x-3 sm:space-x-4 transition-all hover:shadow-lg"
             >
               <img
                 src={item.covers?.[0] || "/img/default-food.png"}
                 alt={item.name}
-                className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg"
+                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 object-cover rounded-lg aspect-square"
               />
               <div className="flex-1">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-semibold text-base sm:text-lg text-gray-800">{item.name}</h3>
+                  <h3 className="font-semibold text-sm sm:text-base md:text-lg text-gray-800">
+                    {item.name}
+                  </h3>
                   <button
                     onClick={() => removeFromCart(item.id)}
-                    className="text-red-500 hover:text-red-600 transition-colors"
+                    className="text-red-500 hover:text-red-600 transition-colors text-sm sm:text-base"
                     aria-label="Supprimer l'article"
                   >
                     <i className="fas fa-trash-alt"></i>
@@ -188,19 +194,21 @@ const CartPage = () => {
                   </div>
                 )}
 
-                <div className="mt-3 sm:mt-4 flex items-center space-x-3 sm:space-x-4">
+                <div className="mt-2 sm:mt-3 flex items-center space-x-3 sm:space-x-4">
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
                     disabled={item.quantity === 1}
-                    className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                    className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50 transition-colors"
                     aria-label="Diminuer la quantité"
                   >
                     −
                   </button>
-                  <span className="font-medium text-gray-700 text-sm sm:text-base">{item.quantity}</span>
+                  <span className="font-medium text-gray-700 text-sm sm:text-base">
+                    {item.quantity}
+                  </span>
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                    className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
                     aria-label="Augmenter la quantité"
                   >
                     +
@@ -213,11 +221,13 @@ const CartPage = () => {
 
         {/* Loyalty Card */}
         {total < thresholdAmount ? (
-          <div className="bg-gradient-to-r from-yellow-100 to-yellow-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-md flex items-center space-x-3 sm:space-x-4">
-            <i className="fas fa-gift text-2xl sm:text-3xl text-yellow-600"></i>
+          <div className="bg-gradient-to-r from-yellow-100 to-yellow-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md flex items-center space-x-3 sm:space-x-4">
+            <i className="fas fa-gift text-xl sm:text-2xl md:text-3xl text-yellow-600"></i>
             <div>
-              <h4 className="font-bold text-base sm:text-lg text-yellow-800">Boostez votre fidélité !</h4>
-              <p className="text-yellow-700 text-sm sm:text-base">
+              <h4 className="font-bold text-sm sm:text-base md:text-lg text-yellow-800">
+                Boostez votre fidélité !
+              </h4>
+              <p className="text-yellow-700 text-xs sm:text-sm md:text-base">
                 Ajoutez{" "}
                 <span className="font-semibold">
                   {(thresholdAmount - total).toLocaleString()} FCFA
@@ -228,11 +238,13 @@ const CartPage = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-gradient-to-r from-green-100 to-green-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-md flex items-center space-x-3 sm:space-x-4">
-            <i className="fas fa-award text-2xl sm:text-3xl text-green-600"></i>
+          <div className="bg-gradient-to-r from-green-100 to-green-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md flex items-center space-x-3 sm:space-x-4">
+            <i className="fas fa-award text-xl sm:text-2xl md:text-3xl text-green-600"></i>
             <div>
-              <h4 className="font-bold text-base sm:text-lg text-green-800">Félicitations !</h4>
-              <p className="text-green-700 text-sm sm:text-base">
+              <h4 className="font-bold text-sm sm:text-base md:text-lg text-green-800">
+                Félicitations !
+              </h4>
+              <p className="text-green-700 text-xs sm:text-sm md:text-base">
                 Vous gagnez{" "}
                 <span className="font-semibold">{points} points</span> (soit{" "}
                 {(points * 100).toLocaleString()} FCFA de crédit)
@@ -243,17 +255,19 @@ const CartPage = () => {
       </div>
 
       {/* Footer */}
-      <footer className="bg-white shadow-inner p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto">
+      <footer className="bg-white shadow-inner p-4 sm:p-5 md:p-6 sticky bottom-16 sm:bottom-0 z-10">
+        <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-3 sm:mb-4">
-            <span className="font-semibold text-base sm:text-lg text-gray-700">Total :</span>
-            <span className="font-bold text-2xl sm:text-3xl text-green-600">
+            <span className="font-semibold text-base sm:text-lg md:text-xl text-gray-700">
+              Total :
+            </span>
+            <span className="font-bold text-xl sm:text-2xl md:text-3xl text-green-600">
               {total.toLocaleString()} FCFA
             </span>
           </div>
           <button
             onClick={handleCheckout}
-            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2 sm:py-3 rounded-full transition-all duration-300 shadow-lg flex items-center justify-center text-sm sm:text-base"
+            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 sm:py-3 md:py-4 rounded-full transition-all duration-300 shadow-lg flex items-center justify-center text-sm sm:text-base md:text-lg"
           >
             <i className="fas fa-check-circle mr-2"></i>
             Commander maintenant
@@ -262,31 +276,34 @@ const CartPage = () => {
       </footer>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 w-full bg-white shadow-lg grid grid-cols-4 text-center z-20">
+      <nav className="fixed bottom-0 w-full bg-white shadow-lg p-2 sm:p-3 grid grid-cols-4 text-center z-20">
         <Link
           to="/accueil"
-          className="py-2 sm:py-3 text-gray-600 hover:text-green-600 transition-colors"
+          className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-home text-lg sm:text-xl mb-1"></i>
-          <span className="block text-xs">Boutique</span>
+          <i className="fas fa-home text-base sm:text-lg md:text-xl mb-1"></i>
+          <span className="block text-xs sm:text-sm">Boutique</span>
         </Link>
-        <Link to="/cart" className="py-2 sm:py-3 text-green-600 font-semibold">
-          <i className="fas fa-shopping-cart text-lg sm:text-xl mb-1"></i>
-          <span className="block text-xs">Panier</span>
+        <Link
+          to="/cart"
+          className="py-2 text-green-600 font-semibold"
+        >
+          <i className="fas fa-shopping-cart text-base sm:text-lg md:text-xl mb-1"></i>
+          <span className="block text-xs sm:text-sm">Panier</span>
         </Link>
         <Link
           to="/orders"
-          className="py-2 sm:py-3 text-gray-600 hover:text-green-600 transition-colors"
+          className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-shopping-bag text-lg sm:text-xl mb-1"></i>
-          <span className="block text-xs">Commandes</span>
+          <i className="fas fa-shopping-bag text-base sm:text-lg md:text-xl mb-1"></i>
+          <span className="block text-xs sm:text-sm">Commandes</span>
         </Link>
         <Link
           to="/profile"
-          className="py-2 sm:py-3 text-gray-600 hover:text-green-600 transition-colors"
+          className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-user text-lg sm:text-xl mb-1"></i>
-          <span className="block text-xs">Compte</span>
+          <i className="fas fa-user text-base sm:text-lg md:text-xl mb-1"></i>
+          <span className="block text-xs sm:text-sm">Compte</span>
         </Link>
       </nav>
 
@@ -301,7 +318,7 @@ const CartPage = () => {
         pauseOnFocusLoss
         draggable
         pauseOnHover
-        className="mb-16 sm:mb-0"
+        className="mb-20 sm:mb-4"
       />
     </div>
   );

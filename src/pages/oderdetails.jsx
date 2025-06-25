@@ -68,6 +68,33 @@ const InputField = ({ label, name, value, onChange, error, placeholder, required
   </div>
 );
 
+const PaymentMethods = ({ methods, selected, onSelect, errors }) => (
+  <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mx-3">
+    <h6 className="font-bold mb-3 text-lg">Méthode de paiement *</h6>
+    <div className="space-y-3">
+      {methods.map((method) => (
+        <label key={method.id} className="flex items-center bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-gray-50">
+          <input
+            type="radio"
+            name="payment-method"
+            value={method.id}
+            checked={selected === method.id}
+            onChange={(e) => onSelect(e.target.value)}
+            className="h-5 w-5 text-green-600"
+          />
+          <div className="ml-3 flex-1 flex items-center">
+            <i className={`${method.icon} text-green-600 text-xl mr-3`}></i>
+            <div>
+              <p className="font-semibold">{method.name}</p>
+              <p className="text-sm text-gray-500">{method.description}</p>
+            </div>
+          </div>
+        </label>
+      ))}
+    </div>
+  </section>
+);
+
 // Composant principal
 const OrderAddress = ({ cartItems, cartTotal }) => {
   const [user, setUser] = useState(null);
@@ -77,7 +104,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const [addresses, setAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState("");
   const [selectedPayment, setSelectedPayment] = useState("");
-  const [mobilePaymentPhone, setMobilePaymentPhone] = useState("");
   const [editingAddress, setEditingAddress] = useState(null);
   const [data, setData] = useState({
     nickname: "Home",
@@ -331,20 +357,24 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     return () => unsubscribe();
   }, [firestoreActions]);
 
-  // Chargement des quartiers
   useEffect(() => {
     const fetchQuartiers = async () => {
       const querySnapshot = await getDocs(collection(db, "quartiers"));
-      setQuartiersList(querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      setQuartiersList(
+        querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          name: doc.data().name || "",
+          ...doc.data(),
+        }))
+      );
     };
     fetchQuartiers();
   }, []);
 
-  // Filtrage des quartiers
   useEffect(() => {
-    if (data.area.length > 0) {
-      const filtered = quartiersList.filter((q) =>
-        q.name.toLowerCase().includes(data.area.toLowerCase())
+    if (data.area?.length > 0) {
+      const filtered = quartiersList.filter((q) => 
+        q?.name?.toLowerCase()?.includes(data.area?.toLowerCase() ?? '')
       );
       setFilteredQuartiers(filtered);
     } else {
@@ -371,12 +401,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
     setData((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "" }));
     if (actionError) setActionError("");
-  };
-
-  // Gestion du numéro de paiement mobile
-  const handleMobilePaymentPhoneChange = (e) => {
-    setMobilePaymentPhone(e.target.value);
-    setErrors((prev) => ({ ...prev, mobilePaymentPhone: "" }));
   };
 
   // Sélection d'un quartier
@@ -524,15 +548,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   const handleContinue = async () => {
     setSubmitState((prev) => ({ ...prev, continueLoading: true }));
     try {
-      if (selectedPayment === "payment_mobile" && !/^\+?[0-9]{9,15}$/.test(mobilePaymentPhone)) {
-        setErrors((prev) => ({
-          ...prev,
-          mobilePaymentPhone: "Numéro de téléphone invalide pour le paiement mobile",
-        }));
-        setSubmitState((prev) => ({ ...prev, continueLoading: false }));
-        return;
-      }
-
       let orderData = {};
       let navState = {};
 
@@ -574,10 +589,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         orderData = {
           userId: user.uid,
           address: addressToUse,
-          paymentMethod: {
-            ...paymentMethods.find((p) => p.id === selectedPayment),
-            phone: selectedPayment === "payment_mobile" ? mobilePaymentPhone : null,
-          },
+          paymentMethod: paymentMethods.find((p) => p.id === selectedPayment),
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
@@ -643,10 +655,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
           guestId,
           contact: contactInfo,
           address: addressToUse,
-          paymentMethod: {
-            ...paymentMethods.find((p) => p.id === selectedPayment),
-            phone: selectedPayment === "payment_mobile" ? mobilePaymentPhone : null,
-          },
+          paymentMethod: paymentMethods.find((p) => p.id === selectedPayment),
           timestamp: Timestamp.now(),
           status: ORDER_STATUS.PENDING,
           items: cartItems || [],
@@ -736,8 +745,6 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
         methods={paymentMethods}
         selected={selectedPayment}
         onSelect={setSelectedPayment}
-        mobilePaymentPhone={mobilePaymentPhone}
-        handleMobilePaymentPhoneChange={handleMobilePaymentPhoneChange}
         errors={errors}
       />
 
@@ -945,47 +952,6 @@ const AddressForm = ({ data, onChange, errors, filteredQuartiers, onQuartierSele
         type="tel"
       />
     )}
-  </section>
-);
-
-const PaymentMethods = ({ methods, selected, onSelect, mobilePaymentPhone, handleMobilePaymentPhoneChange, errors }) => (
-  <section className="p-3 bg-white rounded-lg shadow-sm mb-4 mx-3">
-    <h6 className="font-bold mb-3 text-lg">Méthode de paiement *</h6>
-    <div className="space-y-3">
-      {methods.map((method) => (
-        <div key={method.id}>
-          <label className="flex items-center bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-gray-50">
-            <input
-              type="radio"
-              name="payment-method"
-              value={method.id}
-              checked={selected === method.id}
-              onChange={(e) => onSelect(e.target.value)}
-              className="h-5 w-5 text-green-600"
-            />
-            <div className="ml-3 flex-1 flex items-center">
-              <i className={`${method.icon} text-green-600 text-xl mr-3`}></i>
-              <div>
-                <p className="font-semibold">{method.name}</p>
-                <p className="text-sm text-gray-500">{method.description}</p>
-              </div>
-            </div>
-          </label>
-          {method.id === "payment_mobile" && selected === "payment_mobile" && (
-            <InputField
-              label="Numéro pour paiement mobile"
-              name="mobilePaymentPhone"
-              value={mobilePaymentPhone}
-              onChange={handleMobilePaymentPhoneChange}
-              error={errors.mobilePaymentPhone}
-              placeholder="Ex: +237698123456"
-              required
-              type="tel"
-            />
-          )}
-        </div>
-      ))}
-    </div>
   </section>
 );
 

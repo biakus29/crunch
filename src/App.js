@@ -24,13 +24,15 @@ import PaymentSuccess from "./pages/payementsuccess"; // Standardisé
 import PaymentFailure from "./pages/payementfailed"; // Standardisé
 import SuperAdmin from "./pages/superadmin";
 import CartPage from "./pages/panier"; // Assurez-vous que le chemin est correct
-
+import MaintenancePage from "./pages/maintenance";
+import ChangerId from "./pages/maj";
+import OrderTracking from "./pages/ordertrack";
 function App() {
   return (
     <CartProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Logins />} />
+          <Route path="/" element={<Login />} />
           <Route path="/accueil" element={<Accueil />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/details/:id" element={<Detail />} />
@@ -53,6 +55,10 @@ function App() {
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/failure" element={<PaymentFailure />} />
           <Route path="/superadmin" element={<SuperAdmin />} />
+          <Route path="/mainto" element={<MaintenancePage />} />
+          <Route path="/changer-id" element={<ChangerId />} />
+          <Route path="/commande/me/:numeroTelephoneClient" element={<OrderTracking />} />
+
           {/* <Route path="*" element={<NotFoundPage />} /> */}
         </Routes>
       </Router>

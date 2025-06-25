@@ -56,6 +56,12 @@ const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const { addToCart, cartItems } = useCart();
 
+  // Indexation des extraLists pour des recherches rapides
+  const extraListsById = useMemo(
+    () => extraLists.reduce((acc, list) => ({ ...acc, [list.id]: list }), {}),
+    [extraLists]
+  );
+
   // Initialisation des tailles par défaut
   useEffect(() => {
     if (items.length > 0) {
@@ -77,7 +83,7 @@ const HomePage = () => {
       if (currentUser && window.fbq) {
         window.fbq('track', 'PageView');
       }
-    }, (err) => {
+    }, () => {
       setError('Erreur lors de la vérification de l’utilisateur');
       setLoading(prev => ({ ...prev, global: false }));
     });
@@ -99,7 +105,7 @@ const HomePage = () => {
         .map(doc => ({
           id: doc.id,
           ...doc.data(),
-          assortments: doc.data().assortments || [],
+          extraLists: doc.data().extraLists || [],
         }))
         .filter(item => {
           if (item.priceType === 'sizes') {
@@ -120,9 +126,6 @@ const HomePage = () => {
         price: doc.data().price || null,
         restaurantId: doc.data().restaurantId || null,
       }));
-
-      console.log('Articles chargés:', fetchedItems);
-      console.log('Menus chargés:', fetchedMenus);
 
       setCategories(categoriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setItems(fetchedItems);
@@ -219,6 +222,7 @@ const HomePage = () => {
       registerFCMToken(user.uid);
     }
   }, [user]);
+
   // Recherche d'articles
   const handleSearch = (e) => {
     const query = e.target.value.toLowerCase();
@@ -277,10 +281,10 @@ const HomePage = () => {
   // Sélection d'un article
   const handleAddClick = (item, e) => {
     e.preventDefault();
-    console.log(`Ajout de ${item.id}, assortments:`, item.assortments);
+    console.log(`Ajout de ${item.id}, extraLists:`, item.extraLists);
     setSelectedItem({
       ...item,
-      assortments: item.assortments || [],
+      extraLists: item.extraLists || [],
       selectedSize: selectedSizes[item.id] || Object.keys(item.sizes || {})[0],
     });
     setSelectedExtras({});
@@ -296,13 +300,17 @@ const HomePage = () => {
       console.warn('validateExtras: aucune taille sélectionnée pour', selectedItem.id);
       return false;
     }
-    const assortments = Array.isArray(selectedItem.assortments) ? selectedItem.assortments : [];
-    if (assortments.length === 0) return true;
-    return assortments.every(assortmentId => {
-      const extraList = extraLists.find(el => el.id === assortmentId);
-      const requiredElements = extraList?.extraListElements?.filter(el => el.required) || [];
+    const extraLists = Array.isArray(selectedItem.extraLists) ? selectedItem.extraLists : [];
+    if (extraLists.length === 0) return true;
+    return extraLists.every(extraListId => {
+      const extraList = extraListsById[extraListId];
+      if (!extraList) {
+        console.warn(`ExtraList ${extraListId} non trouvée`);
+        return true; // Ignorer les listes introuvables
+      }
+      const requiredElements = extraList.extraListElements?.filter(el => el.required) || [];
       if (requiredElements.length === 0) return true;
-      const selected = selectedExtras[assortmentId] || [];
+      const selected = selectedExtras[extraListId] || [];
       return selected.length > 0;
     });
   };
@@ -364,8 +372,8 @@ const HomePage = () => {
       : convertPrice(selectedItem.price);
     if (isNaN(total)) total = 0;
 
-    Object.entries(selectedExtras).forEach(([assortmentId, indexes]) => {
-      const extraList = extraLists.find(el => el.id === assortmentId);
+    Object.entries(selectedExtras).forEach(([extraListId, indexes]) => {
+      const extraList = extraListsById[extraListId];
       if (extraList) {
         indexes.forEach(index => {
           const extraPrice = convertPrice(extraList.extraListElements?.[index]?.price);
@@ -449,69 +457,68 @@ const HomePage = () => {
       </header>
 
       {/* Modal des notifications */}
-{showNotificationModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
-    <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-transform duration-300 scale-95 hover:scale-100">
-      <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-        <h3 className="text-lg font-semibold">Notifications</h3>
-        <button
-          onClick={() => {
-            markAllNotificationsAsRead();
-            setShowNotificationModal(false);
-          }}
-          className="text-gray-500 hover:text-gray-700 text-2xl"
-        >
-          ×
-        </button>
-      </div>
-      <div className="p-4">
-        {notifications.length === 0 ? (
-          <p className="text-gray-500 text-center">Aucune notification pour le moment</p>
-        ) : (
-          <ul className="space-y-3">
-            {notifications.map((notification) => (
-              <li
-                key={notification.id}
-                className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
-                  notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
-                }`}
+      {showNotificationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-transform duration-300 scale-95 hover:scale-100">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-semibold">Notifications</h3>
+              <button
                 onClick={() => {
-                  if (!notification.read) markNotificationAsRead(notification.id);
+                  markAllNotificationsAsRead();
                   setShowNotificationModal(false);
-                  window.location.href = `/complete_order/${notification.orderId}`;
                 }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
               >
-                <p className="text-sm text-gray-700">
-                  Commande #{formatOrderId(notification.orderId)} :{' '}
-                  <span className={`font-medium ${STATUS_COLORS[notification.oldStatus]}`}>
-                    {STATUS_LABELS[notification.oldStatus] || 'Nouveau'}
-                  </span>{' '}
-                  →{' '}
-                  <span className={`font-medium ${STATUS_COLORS[notification.newStatus]}`}>
-                    {STATUS_LABELS[notification.newStatus]}
-                  </span>
-                </p>
-                {notification.newStatus === 'echec' && notification.reason && (
-                  <p className="text-sm text-red-600 mt-1">Motif : {notification.reason}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-1">{notification.timestamp.toLocaleString('fr-FR')}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-        {/* Bouton "Vider" déplacé ici, à la fin du contenu */}
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={clearAllNotifications}
-            className="text-red-600 hover:text-red-800 text-sm flex items-center"
-          >
-            <i className="fas fa-trash-alt mr-1"></i> Vider
-          </button>
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              {notifications.length === 0 ? (
+                <p className="text-gray-500 text-center">Aucune notification pour le moment</p>
+              ) : (
+                <ul className="space-y-3">
+                  {notifications.map((notification) => (
+                    <li
+                      key={notification.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                        notification.read ? 'bg-gray-50 border-gray-200' : 'bg-green-50 border-green-200 hover:bg-green-100'
+                      }`}
+                      onClick={() => {
+                        if (!notification.read) markNotificationAsRead(notification.id);
+                        setShowNotificationModal(false);
+                        window.location.href = `/complete_order/${notification.orderId}`;
+                      }}
+                    >
+                      <p className="text-sm text-gray-700">
+                        Commande #{formatOrderId(notification.orderId)} :{' '}
+                        <span className={`font-medium ${STATUS_COLORS[notification.oldStatus]}`}>
+                          {STATUS_LABELS[notification.oldStatus] || 'Nouveau'}
+                        </span>{' '}
+                        →{' '}
+                        <span className={`font-medium ${STATUS_COLORS[notification.newStatus]}`}>
+                          {STATUS_LABELS[notification.newStatus]}
+                        </span>
+                      </p>
+                      {notification.newStatus === 'echec' && notification.reason && (
+                        <p className="text-sm text-red-600 mt-1">Motif : {notification.reason}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">{notification.timestamp.toLocaleString('fr-FR')}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={clearAllNotifications}
+                  className="text-red-600 hover:text-red-800 text-sm flex items-center"
+                >
+                  <i className="fas fa-trash-alt mr-1"></i> Vider
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Section des catégories */}
       <section className="p-3">
@@ -640,6 +647,7 @@ const HomePage = () => {
                 <button
                   onClick={(e) => handleAddClick(item, e)}
                   className="bg-green-600 text-white px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 hover:bg-green-700 transition-colors duration-200"
+                  aria-label={`Ajouter ${item.name} au panier avec options`}
                 >
                   +
                 </button>
@@ -667,7 +675,7 @@ const HomePage = () => {
                         <label
                           key={size}
                           className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                            (selectedItem.selectedSize || selectedSizes[selectedItem.id] || Object.keys(selectedItem.sizes)[0]) === size
+                            selectedItem.selectedSize === size
                               ? 'bg-green-50 border-2 border-green-200'
                               : 'border border-gray-200 hover:border-green-200'
                           }`}
@@ -676,7 +684,7 @@ const HomePage = () => {
                             type="radio"
                             name="size"
                             value={size}
-                            checked={(selectedItem.selectedSize || selectedSizes[selectedItem.id] || Object.keys(selectedItem.sizes)[0]) === size}
+                            checked={selectedItem.selectedSize === size}
                             onChange={(e) => {
                               const newSize = e.target.value;
                               setSelectedItem({ ...selectedItem, selectedSize: newSize });
@@ -686,6 +694,7 @@ const HomePage = () => {
                               }));
                             }}
                             className="form-radio h-5 w-5 text-green-600 focus:ring-green-500"
+                            aria-label={`Taille ${size} pour ${selectedItem.name}`}
                           />
                           <div className="ml-3 flex-1">
                             <span className="text-gray-700">{size}</span>
@@ -699,12 +708,12 @@ const HomePage = () => {
                   <p className="text-red-600 text-sm">Aucune taille disponible</p>
                 )
               )}
-              {selectedItem.assortments?.length > 0 ? (
-                selectedItem.assortments.map(assortmentId => {
-                  const extraList = extraLists.find(el => el.id === assortmentId);
+              {selectedItem.extraLists?.length > 0 ? (
+                selectedItem.extraLists.map(extraListId => {
+                  const extraList = extraListsById[extraListId];
                   if (!extraList) {
-                    console.warn(`ExtraList ${assortmentId} non trouvée pour ${selectedItem.id}`);
-                    return <p key={assortmentId} className="text-red-600 text-sm">Extra indisponible</p>;
+                    console.warn(`ExtraList ${extraListId} non trouvée pour ${selectedItem.id}`);
+                    return <p key={extraListId} className="text-red-600 text-sm">Liste d'extras indisponible</p>;
                   }
                   return (
                     <div key={extraList.id} className="mb-6">
@@ -718,23 +727,25 @@ const HomePage = () => {
                             <label
                               key={index}
                               className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                                selectedExtras[assortmentId]?.includes(index) ? 'bg-green-50 border-2 border-green-200' : 'border border-gray-200 hover:border-green-200'
+                                selectedExtras[extraListId]?.includes(index) ? 'bg-green-50 border-2 border-green-200' : 'border border-gray-200 hover:border-green-200'
                               }`}
                             >
                               <input
                                 type={el.multiple ? 'checkbox' : 'radio'}
-                                checked={selectedExtras[assortmentId]?.includes(index)}
+                                checked={selectedExtras[extraListId]?.includes(index)}
                                 onChange={(e) => {
-                                  const newSelection = [...(selectedExtras[assortmentId] || [])];
+                                  const newSelection = [...(selectedExtras[extraListId] || [])];
                                   if (el.multiple) {
                                     e.target.checked ? newSelection.push(index) : newSelection.splice(newSelection.indexOf(index), 1);
                                   } else {
                                     newSelection.length = 0;
                                     newSelection.push(index);
                                   }
-                                  setSelectedExtras({ ...selectedExtras, [assortmentId]: newSelection });
+                                  setSelectedExtras({ ...selectedExtras, [extraListId]: newSelection });
                                 }}
                                 className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
+                                aria-label={`${el.name} dans ${extraList.name}${el.required ? ' (obligatoire)' : ''}`}
+                                aria-required={el.required}
                               />
                               <div className="ml-3 flex-1">
                                 <span className="text-gray-700">{el.name}</span>

@@ -302,25 +302,36 @@ const MenuDisplayPage = () => {
 
   const handleAddToCart = () => {
     if (validateExtras()) {
-      const price =
-        selectedItem.priceType === "sizes" && selectedItem.sizes && Object.keys(selectedItem.sizes).length > 0
-          ? selectedItem.sizes[selectedItem.selectedSize]
-          : selectedItem.price;
+      const price = selectedItem.priceType === 'sizes' ? selectedItem.sizes[selectedItem.selectedSize] : selectedItem.price;
       addToCart({
-        selectedItem,
-        restaurantId: selectedItem.restaurantId || "default_restaurant_id",
+        ...selectedItem,
+        restaurantId: selectedItem.restaurantId || 'default_restaurant_id',
         selectedExtras,
         selectedSize: selectedItem.selectedSize,
         price,
       });
       setSuccessMessage(`${selectedItem.name} ajouté au panier !`);
-      setTimeout(() => setSuccessMessage(""), 2000);
+      setTimeout(() => setSuccessMessage(''), 3000);
+
+      if (window.fbq) {
+        window.fbq('track', 'AddToCart', {
+          content_ids: [selectedItem.id],
+          content_name: selectedItem.name,
+          content_type: 'product',
+          value: calculateTotalPrice(),
+          currency: 'XAF',
+        });
+      } else {
+        console.warn('Pixel Facebook non initialisé');
+      }
+
       setSelectedItem(null);
     } else {
-      setSuccessMessage("Veuillez sélectionner une taille ou les extras requis.");
-      setTimeout(() => setSuccessMessage(""), 2000);
+      setSuccessMessage('Veuillez sélectionner une taille ou les extras requis.');
+      setTimeout(() => setSuccessMessage(''), 3000);
     }
   };
+
 
   if (loading)
     return (

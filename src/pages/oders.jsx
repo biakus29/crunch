@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCart } from "../context/cartcontext";
 import { auth, db, waitForPersistence } from "../firebase";
@@ -13,16 +14,17 @@ import {
   where,
   updateDoc,
   setDoc,
+  runTransaction,
 } from "firebase/firestore";
 
 // Constants
-const DEFAULT_DELIVERY_FEE = 1000;
+export const DEFAULT_DELIVERY_FEE = 1000;
 const LOYALTY_THRESHOLD = 5000;
 const FIRST_RATE = 0.10;
 const NORMAL_RATE = 0.05;
 const CREDIT_PER_POINT = 100;
+const TEMP_ORDER_TIMEOUT = 2 * 60 * 60 * 1000; // 2 heures
 
-// Component to display and handle order summary
 const OrderSummary = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,8 +33,14 @@ const OrderSummary = () => {
   const [quartiersList, setQuartiersList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [missingData, setMissingData] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errors, setErrors] = useState({
+    cart: "",
+    address: "",
+    payment: "",
+    contact: "",
+    general: "",
+  });
   const [userPoints, setUserPoints] = useState(0);
   const [usePoints, setUsePoints] = useState(false);
   const [eligibleCount, setEligibleCount] = useState(0);
@@ -47,18 +55,38 @@ const OrderSummary = () => {
     deliveryFee: passedDeliveryFee = 0,
   } = location.state || {};
 
-  // Validate location.state
-  useEffect(() => {
-    if (!location.state) {
-      setError("Données de commande manquantes. Redirection vers le panier...");
-      const timer = setTimeout(() => navigate("/cart"), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [location.state, navigate]);
+  // Normalize address and payment
+  const normalizedAddress = useMemo(
+    () =>
+      isGuest && orderData?.address && orderData.address.area
+        ? orderData.address
+        : selectedAddress && selectedAddress.area
+        ? selectedAddress
+        : { area: "", completeAddress: "" },
+    [isGuest, orderData, selectedAddress]
+  );
+  const normalizedPayment = useMemo(
+    () => (isGuest && orderData?.paymentMethod ? orderData.paymentMethod : selectedPayment),
+    [isGuest, orderData, selectedPayment]
+  );
 
   // Monitor network status
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      const fetchData = async () => {
+        try {
+          await waitForPersistence();
+          const extraSnap = await getDocs(collection(db, "extraLists"));
+          const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          setExtraLists(extras);
+          console.log("extraLists rechargés après reconnexion:", extras);
+        } catch (err) {
+          console.error("Erreur lors du rechargement des extras:", err);
+        }
+      };
+      fetchData();
+    };
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener("online", handleOnline);
@@ -80,15 +108,36 @@ const OrderSummary = () => {
           getDocs(collection(db, "quartiers")),
           getDocs(collection(db, "extraLists")),
         ]);
-        setQuartiersList(quartiersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setExtraLists(extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        const quartiers = quartiersSnap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((q) => q.name && typeof q.name === "string");
+        const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        console.log("quartiers chargés:", quartiers);
+        console.log("extraLists chargés:", extras);
+        setQuartiersList(quartiers);
+        setExtraLists(extras);
+        if (quartiers.length === 0) {
+          console.warn("Aucun quartier trouvé dans Firestore.");
+          setErrors((prev) => ({
+            ...prev,
+            general: "Aucun quartier disponible. Contactez le support.",
+          }));
+        }
+        if (extras.length === 0) {
+          console.warn("Aucun extraList trouvé dans Firestore.");
+          setErrors((prev) => ({
+            ...prev,
+            general: "Aucun extra disponible. Contactez le support si cela persiste.",
+          }));
+        }
       } catch (err) {
-        console.error("Error fetching data:", err);
-        setError(
-          err.code === "unavailable"
+        console.error("Erreur lors du chargement des données:", err);
+        setErrors((prev) => ({
+          ...prev,
+          general: err.code === "unavailable"
             ? "Vous êtes hors ligne. Les données se chargeront lors de la reconnexion."
-            : "Échec du chargement des données nécessaires."
-        );
+            : "Échec du chargement des données nécessaires. Veuillez réessayer.",
+        }));
       } finally {
         setDataLoading(false);
       }
@@ -96,13 +145,12 @@ const OrderSummary = () => {
     fetchData();
   }, []);
 
-  // Load user points and eligible orders for authenticated users
+  // Load user points and eligible orders
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (!currentUser) {
         setUserPoints(0);
         setEligibleCount(0);
-        // setError("Vous devez être connecté pour utiliser les points de fidélité.");
         setDataLoading(false);
         return;
       }
@@ -137,14 +185,13 @@ const OrderSummary = () => {
         setUserPoints(points);
         setEligibleCount(ordersSnap.size);
       } catch (err) {
-        console.error("Error loading user data:", err);
-        setError(
-          err.code === "unavailable"
+        console.error("Erreur lors du chargement des données utilisateur:", err);
+        setErrors((prev) => ({
+          ...prev,
+          general: err.code === "unavailable"
             ? "Vous êtes hors ligne. Les points se chargeront lors de la reconnexion."
-            : err.code === "failed-precondition" && err.message.includes("index")
-            ? "Configuration de la base de données requise. Veuillez contacter le support."
-            : "Erreur lors du chargement des points."
-        );
+            : "Erreur lors du chargement des points.",
+        }));
         setUserPoints(0);
         setEligibleCount(0);
       } finally {
@@ -155,34 +202,23 @@ const OrderSummary = () => {
     return () => unsubscribe();
   }, []);
 
-  // Normalize address and payment
-  const normalizedAddress = useMemo(
-    () => (isGuest && orderData?.address ? orderData.address : selectedAddress),
-    [isGuest, orderData, selectedAddress]
-  );
-  const normalizedPayment = useMemo(
-    () => (isGuest && orderData?.paymentMethod ? orderData.paymentMethod : selectedPayment),
-    [isGuest, orderData, selectedPayment]
-  );
-
-  // Redirect if cart is empty
-  useEffect(() => {
-    if (!cartItems || cartItems.length === 0) {
-      setError("Votre panier est vide. Redirection vers l'accueil...");
-      const timer = setTimeout(() => navigate("/"), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [cartItems, navigate]);
-
-  // Redirect if address or payment is missing
-  useEffect(() => {
-    if (!normalizedAddress?.area || !normalizedPayment?.name) {
-      setMissingData(true);
-      setError("Informations d'adresse ou de paiement manquantes. Redirection vers le panier...");
-      const timer = setTimeout(() => navigate("/cart"), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [normalizedAddress, normalizedPayment, navigate]);
+  // Calculate delivery fee
+  const getDeliveryFee = useMemo(() => {
+    return (area) => {
+      if (passedDeliveryFee) return Number(passedDeliveryFee);
+      if (!area || typeof area !== "string" || !quartiersList.length) {
+        console.warn("area invalide ou quartiersList vide:", { area, quartiersList });
+        return DEFAULT_DELIVERY_FEE;
+      }
+      const quartier = quartiersList.find(
+        (q) => q.name && typeof q.name === "string" && q.name.toLowerCase() === area.toLowerCase()
+      );
+      if (!quartier) {
+        console.warn(`Aucun quartier trouvé pour area: ${area}`);
+      }
+      return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
+    };
+  }, [passedDeliveryFee, quartiersList]);
 
   // Convert price to number
   const convertPrice = (price) => {
@@ -196,21 +232,40 @@ const OrderSummary = () => {
 
   // Calculate items total
   const total = useMemo(() => {
-    if (!cartItems || !extraLists.length) return 0;
+    if (!cartItems || !extraLists.length) {
+      console.log("total: cartItems ou extraLists non disponibles", { cartItems, extraLists });
+      return 0;
+    }
     return cartItems.reduce((acc, item) => {
-      if (!item.price || !item.quantity) return acc;
+      if (!item.price || !item.quantity) {
+        console.warn("Article invalide:", item);
+        return acc;
+      }
       let itemTotal = convertPrice(item.price) * item.quantity;
       if (item.selectedExtras) {
         Object.entries(item.selectedExtras).forEach(([extraListId, indexes]) => {
           const extraList = extraLists.find((el) => el.id === extraListId);
-          if (extraList?.extraListElements) {
-            indexes.forEach((index) => {
-              const element = extraList.extraListElements[index];
-              if (element?.price) {
-                itemTotal += convertPrice(element.price) * item.quantity;
-              }
-            });
+          if (!extraList || !extraList.extraListElements) {
+            console.warn(`ExtraList ${extraListId} non trouvé pour l'article ${item.id}`);
+            return;
           }
+          indexes.forEach((index) => {
+            if (index >= 0 && index < extraList.extraListElements.length) {
+              const element = extraList.extraListElements[index];
+              const extraPrice = convertPrice(element?.price);
+              if (element && !isNaN(extraPrice)) {
+                itemTotal += extraPrice * item.quantity;
+              } else {
+                console.warn(
+                  `Extra invalide à l'index ${index} pour l'extraList ${extraListId}: élément manquant ou mal formé`
+                );
+              }
+            } else {
+              console.warn(
+                `Index ${index} hors limites pour l'extraList ${extraListId}`
+              );
+            }
+          });
         });
       }
       return acc + itemTotal;
@@ -221,22 +276,19 @@ const OrderSummary = () => {
   const getExtraName = (extraListId, index) => {
     const extraList = extraLists.find((el) => el.id === extraListId);
     if (!extraList || !extraList.extraListElements || !extraList.extraListElements[index]) {
+      console.warn(`Extra non trouvé: extraListId=${extraListId}, index=${index}`);
       return "Extra inconnu";
     }
     const element = extraList.extraListElements[index];
-    return `${element.name}${element.price ? ` (+${formatPrice(convertPrice(element.price))} Fcfa)` : ""}`;
+    const extraPrice = convertPrice(element.price);
+    return `${element.name}${extraPrice > 0 ? ` (+${formatPrice(extraPrice)} Fcfa)` : ""}`;
   };
 
-  // Calculate delivery fee
-  const getDeliveryFee = useMemo(() => {
-    return (area) => {
-      if (passedDeliveryFee) return Number(passedDeliveryFee);
-      if (!area || !quartiersList.length) return DEFAULT_DELIVERY_FEE;
-      const quartier = quartiersList.find((q) => q.name.toLowerCase() === area.toLowerCase());
-      return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
-    };
-  }, [passedDeliveryFee, quartiersList]);
-
+  console.warn("Avant getDeliveryFee:", {
+    normalizedAddress,
+    area: normalizedAddress?.area,
+    quartiersList,
+  });
   const deliveryFee = getDeliveryFee(normalizedAddress?.area);
 
   // Calculate loyalty points earned
@@ -250,7 +302,16 @@ const OrderSummary = () => {
   // Calculate points-based reduction
   const pointsToUse = useMemo(() => {
     if (!usePoints || userPoints <= 0) return 0;
-    return Math.min(userPoints, Math.ceil((total + deliveryFee) / CREDIT_PER_POINT));
+    const maxPoints = Math.floor((total + deliveryFee) / CREDIT_PER_POINT);
+    const points = Math.min(userPoints, maxPoints);
+    if (points * CREDIT_PER_POINT > total + deliveryFee) {
+      setErrors((prev) => ({
+        ...prev,
+        general: "Erreur dans le calcul des points. La réduction dépasse le total de la commande.",
+      }));
+      return 0;
+    }
+    return points;
   }, [usePoints, userPoints, total, deliveryFee]);
 
   const pointsReduction = useMemo(() => pointsToUse * CREDIT_PER_POINT, [pointsToUse]);
@@ -271,34 +332,146 @@ const OrderSummary = () => {
 
   // Validate order data
   const isValidOrder = useCallback(() => {
-    return (
-      cartItems?.every(
-        (item) => item.id && item.name && !isNaN(convertPrice(item.price)) && item.quantity > 0
-      ) &&
-      normalizedAddress?.area &&
-      normalizedAddress?.completeAddress &&
-      normalizedPayment?.name &&
-      (!isGuest || (contact?.name && contact?.phone))
-    );
-  }, [cartItems, normalizedAddress, normalizedPayment, isGuest, contact]);
+    let isValid = true;
+    const errors = {
+      cart: "",
+      address: "",
+      payment: "",
+      contact: "",
+      general: "",
+    };
+
+    // Validate cart
+    if (!cartItems || cartItems.length === 0) {
+      errors.cart = "Votre panier est vide.";
+      isValid = false;
+    } else if (
+      !cartItems.every(
+        (item) =>
+          item.id &&
+          item.name &&
+          !isNaN(convertPrice(item.price)) &&
+          item.quantity > 0
+      )
+    ) {
+      errors.cart = "Certains articles du panier sont invalides.";
+      isValid = false;
+    }
+
+    // Validate address
+    if (!normalizedAddress) {
+      errors.address = "Aucune adresse fournie.";
+      isValid = false;
+    } else {
+      if (!normalizedAddress.area || typeof normalizedAddress.area !== "string") {
+        errors.address = "Le quartier est requis et doit être valide.";
+        isValid = false;
+      }
+      if (!normalizedAddress.completeAddress) {
+        errors.address = errors.address
+          ? `${errors.address} L'adresse complète est requise.`
+          : "L'adresse complète est requise.";
+        isValid = false;
+      }
+    }
+
+    // Validate payment
+    if (!normalizedPayment?.name) {
+      errors.payment = "Veuillez sélectionner une méthode de paiement.";
+      isValid = false;
+    }
+
+    // Validate contact for guests
+    if (isGuest) {
+      if (!contact?.name) {
+        errors.contact = "Le nom est requis pour les invités.";
+        isValid = false;
+      }
+      if (!contact?.phone) {
+        errors.contact = errors.contact
+          ? `${errors.contact} Le numéro de téléphone est requis.`
+          : "Le numéro de téléphone est requis.";
+        isValid = false;
+      }
+    }
+
+    // Validate delivery fee
+    if (isNaN(deliveryFee) || deliveryFee < 0) {
+      errors.general = "Frais de livraison invalides.";
+      isValid = false;
+    }
+
+    // Validate extraLists
+    if (!extraLists || extraLists.length === 0) {
+      errors.general = errors.general
+        ? `${errors.general} Données des extras non disponibles.`
+        : "Données des extras non disponibles.";
+      isValid = false;
+    }
+
+    return { isValid, errors };
+  }, [cartItems, normalizedAddress, normalizedPayment, isGuest, contact, extraLists, deliveryFee]);
+
+  // Check validity on mount
+  const isValidOrderRef = useRef(isValidOrder);
+  useEffect(() => {
+    isValidOrderRef.current = isValidOrder;
+  }, [isValidOrder]);
+
+  useEffect(() => {
+    if (dataLoading) {
+      console.log("Validation en attente, données en cours de chargement...");
+      return;
+    }
+    if (
+      !location.state ||
+      !normalizedAddress ||
+      !normalizedAddress.area ||
+      typeof normalizedAddress.area !== "string"
+    ) {
+      console.warn("Données de commande ou d'adresse invalides:", {
+        locationState: location.state,
+        normalizedAddress,
+      });
+      setErrors((prev) => ({
+        ...prev,
+        general: "Données de commande ou d'adresse manquantes. Veuillez sélectionner une adresse valide.",
+      }));
+      navigate("/checkout", { replace: true });
+      return;
+    }
+    const { isValid, errors } = isValidOrderRef.current();
+    setErrors((prev) => ({ ...prev, ...errors }));
+  }, [location.state, normalizedAddress, dataLoading, navigate]);
 
   // Handle order confirmation
   const handleConfirmOrder = useCallback(async () => {
-    if (!isValidOrder()) {
-      setError("Données de commande invalides.");
+    const { isValid, errors } = isValidOrder();
+    if (!isValid) {
+      setErrors((prev) => ({
+        ...prev,
+        ...errors,
+        general: "Veuillez corriger les erreurs ci-dessus avant de confirmer.",
+      }));
       return;
     }
+
     if (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
-      setError("Vous êtes hors ligne. Les paiements mobiles nécessitent une connexion Internet.");
+      setErrors((prev) => ({
+        ...prev,
+        general: "Vous êtes hors ligne. Les paiements mobiles nécessitent une connexion Internet.",
+      }));
       return;
     }
+
     setLoading(true);
-    setError("");
+    setErrors((prev) => ({ ...prev, general: "" }));
     const uid = auth.currentUser?.uid || localStorage.getItem("guestUid") || `guest_${Date.now()}`;
 
     try {
       await waitForPersistence();
       const orderLabel = cartItems.map((i) => i.name).join(", ");
+      console.log("Soumission de la commande pour l'utilisateur:", uid, "avec articles:", cartItems);
 
       let paymentData = null;
       if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
@@ -306,7 +479,7 @@ const OrderSummary = () => {
           throw new Error("Connexion Internet requise pour le paiement mobile.");
         }
 
-        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
+        const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
         const response = await fetch(`${API_URL}/api/payment/init`, {
           method: "POST",
           headers: {
@@ -317,7 +490,6 @@ const OrderSummary = () => {
             currency: "XOF",
             order_id: `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
             customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
-            customer_phone: normalizedAddress?.phone || contact?.phone || "",
             description: `Commande : ${orderLabel}`,
             success_url: `${window.location.origin}/payment/success`,
             failure_url: `${window.location.origin}/payment/failure`,
@@ -350,69 +522,106 @@ const OrderSummary = () => {
           pointsReduction,
           loyaltyPoints,
           loyaltyEligible: total >= LOYALTY_THRESHOLD,
-          status: normalizedPayment?.id === "payment_mobile" && paymentData?.transactionId ? "pending" : "en_attente",
-          isPaid: normalizedPayment?.id === "cash_delivery" ? false : !paymentData?.transactionId,
+          status: "pending",
+          isPaid: false,
+          timestamp: Timestamp.now().toDate().toISOString(),
+          isGuest: !!isGuest,
+          label: orderLabel,
+          paymentRef: paymentResponse?.transactionId || null,
+        };
+        localStorage.setItem("tempOrderData", JSON.stringify(tempOrderData));
+        console.log("tempOrderData stocké, redirection vers:", paymentResponse.paymentUrl);
+
+        try {
+          window.location.href = paymentResponse.paymentUrl;
+        } catch (err) {
+          console.error("Erreur lors de la redirection au paiement:", err);
+          localStorage.removeItem("tempOrderData");
+          setErrors((prev) => ({
+            ...prev,
+            general: "Échec de la redirection au paiement. Veuillez réessayer.",
+          }));
+          setLoading(false);
+        }
+        return;
+      }
+
+      const orderRef = await runTransaction(db, async (transaction) => {
+        const orderRef = doc(collection(db, "orders"));
+        const userRef = auth.currentUser ? doc(db, "usersrestau", uid) : null;
+
+        transaction.set(orderRef, {
+          userId: uid,
+          items: cartItems.map((i) => ({
+            dishId: i.id,
+            quantity: i.quantity,
+            price: convertPrice(i.price),
+            selectedExtras: i.selectedExtras || null,
+          })),
+          address: normalizedAddress,
+          paymentMethod: normalizedPayment,
+          total: finalTotal,
+          deliveryFee,
+          pointsUsed: pointsToUse,
+          pointsReduction,
+          loyaltyPoints,
+          loyaltyEligible: total >= LOYALTY_THRESHOLD,
+          status: normalizedPayment?.id === "payment_mobile" ? "pending" : "en_attente",
+          isPaid: normalizedPayment?.id === "cash_delivery" ? false : true,
           timestamp: Timestamp.now(),
           isGuest: !!isGuest,
           label: orderLabel,
           paymentRef: paymentData?.transactionId || null,
-        };
-        localStorage.setItem("tempOrderData", JSON.stringify(tempOrderData));
+        });
 
-        window.location.href = paymentResponse.paymentUrl;
-        return;
-      }
+        if (auth.currentUser && pointsToUse > 0) {
+          const userDoc = await transaction.get(userRef);
+          if (!userDoc.exists()) {
+            throw new Error("Utilisateur non trouvé.");
+          }
+          transaction.update(userRef, {
+            points: userDoc.data().points - pointsToUse,
+          });
+        }
 
-      const orderRef = await addDoc(collection(db, "orders"), {
-        userId: uid,
-        items: cartItems.map((i) => ({
-          dishId: i.id,
-          quantity: i.quantity,
-          price: convertPrice(i.price),
-          selectedExtras: i.selectedExtras || null,
-        })),
-        address: normalizedAddress,
-        paymentMethod: normalizedPayment,
-        total: finalTotal,
-        deliveryFee,
-        pointsUsed: pointsToUse,
-        pointsReduction,
-        loyaltyPoints,
-        loyaltyEligible: total >= LOYALTY_THRESHOLD,
-        status: normalizedPayment?.id === "payment_mobile" && paymentData?.transactionId ? "pending" : "en_attente",
-        isPaid: normalizedPayment?.id === "cash_delivery" ? false : !paymentData?.transactionId,
-        timestamp: Timestamp.now(),
-        isGuest: !!isGuest,
-        label: orderLabel,
-        paymentRef: paymentData?.transactionId || null,
+        if (auth.currentUser && loyaltyPoints > 0) {
+          const pointsTransactionRef = doc(collection(db, "pointsTransactions"));
+          transaction.set(pointsTransactionRef, {
+            userId: uid,
+            orderId: orderRef.id,
+            pointsAmount: loyaltyPoints,
+            status: "pending",
+            timestamp: Timestamp.now(),
+            message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
+            type: "points_grant",
+          });
+        }
+
+        return orderRef;
       });
 
-      if (auth.currentUser && pointsToUse > 0) {
-        await updateDoc(doc(db, "usersrestau", uid), {
-          points: userPoints - pointsToUse,
-        });
-      }
-
-      if (auth.currentUser && loyaltyPoints > 0) {
-        await addDoc(collection(db, "pointsTransactions"), {
-          userId: uid,
-          orderId: orderRef.id,
-          pointsAmount: loyaltyPoints,
-          status: "pending",
-          timestamp: Timestamp.now(),
-          message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
-          type: "points_grant",
-        });
-      }
-
+      console.log("Commande soumise avec succès, ID:", orderRef.id);
+      setIsSubmitted(true);
       clearCart();
-      navigate("/complete_order", {
-        state: { orderId: orderRef.id, isGuest, paymentStatus: "pending" },
-      });
+      try {
+        navigate("/complete_order", {
+          state: { orderId: orderRef.id, isGuest, paymentStatus: "pending" },
+          replace: true,
+        });
+      } catch (navError) {
+        console.error("Erreur de navigation:", navError);
+        setErrors((prev) => ({
+          ...prev,
+          general: "Commande soumise, mais redirection échouée. Vérifiez l'état de votre commande.",
+        }));
+        setLoading(false);
+      }
     } catch (err) {
-      console.error("Error submitting order:", err);
-      setError(err.message || "Erreur lors de la soumission de la commande. Veuillez réessayer.");
-    } finally {
+      console.error("Erreur lors de la soumission de la commande:", err);
+      setErrors((prev) => ({
+        ...prev,
+        general: err.message || "Erreur lors de la soumission de la commande. Veuillez réessayer.",
+      }));
       setLoading(false);
     }
   }, [
@@ -433,28 +642,45 @@ const OrderSummary = () => {
     navigate,
   ]);
 
-  // Check payment return on mount
+  // Check payment return
   useEffect(() => {
     const checkPaymentReturn = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const paymentStatus = urlParams.get("payment_status");
       const transactionId = urlParams.get("transaction_id");
       const orderId = urlParams.get("order_id");
+      let tempOrderData = JSON.parse(localStorage.getItem("tempOrderData"));
+
+      // Nettoyer les données temporaires obsolètes
+      if (tempOrderData && tempOrderData.timestamp) {
+        const orderAge = Date.now() - Date.parse(tempOrderData.timestamp);
+        if (orderAge > TEMP_ORDER_TIMEOUT) {
+          localStorage.removeItem("tempOrderData");
+          tempOrderData = null;
+          console.log("Données temporaires supprimées (obsolètes)");
+        }
+      }
+
+      if (!paymentStatus && !transactionId && !orderId && tempOrderData) {
+        setErrors((prev) => ({
+          ...prev,
+          general: "Une commande temporaire est en attente. Veuillez réessayer ou nettoyer les données temporaires.",
+        }));
+        return;
+      }
 
       if (!paymentStatus || !transactionId || !orderId) return;
 
       try {
         setLoading(true);
-        const tempOrderData = JSON.parse(localStorage.getItem("tempOrderData"));
-
         if (!tempOrderData) {
           throw new Error("Données de la commande non trouvées. Veuillez réessayer.");
         }
 
-        const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
+        const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
         const response = await fetch(`${API_URL}/api/payment/status?transaction_id=${transactionId}`);
         if (!response.ok) {
-          throw new Error("Échec de la vérification du statut du paiement. Veuillez réessayer.");
+          throw new Error("Échec de la vérification du statut du paiement.");
         }
 
         const statusData = await response.json();
@@ -492,39 +718,75 @@ const OrderSummary = () => {
         }
 
         localStorage.removeItem("tempOrderData");
+        setIsSubmitted(true);
         clearCart();
-        navigate("/complete_order", {
-          state: {
-            orderId: orderRef.id,
-            isGuest: tempOrderData.isGuest,
-            paymentStatus: finalStatus,
-            transactionId,
-          },
-        });
+        try {
+          navigate("/complete_order", {
+            state: {
+              orderId: orderRef.id,
+              isGuest: tempOrderData.isGuest,
+              paymentStatus: finalStatus,
+              transactionId,
+            },
+            replace: true,
+          });
+          console.log("Navigation vers /complete_order après retour de paiement");
+        } catch (navError) {
+          console.error("Erreur de navigation après retour de paiement:", navError);
+          setErrors((prev) => ({
+            ...prev,
+            general: "Commande traitée, mais redirection échouée. Vérifiez l'état de votre commande.",
+          }));
+          setLoading(false);
+        }
       } catch (err) {
-        console.error("Erreur après retour de paiement :", err);
-        setError(`Erreur de traitement du paiement : ${err.message}. Veuillez contacter le support.`);
-        navigate("/payment/failure", { state: { error: err.message } });
+        console.error("Erreur après retour de paiement:", err);
+        localStorage.removeItem("tempOrderData");
+        setErrors((prev) => ({
+          ...prev,
+          general: `Erreur de traitement du paiement : ${err.message}. Veuillez contacter le support.`,
+        }));
+        navigate("/payment/failure", {
+          state: { error: err.message },
+          replace: true,
+        });
       } finally {
         setLoading(false);
       }
     };
 
     checkPaymentReturn();
-  }, [navigate, clearCart, userPoints, setLoading]);
+  }, [auth, userPoints, clearCart, navigate]);
 
-  // Render loading or error states
-  if (dataLoading || !cartItems || cartItems.length === 0 || missingData || !isValidOrder()) {
+  // Display loader if order is submitted
+  if (isSubmitted || dataLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white p-6 rounded-lg shadow-md text-center">
-          {dataLoading && <p>Chargement des données...</p>}
-          {!cartItems?.length && <p className="text-red-600 mb-4">Votre panier est vide.</p>}
-          {missingData && (
-            <p className="text-red-600 mb-4">Informations de commande manquantes.</p>
-          )}
-          {!isValidOrder() && <p className="text-red-600 mb-4">Données de commande invalides.</p>}
-          <p>Redirection...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="flex flex-col items-center">
+          <svg
+            className="animate-spin h-12 w-12 text-green-600"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-label="Chargement"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span className="mt-2 text-gray-600">
+            {dataLoading ? "Chargement des données..." : "Traitement de la commande..."}
+          </span>
         </div>
       </div>
     );
@@ -548,63 +810,89 @@ const OrderSummary = () => {
             </span>
           </div>
         )}
-        {error && (
+        {errors.general && (
           <div
             className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
             role="alert"
           >
-            <span className="block sm:inline">{error}</span>
+            <span className="block sm:inline">{errors.general}</span>
+            {errors.general.includes("commande temporaire") && (
+              <button
+                onClick={() => {
+                  localStorage.removeItem("tempOrderData");
+                  navigate("/checkout", { replace: true });
+                }}
+                className="mt-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              >
+                Nettoyer et réessayer
+              </button>
+            )}
           </div>
         )}
-        <div className="bg-white p-3 rounded shadow-sm mb-3">
+        <div className={`bg-white p-3 rounded shadow-sm mb-3 ${errors.address || errors.contact ? "border border-red-500" : ""}`}>
           <h4 className="font-bold mb-2">Détails de la commande</h4>
           <div className="mb-4 bg-gray-50 p-3 rounded-lg">
             <h6 className="font-bold text-gray-800 mb-2">Adresse de livraison :</h6>
-            <div className="text-sm text-gray-700">
-              <p>
-                <span className="font-medium">Type :</span> {normalizedAddress?.nickname}
-              </p>
-              <p>
-                <span className="font-medium">Ville :</span> YAOUNDE
-              </p>
-              <p>
-                <span className="font-medium">Quartier :</span> {normalizedAddress?.area}
-              </p>
-              <p>
-                <span className="font-medium">Description :</span>{" "}
-                {normalizedAddress?.completeAddress}
-              </p>
-              {normalizedAddress?.instructions && (
+            {errors.address ? (
+              <p className="text-red-600 mb-2">{errors.address}</p>
+            ) : (
+              <div className="text-sm text-gray-700">
                 <p>
-                  <span className="font-medium">Instructions :</span>{" "}
-                  {normalizedAddress.instructions}
+                  <span className="font-medium">Type :</span> {normalizedAddress?.nickname || "Non spécifié"}
                 </p>
-              )}
-              <p>
-                <span className="font-medium">Téléphone :</span>{" "}
-                {normalizedAddress?.phone || contact?.phone}
-              </p>
-              {isGuest && contact?.name && (
                 <p>
-                  <span className="font-medium">Nom :</span> {contact.name}
+                  <span className="font-medium">Ville :</span> YAOUNDE
                 </p>
-              )}
-            </div>
-          </div>
-          <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-            <h6 className="font-bold text-gray-800 mb-2">Méthode de paiement :</h6>
-            <div className="flex items-center">
-              <i className={`${normalizedPayment?.icon || "fa fa-question"} text-green-600 text-xl mr-3`}></i>
-              <div>
-                <p className="font-semibold">{normalizedPayment?.name}</p>
-                <p className="text-sm text-gray-500">{normalizedPayment?.description}</p>
-                {normalizedPayment?.phone && (
-                  <p className="text-sm text-gray-500">
-                    Téléphone : {normalizedPayment.phone}
+                <p>
+                  <span className="font-medium">Quartier :</span> {normalizedAddress?.area || "Non spécifié"}
+                </p>
+                <p>
+                  <span className="font-medium">Description :</span>{" "}
+                  {normalizedAddress?.completeAddress || "Non spécifié"}
+                </p>
+                {normalizedAddress?.instructions && (
+                  <p>
+                    <span className="font-medium">Instructions :</span>{" "}
+                    {normalizedAddress.instructions}
                   </p>
                 )}
+                <p>
+                  <span className="font-medium">Téléphone :</span>{" "}
+                  {normalizedAddress?.phone || contact?.phone || "Non spécifié"}
+                </p>
               </div>
-            </div>
+            )}
+            {isGuest && (
+              <>
+                <h6 className="font-bold text-gray-800 mt-4 mb-2">Contact :</h6>
+                {errors.contact ? (
+                  <p className="text-red-600 mb-2">{errors.contact}</p>
+                ) : (
+                  <div className="text-sm text-gray-700">
+                    <p>
+                      <span className="font-medium">Nom :</span> {contact?.name || "Non spécifié"}
+                    </p>
+                    <p>
+                      <span className="font-medium">Téléphone :</span> {contact?.phone || "Non spécifié"}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className={`mb-4 bg-gray-50 p-3 rounded-lg ${errors.payment ? "border border-red-500" : ""}`}>
+            <h6 className="font-bold text-gray-800 mb-2">Méthode de paiement :</h6>
+            {errors.payment ? (
+              <p className="text-red-600 mb-2">{errors.payment}</p>
+            ) : (
+              <div className="flex items-center">
+                <i className={`${normalizedPayment?.icon || "fa fa-question"} text-green-600 text-xl mr-3`}></i>
+                <div>
+                  <p className="font-semibold">{normalizedPayment?.name || "Non spécifié"}</p>
+                  <p className="text-sm text-gray-500">{normalizedPayment?.description || ""}</p>
+                </div>
+              </div>
+            )}
           </div>
           {auth.currentUser && userPoints > 0 && (
             <div className="mb-4 bg-gray-50 p-3 rounded-lg">
@@ -627,9 +915,7 @@ const OrderSummary = () => {
                   <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                   <span className="ms-3 text-sm font-medium text-gray-900">
                     {usePoints
-                      ? `Utiliser ${formatPrice(pointsToUse)} points pour ${formatPrice(
-                          pointsReduction
-                        )} Fcfa de réduction`
+                      ? `Utiliser ${formatPrice(pointsToUse)} points pour ${formatPrice(pointsReduction)} Fcfa de réduction`
                       : "Payer sans points"}
                   </span>
                 </label>
@@ -646,9 +932,7 @@ const OrderSummary = () => {
             <h6 className="font-bold text-gray-800 mb-2">Points gagnés</h6>
             <p className="text-sm">
               {loyaltyPoints > 0
-                ? `Vous gagnerez ${formatPrice(
-                    loyaltyPoints
-                  )} point(s) pour cette commande après confirmation du paiement.`
+                ? `Vous gagnerez ${formatPrice(loyaltyPoints)} point(s) pour cette commande après confirmation du paiement.`
                 : "Commande non éligible aux points (montant minimum : 5000 Fcfa)."}
             </p>
             {loyaltyPoints > 0 && (
@@ -657,47 +941,51 @@ const OrderSummary = () => {
               </p>
             )}
           </div>
-          <h6 className="font-bold text-gray-800 mb-2">Articles commandés :</h6>
-          {cartItems.map((item) => (
-            <div
-              key={`${item.id}-${Object.entries(item.selectedExtras || {})
-                .map(([listId, indexes]) => `${listId}:${indexes.join(",")}`)
-                .join("|")}`}
-              className="border-b py-3 last:border-b-0"
-            >
-              <div className="flex items-start">
-                <img
-                  src={item.covers?.[0] || "/img/default.png"}
-                  alt={item.name}
-                  className="w-16 h-16 object-cover rounded mr-3"
-                />
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <h5 className="font-semibold">{item.name}</h5>
-                    <p className="text-green-600">
-                      {formatPrice(convertPrice(item.price))} Fcfa × {item.quantity}
-                    </p>
-                  </div>
-                  {item.selectedExtras && (
-                    <div className="mt-1 text-sm text-gray-600">
-                      {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
-                        <div key={extraListId} className="mb-1">
-                          <span className="font-medium">
-                            {extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :
-                          </span>
-                          {indexes.map((index) => (
-                            <div key={index} className="ml-2">
-                              {getExtraName(extraListId, index)}
-                            </div>
-                          ))}
-                        </div>
-                      ))}
+          <h6 className={`font-bold text-gray-800 mb-2 ${errors.cart ? "text-red-600" : ""}`}>Articles commandés :</h6>
+          {errors.cart ? (
+            <p className="text-red-600 mb-2">{errors.cart}</p>
+          ) : (
+            cartItems.map((item) => (
+              <div
+                key={`${item.id}-${Object.entries(item.selectedExtras || {})
+                  .map(([listId, indexes]) => `${listId}:${indexes.join(",")}`)
+                  .join("|")}`}
+                className="border-b py-3 last:border-b-0"
+              >
+                <div className="flex items-start">
+                  <img
+                    src={item.covers?.[0] || "/img/default.png"}
+                    alt={item.name}
+                    className="w-16 h-16 object-cover rounded mr-3"
+                  />
+                  <div className="flex-1">
+                    <div className="flex justify-between">
+                      <h5 className="font-semibold">{item.name}</h5>
+                      <p className="text-green-600">
+                        {formatPrice(convertPrice(item.price))} Fcfa × {item.quantity}
+                      </p>
                     </div>
-                  )}
+                    {item.selectedExtras && (
+                      <div className="mt-1 text-sm text-gray-600">
+                        {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
+                          <div key={extraListId} className="mb-1">
+                            <span className="font-medium">
+                              {extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :
+                            </span>
+                            {indexes.map((index) => (
+                              <div key={index} className="ml-2">
+                                {getExtraName(extraListId, index)}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
         {pointsReduction < total + deliveryFee && (
           <div className="bg-gray-50 p-3 rounded-lg mb-4">
@@ -737,9 +1025,7 @@ const OrderSummary = () => {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg">
         <button
           onClick={handleConfirmOrder}
-          disabled={
-            loading || (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0)
-          }
+          disabled={loading || (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0)}
           aria-label={
             loading
               ? "Traitement de la commande"
