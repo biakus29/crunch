@@ -16,6 +16,162 @@ import {
   setDoc,
   runTransaction,
 } from "firebase/firestore";
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ShoppingCart, 
+  CreditCard, 
+  MapPin, 
+  Phone, 
+  User, 
+  Package, 
+  Clock, 
+  Star, 
+  Check, 
+  X, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  ArrowRight, 
+  AlertCircle, 
+  Info,
+  Home,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  Trash2
+} from 'lucide-react';
+
+// ==================== Loaders Personnalisés ====================
+const OrderLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        className="w-16 h-16 rounded-full border-4 border-green-400 border-t-transparent"
+      ></motion.div>
+      <motion.div 
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="absolute inset-0 flex items-center justify-center"
+      >
+        <Package className="w-8 h-8 text-green-500" />
+      </motion.div>
+    </div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-green-600 font-semibold"
+    >
+      Préparation de votre commande...
+    </motion.p>
+  </motion.div>
+);
+
+const PaymentLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="w-16 h-16 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center"
+      >
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="w-8 h-8 border-2 border-white border-t-transparent rounded-full"
+        ></motion.div>
+      </motion.div>
+    </div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-green-600 font-semibold"
+    >
+      Traitement du paiement...
+    </motion.p>
+  </motion.div>
+);
+
+// ==================== Animation de Confetti ====================
+const ConfettiAnimation = () => {
+  const confetti = Array.from({ length: 50 }, (_, i) => i);
+  
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50">
+      {confetti.map((i) => (
+        <motion.div
+          key={i}
+          className="absolute w-2 h-2 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full"
+          initial={{
+            x: Math.random() * window.innerWidth,
+            y: -10,
+            rotate: 0,
+          }}
+          animate={{
+            y: window.innerHeight + 10,
+            rotate: 360,
+          }}
+          transition={{
+            duration: 3 + Math.random() * 2,
+            repeat: Infinity,
+            delay: Math.random() * 2,
+          }}
+          style={{
+            left: `${Math.random() * 100}%`,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+// ==================== Toast Notification ====================
+const ToastNotification = ({ message, type = 'success', onClose }) => {
+  const icons = {
+    success: <Check className="w-5 h-5" />,
+    error: <X className="w-5 h-5" />,
+    info: <Info className="w-5 h-5" />,
+    warning: <AlertCircle className="w-5 h-5" />
+  };
+
+  const colors = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    info: 'bg-blue-500',
+    warning: 'bg-yellow-500'
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -50, scale: 0.3 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -50, scale: 0.3 }}
+      className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white flex items-center space-x-2 ${colors[type]}`}
+    >
+      <div className="flex-shrink-0">
+        {icons[type]}
+      </div>
+      <span className="font-medium">{message}</span>
+      <button
+        onClick={onClose}
+        className="flex-shrink-0 ml-2 hover:opacity-75 transition-opacity"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </motion.div>
+  );
+};
 
 // Constants
 export const DEFAULT_DELIVERY_FEE = 1000;
@@ -24,6 +180,13 @@ const FIRST_RATE = 0.10;
 const NORMAL_RATE = 0.05;
 const CREDIT_PER_POINT = 100;
 const TEMP_ORDER_TIMEOUT = 2 * 60 * 60 * 1000; // 2 heures
+
+// Format price for display
+export const formatPrice = (number) =>
+  Number(number).toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
 
 const OrderSummary = () => {
   const location = useLocation();
@@ -323,12 +486,7 @@ const OrderSummary = () => {
     pointsReduction,
   ]);
 
-  // Format price for display
-  const formatPrice = (number) =>
-    Number(number).toLocaleString("fr-FR", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
+
 
   // Validate order data
   const isValidOrder = useCallback(() => {
@@ -445,203 +603,175 @@ const OrderSummary = () => {
   }, [location.state, normalizedAddress, dataLoading, navigate]);
 
   // Handle order confirmation
-  const handleConfirmOrder = useCallback(async () => {
-    const { isValid, errors } = isValidOrder();
-    if (!isValid) {
-      setErrors((prev) => ({
-        ...prev,
-        ...errors,
-        general: "Veuillez corriger les erreurs ci-dessus avant de confirmer.",
-      }));
-      return;
-    }
+const handleConfirmOrder = useCallback(async () => {
+  const { isValid, errors } = isValidOrder();
+  if (!isValid) {
+    setErrors((prev) => ({
+      ...prev,
+      ...errors,
+      general: "Veuillez corriger les erreurs ci-dessus avant de confirmer.",
+    }));
+    return;
+  }
 
-    if (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
-      setErrors((prev) => ({
-        ...prev,
-        general: "Vous êtes hors ligne. Les paiements mobiles nécessitent une connexion Internet.",
-      }));
-      return;
-    }
+  if (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
+    setErrors((prev) => ({
+      ...prev,
+      general: "Vous êtes hors ligne. Les paiements mobiles nécessitent une connexion Internet.",
+    }));
+    return;
+  }
 
-    setLoading(true);
-    setErrors((prev) => ({ ...prev, general: "" }));
-    const uid = auth.currentUser?.uid || localStorage.getItem("guestUid") || `guest_${Date.now()}`;
+  setLoading(true);
+  setErrors((prev) => ({ ...prev, general: "" }));
+  const uid = auth.currentUser?.uid || localStorage.getItem("guestUid") || `guest_${Date.now()}`;
+  const orderLabel = cartItems.map((i) => i.name).join(", ");
 
-    try {
-      await waitForPersistence();
-      const orderLabel = cartItems.map((i) => i.name).join(", ");
-      console.log("Soumission de la commande pour l'utilisateur:", uid, "avec articles:", cartItems);
+  try {
+    await waitForPersistence();
+    console.log("Soumission de la commande pour l'utilisateur:", uid, "avec articles:", cartItems);
 
-      let paymentData = null;
-      if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
-        if (!isOnline) {
-          throw new Error("Connexion Internet requise pour le paiement mobile.");
-        }
+    // Créer la commande dans Firestore pour les deux méthodes de paiement
+    const orderRef = await runTransaction(db, async (transaction) => {
+      const orderRef = doc(collection(db, "orders"));
+      const userRef = auth.currentUser ? doc(db, "usersrestau", uid) : null;
 
-        const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
-        const response = await fetch(`${API_URL}/api/payment/init`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            amount: finalTotal,
-            currency: "XOF",
-            order_id: `order_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-            customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
-            description: `Commande : ${orderLabel}`,
-            success_url: `${window.location.origin}/payment/success`,
-            failure_url: `${window.location.origin}/payment/failure`,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Échec de l'initialisation du paiement.");
-        }
-
-        const paymentResponse = await response.json();
-
-        if (!paymentResponse.success || !paymentResponse.paymentUrl) {
-          throw new Error(paymentResponse.message || "Erreur lors de l'initialisation du paiement.");
-        }
-
-        const tempOrderData = {
-          userId: uid,
-          items: cartItems.map((i) => ({
-            dishId: i.id,
-            quantity: i.quantity,
-            price: convertPrice(i.price),
-            selectedExtras: i.selectedExtras || null,
-          })),
-          address: normalizedAddress,
-          paymentMethod: normalizedPayment,
-          total: finalTotal,
-          deliveryFee,
-          pointsUsed: pointsToUse,
-          pointsReduction,
-          loyaltyPoints,
-          loyaltyEligible: total >= LOYALTY_THRESHOLD,
-          status: "pending",
-          isPaid: false,
-          timestamp: Timestamp.now().toDate().toISOString(),
-          isGuest: !!isGuest,
-          label: orderLabel,
-          paymentRef: paymentResponse?.transactionId || null,
-        };
-        localStorage.setItem("tempOrderData", JSON.stringify(tempOrderData));
-        console.log("tempOrderData stocké, redirection vers:", paymentResponse.paymentUrl);
-
-        try {
-          window.location.href = paymentResponse.paymentUrl;
-        } catch (err) {
-          console.error("Erreur lors de la redirection au paiement:", err);
-          localStorage.removeItem("tempOrderData");
-          setErrors((prev) => ({
-            ...prev,
-            general: "Échec de la redirection au paiement. Veuillez réessayer.",
-          }));
-          setLoading(false);
-        }
-        return;
-      }
-
-      const orderRef = await runTransaction(db, async (transaction) => {
-        const orderRef = doc(collection(db, "orders"));
-        const userRef = auth.currentUser ? doc(db, "usersrestau", uid) : null;
-
-        transaction.set(orderRef, {
-          userId: uid,
-          items: cartItems.map((i) => ({
-            dishId: i.id,
-            quantity: i.quantity,
-            price: convertPrice(i.price),
-            selectedExtras: i.selectedExtras || null,
-          })),
-          address: normalizedAddress,
-          paymentMethod: normalizedPayment,
-          total: finalTotal,
-          deliveryFee,
-          pointsUsed: pointsToUse,
-          pointsReduction,
-          loyaltyPoints,
-          loyaltyEligible: total >= LOYALTY_THRESHOLD,
-          status: normalizedPayment?.id === "payment_mobile" ? "pending" : "en_attente",
-          isPaid: normalizedPayment?.id === "cash_delivery" ? false : true,
-          timestamp: Timestamp.now(),
-          isGuest: !!isGuest,
-          label: orderLabel,
-          paymentRef: paymentData?.transactionId || null,
-        });
-
-        if (auth.currentUser && pointsToUse > 0) {
-          const userDoc = await transaction.get(userRef);
-          if (!userDoc.exists()) {
-            throw new Error("Utilisateur non trouvé.");
-          }
-          transaction.update(userRef, {
-            points: userDoc.data().points - pointsToUse,
-          });
-        }
-
-        if (auth.currentUser && loyaltyPoints > 0) {
-          const pointsTransactionRef = doc(collection(db, "pointsTransactions"));
-          transaction.set(pointsTransactionRef, {
-            userId: uid,
-            orderId: orderRef.id,
-            pointsAmount: loyaltyPoints,
-            status: "pending",
-            timestamp: Timestamp.now(),
-            message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
-            type: "points_grant",
-          });
-        }
-
-        return orderRef;
+      transaction.set(orderRef, {
+        userId: uid,
+        items: cartItems.map((i) => ({
+          dishId: i.id,
+          quantity: i.quantity,
+          price: convertPrice(i.price),
+          selectedExtras: i.selectedExtras || null,
+        })),
+        address: normalizedAddress,
+        paymentMethod: normalizedPayment,
+        total: finalTotal,
+        deliveryFee,
+        pointsUsed: pointsToUse,
+        pointsReduction,
+        loyaltyPoints,
+        loyaltyEligible: total >= LOYALTY_THRESHOLD,
+        status: "en_attente", // Statut initial pour les deux méthodes
+        isPaid: false, // Non payé jusqu'à confirmation
+        timestamp: Timestamp.now(),
+        isGuest: !!isGuest,
+        label: orderLabel,
+        paymentRef: null, // Sera mis à jour pour paiement mobile
       });
 
-      console.log("Commande soumise avec succès, ID:", orderRef.id);
-      setIsSubmitted(true);
-      clearCart();
-      try {
-        navigate("/complete_order", {
-          state: { orderId: orderRef.id, isGuest, paymentStatus: "pending" },
-          replace: true,
+      if (auth.currentUser && pointsToUse > 0) {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) {
+          throw new Error("Utilisateur non trouvé.");
+        }
+        transaction.update(userRef, {
+          points: userDoc.data().points - pointsToUse,
         });
-      } catch (navError) {
-        console.error("Erreur de navigation:", navError);
+      }
+
+      if (auth.currentUser && loyaltyPoints > 0) {
+        const pointsTransactionRef = doc(collection(db, "pointsTransactions"));
+        transaction.set(pointsTransactionRef, {
+          userId: uid,
+          orderId: orderRef.id,
+          pointsAmount: loyaltyPoints,
+          status: "pending",
+          timestamp: Timestamp.now(),
+          message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
+          type: "points_grant",
+        });
+      }
+
+      return orderRef;
+    });
+
+    console.log("Commande créée avec succès, ID:", orderRef.id);
+
+    // Si paiement mobile, initier le paiement
+    if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
+      const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
+      const response = await fetch(`${API_URL}/api/payment/init`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: finalTotal,
+          currency: "XOF",
+          order_id: orderRef.id, // Utiliser l'ID de la commande Firestore
+          customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
+          description: `Commande : ${orderLabel}`,
+          success_url: `${window.location.origin}/payment/success`,
+          failure_url: `${window.location.origin}/payment/failure`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Échec de l'initialisation du paiement.");
+      }
+
+      const paymentResponse = await response.json();
+
+      if (!paymentResponse.success || !paymentResponse.paymentUrl) {
+        throw new Error(paymentResponse.message || "Erreur lors de l'initialisation du paiement.");
+      }
+
+      // Stocker l'ID de la commande et l'ID de la transaction pour le retour
+      localStorage.setItem("pendingOrder", JSON.stringify({
+        orderId: orderRef.id,
+        transactionId: paymentResponse.transactionId,
+        timestamp: new Date().toISOString(),
+      }));
+
+      try {
+        window.location.href = paymentResponse.paymentUrl;
+      } catch (err) {
+        console.error("Erreur lors de la redirection au paiement:", err);
         setErrors((prev) => ({
           ...prev,
-          general: "Commande soumise, mais redirection échouée. Vérifiez l'état de votre commande.",
+          general: "Échec de la redirection au paiement. La commande est enregistrée, vérifiez son statut.",
         }));
         setLoading(false);
+        navigate("/complete_order", {
+          state: { orderId: orderRef.id, isGuest, paymentStatus: "en_attente" },
+          replace: true,
+        });
+        return;
       }
-    } catch (err) {
-      console.error("Erreur lors de la soumission de la commande:", err);
-      setErrors((prev) => ({
-        ...prev,
-        general: err.message || "Erreur lors de la soumission de la commande. Veuillez réessayer.",
-      }));
-      setLoading(false);
+    } else {
+      // Pour paiement en cash, rediriger directement
+      setIsSubmitted(true);
+      clearCart();
+      navigate("/complete_order", {
+        state: { orderId: orderRef.id, isGuest, paymentStatus: "en_attente" },
+        replace: true,
+      });
     }
-  }, [
-    isValidOrder,
-    isOnline,
-    normalizedPayment,
-    finalTotal,
-    cartItems,
-    normalizedAddress,
-    deliveryFee,
-    pointsToUse,
-    pointsReduction,
-    loyaltyPoints,
-    isGuest,
-    contact,
-    userPoints,
-    clearCart,
-    navigate,
-  ]);
-
+  } catch (err) {
+    console.error("Erreur lors de la soumission de la commande:", err);
+    setErrors((prev) => ({
+      ...prev,
+      general: err.message || "Erreur lors de la soumission de la commande. Veuillez réessayer.",
+    }));
+    setLoading(false);
+  }
+}, [
+  isValidOrder,
+  isOnline,
+  normalizedPayment,
+  finalTotal,
+  cartItems,
+  normalizedAddress,
+  deliveryFee,
+  pointsToUse,
+  pointsReduction,
+  loyaltyPoints,
+  isGuest,
+  contact,
+  clearCart,
+  navigate,
+]);
   // Check payment return
   useEffect(() => {
     const checkPaymentReturn = async () => {
@@ -758,36 +888,18 @@ const OrderSummary = () => {
     checkPaymentReturn();
   }, [auth, userPoints, clearCart, navigate]);
 
-  // Display loader if order is submitted
-  if (isSubmitted || dataLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="flex flex-col items-center">
-          <svg
-            className="animate-spin h-12 w-12 text-green-600"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-label="Chargement"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span className="mt-2 text-gray-600">
-            {dataLoading ? "Chargement des données..." : "Traitement de la commande..."}
-          </span>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <OrderLoader />
+      </div>
+    );
+  }
+
+  if (isSubmitted) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <PaymentLoader />
       </div>
     );
   }
@@ -886,7 +998,11 @@ const OrderSummary = () => {
               <p className="text-red-600 mb-2">{errors.payment}</p>
             ) : (
               <div className="flex items-center">
-                <i className={`${normalizedPayment?.icon || "fa fa-question"} text-green-600 text-xl mr-3`}></i>
+                {normalizedPayment?.icon ? (
+                  <i className={`${normalizedPayment.icon} text-green-600 text-xl mr-3`}></i>
+                ) : (
+                  <CreditCard className="w-6 h-6 text-green-600 mr-3" />
+                )}
                 <div>
                   <p className="font-semibold">{normalizedPayment?.name || "Non spécifié"}</p>
                   <p className="text-sm text-gray-500">{normalizedPayment?.description || ""}</p>
@@ -895,14 +1011,27 @@ const OrderSummary = () => {
             )}
           </div>
           {auth.currentUser && userPoints > 0 && (
-            <div className="mb-4 bg-gray-50 p-3 rounded-lg">
-              <h6 className="font-bold text-gray-800 mb-2">Points de fidélité</h6>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 bg-gradient-to-r from-yellow-50 to-orange-50 p-3 rounded-lg border border-yellow-200"
+            >
+              <h6 className="font-bold text-gray-800 mb-2 flex items-center">
+                <Star className="w-5 h-5 text-yellow-500 mr-2" />
+                Points de fidélité
+              </h6>
               <div className="flex flex-col space-y-2">
                 <div>
-                  <p className="font-semibold">Vos points : {formatPrice(userPoints)}</p>
+                  <motion.p 
+                    className="font-semibold text-lg"
+                    animate={{ scale: [1, 1.05, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    Vos points : <span className="text-yellow-600">{formatPrice(userPoints)}</span>
+                  </motion.p>
                   <p className="text-sm text-gray-500">
                     Utilisez les points pour réduire le total (1 point = 100 Fcfa). Max utilisable :{" "}
-                    {formatPrice(maxPointsUsable)} points.
+                    <span className="font-semibold text-yellow-600">{formatPrice(maxPointsUsable)}</span> points.
                   </p>
                 </div>
                 <label className="inline-flex items-center cursor-pointer">
@@ -912,7 +1041,7 @@ const OrderSummary = () => {
                     onChange={(e) => setUsePoints(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                  <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
                   <span className="ms-3 text-sm font-medium text-gray-900">
                     {usePoints
                       ? `Utiliser ${formatPrice(pointsToUse)} points pour ${formatPrice(pointsReduction)} Fcfa de réduction`
@@ -920,13 +1049,17 @@ const OrderSummary = () => {
                   </span>
                 </label>
                 {usePoints && pointsToUse > 0 && (
-                  <p className="text-sm text-green-600 mt-1">
-                    Réduction automatique : {formatPrice(pointsReduction)} Fcfa (
+                  <motion.p 
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-sm text-green-600 mt-1 font-semibold"
+                  >
+                    ✨ Réduction automatique : {formatPrice(pointsReduction)} Fcfa (
                     {formatPrice(pointsToUse)} points)
-                  </p>
+                  </motion.p>
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
           <div className="mb-4 bg-gray-50 p-3 rounded-lg">
             <h6 className="font-bold text-gray-800 mb-2">Points gagnés</h6>
@@ -945,15 +1078,21 @@ const OrderSummary = () => {
           {errors.cart ? (
             <p className="text-red-600 mb-2">{errors.cart}</p>
           ) : (
-            cartItems.map((item) => (
-              <div
+            cartItems.map((item, index) => (
+              <motion.div
                 key={`${item.id}-${Object.entries(item.selectedExtras || {})
                   .map(([listId, indexes]) => `${listId}:${indexes.join(",")}`)
                   .join("|")}`}
-                className="border-b py-3 last:border-b-0"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ scale: 1.02, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
+                className="border-b py-3 last:border-b-0 bg-white rounded-lg p-3 mb-3 transition-all duration-300"
               >
                 <div className="flex items-start">
-                  <img
+                  <motion.img
+                    whileHover={{ scale: 1.05 }}
+                    transition={{ duration: 0.2 }}
                     src={item.covers?.[0] || "/img/default.png"}
                     alt={item.name}
                     className="w-16 h-16 object-cover rounded mr-3"
@@ -961,9 +1100,13 @@ const OrderSummary = () => {
                   <div className="flex-1">
                     <div className="flex justify-between">
                       <h5 className="font-semibold">{item.name}</h5>
-                      <p className="text-green-600">
+                      <motion.p 
+                        className="text-green-600 font-bold"
+                        animate={{ scale: [1, 1.05, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      >
                         {formatPrice(convertPrice(item.price))} Fcfa × {item.quantity}
-                      </p>
+                      </motion.p>
                     </div>
                     {item.selectedExtras && (
                       <div className="mt-1 text-sm text-gray-600">
@@ -983,7 +1126,7 @@ const OrderSummary = () => {
                     )}
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))
           )}
         </div>
@@ -1023,7 +1166,9 @@ const OrderSummary = () => {
         </div>
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg">
-        <button
+        <motion.button
+          whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(34, 197, 94, 0.3)" }}
+          whileTap={{ scale: 0.98 }}
           onClick={handleConfirmOrder}
           disabled={loading || (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0)}
           aria-label={
@@ -1033,43 +1178,48 @@ const OrderSummary = () => {
               ? "Confirmer avec points"
               : "Confirmer la commande"
           }
-          className={`w-full py-3 text-white rounded-lg transition-colors ${
+          className={`relative w-full py-3 text-white rounded-lg transition-all duration-300 overflow-hidden group ${
             loading || (!isOnline && normalizedPayment?.id === "payment_mobile" && finalTotal > 0)
               ? "bg-gray-400 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700"
+              : "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
           }`}
         >
-          {loading ? (
-            <span className="flex items-center justify-center">
-              <svg
-                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                aria-label="Chargement"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Traitement...
-            </span>
-          ) : pointsReduction >= total + deliveryFee ? (
-            "Confirmer avec points"
-          ) : (
-            "Confirmer la commande"
-          )}
-        </button>
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-green-500 to-green-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            initial={false}
+          />
+          <motion.span
+            className="relative z-10 flex items-center justify-center"
+            animate={{ x: [0, 2, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            {loading ? (
+              <>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
+                />
+                Traitement...
+              </>
+            ) : pointsReduction >= total + deliveryFee ? (
+              <>
+                <Star className="w-5 h-5 mr-2" />
+                Confirmer avec points
+              </>
+            ) : (
+              <>
+                <Check className="w-5 h-5 mr-2" />
+                Confirmer la commande
+              </>
+            )}
+          </motion.span>
+          <motion.div
+            className="absolute inset-0 bg-white opacity-20"
+            animate={{ x: ["-100%", "100%"] }}
+            transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
+          />
+        </motion.button>
       </div>
     </div>
   );

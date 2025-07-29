@@ -16,6 +16,145 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaStar } from "react-icons/fa";
 import PropTypes from "prop-types";
+import { formatPrice } from "./oders";
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ShoppingCart, 
+  Package, 
+  Clock, 
+  Star, 
+  Check, 
+  X, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  ArrowRight, 
+  AlertCircle, 
+  Info,
+  Home,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  Trash2,
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  CreditCard,
+  Smartphone,
+  DollarSign,
+  Truck
+} from 'lucide-react';
+
+// ==================== Loaders Personnalisés ====================
+const OrdersLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        className="w-16 h-16 rounded-full border-4 border-green-400 border-t-transparent"
+      ></motion.div>
+      <motion.div 
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="absolute inset-0 flex items-center justify-center"
+      >
+        <Package className="w-8 h-8 text-green-500" />
+      </motion.div>
+    </div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-green-600 font-semibold"
+    >
+      Chargement des commandes...
+    </motion.p>
+  </motion.div>
+);
+
+// ==================== Indicateur de Progression ====================
+const ProgressIndicator = ({ status }) => {
+  const steps = [
+    { key: ORDER_STATUS.PENDING, label: 'En attente', icon: <Clock className="w-4 h-4" />, color: 'bg-gray-400' },
+    { key: ORDER_STATUS.PREPARING, label: 'En préparation', icon: <Package className="w-4 h-4" />, color: 'bg-blue-500' },
+    { key: ORDER_STATUS.READY_TO_DELIVER, label: 'Prêt', icon: <Check className="w-4 h-4" />, color: 'bg-yellow-500' },
+    { key: ORDER_STATUS.DELIVERING, label: 'En livraison', icon: <Truck className="w-4 h-4" />, color: 'bg-orange-500' },
+    { key: ORDER_STATUS.DELIVERED, label: 'Livré', icon: <Star className="w-4 h-4" />, color: 'bg-green-500' }
+  ];
+
+  const statusOrder = [ORDER_STATUS.PENDING, ORDER_STATUS.PREPARING, ORDER_STATUS.READY_TO_DELIVER, ORDER_STATUS.DELIVERING, ORDER_STATUS.DELIVERED];
+  const currentIndex = statusOrder.indexOf(status);
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between">
+        {steps.map((step, index) => {
+          const isCompleted = index <= currentIndex;
+          const isCurrent = index === currentIndex;
+          
+          return (
+            <div key={step.key} className="flex flex-col items-center flex-1 relative">
+              <motion.div
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  isCompleted ? step.color + ' text-white' : 'bg-gray-200 text-gray-400'
+                }`}
+                animate={isCurrent ? { scale: [1, 1.2, 1] } : {}}
+                transition={{ duration: 0.5, repeat: isCurrent ? Infinity : 0, repeatDelay: 1 }}
+                whileHover={{ scale: 1.1 }}
+              >
+                {isCompleted && !isCurrent && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <Check className="w-3 h-3" />
+                  </motion.div>
+                )}
+                {!isCompleted && step.icon}
+                {isCurrent && step.icon}
+              </motion.div>
+              <motion.span 
+                className={`text-xs mt-1 text-center ${
+                  isCompleted ? 'text-gray-800 font-medium' : 'text-gray-500'
+                }`}
+                animate={isCurrent ? { color: '#1f2937' } : {}}
+              >
+                {step.label}
+              </motion.span>
+              {index < steps.length - 1 && (
+                <motion.div
+                  className={`h-1 flex-1 mx-2 mt-2 rounded-full ${
+                    isCompleted ? 'bg-green-500' : 'bg-gray-200'
+                  }`}
+                  animate={isCompleted ? { scaleX: [0, 1] } : {}}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// Fallback formatPrice function if import fails
+const formatPriceFallback = (number) =>
+  Number(number).toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+
+// Use imported formatPrice or fallback
+const formatPriceToUse = formatPrice || formatPriceFallback;
 
 export const ORDER_STATUS = {
   PENDING: "en_attente",
@@ -56,12 +195,6 @@ export const STATUS_COMMENTS = {
 
 const DEFAULT_DELIVERY_FEE = 1000;
 
-export const formatPrice = (number) =>
-  Number(number).toLocaleString("fr-FR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-
 export const formatDate = (timestamp) =>
   timestamp?.seconds
     ? new Date(timestamp.seconds * 1000).toLocaleString("fr-FR", {
@@ -86,8 +219,6 @@ const OrderStatus = ({ isAdmin = false }) => {
   const [error, setError] = useState("");
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [dateFilterMode, setDateFilterMode] = useState("day");
   const navigate = useNavigate();
 
   const effectiveUserId = useMemo(
@@ -95,16 +226,16 @@ const OrderStatus = ({ isAdmin = false }) => {
     [currentUserId]
   );
 
+  // Optimized auth effect
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log("onAuthStateChanged:", user ? user.uid : null); // Debug
       setCurrentUserId(user ? user.uid : null);
     });
     return () => unsubscribe();
   }, []);
 
+  // Optimized data fetching
   const fetchReferenceData = useCallback(async () => {
-    console.log("fetchReferenceData appelé"); // Debug
     try {
       const [items, extras, quartiers, users] = await Promise.all([
         getDocs(collection(db, "items")),
@@ -127,48 +258,19 @@ const OrderStatus = ({ isAdmin = false }) => {
       console.error("Erreur de chargement des données:", err);
       setError("Erreur de chargement des données de référence");
     }
-  }, []);
+  }, [setError]);
 
-  const filterOrdersByDate = useCallback((orders = [], date, mode) => {
-    console.log("filterOrdersByDate appelé"); // Debug
-    const selected = new Date(date);
-    return orders.filter((order) => {
-      if (!order.timestamp) return false;
-      const orderDate = new Date(order.timestamp.seconds * 1000);
-
-      switch (mode) {
-        case "day":
-          return formatDateForComparison(orderDate) === formatDateForComparison(selected);
-        case "week":
-          const startOfWeek = new Date(selected);
-          startOfWeek.setDate(selected.getDate() - selected.getDay());
-          const endOfWeek = new Date(startOfWeek);
-          endOfWeek.setDate(startOfWeek.getDate() + 6);
-          return orderDate >= startOfWeek && orderDate <= endOfWeek;
-        case "month":
-          return (
-            orderDate.getMonth() === selected.getMonth() &&
-            orderDate.getFullYear() === selected.getFullYear()
-          );
-        default:
-          return true;
-      }
-    });
-  }, []);
-
+  // Optimized orders fetching
   useEffect(() => {
-    console.log("useEffect principal exécuté, effectiveUserId:", effectiveUserId); // Debug
     setError("");
 
     if (!isAdmin && effectiveUserId === null) {
       setError("Vous devez être connecté pour voir vos commandes. Redirection vers la page de connexion...");
       setLoading(false);
-      const timer = setTimeout(() => navigate("/profile"), 2000);
-      return () => clearTimeout(timer);
+      return;
     }
 
     if (!effectiveUserId && !isAdmin) {
-      console.log("effectiveUserId non défini, arrêt du useEffect"); // Debug
       setLoading(false);
       return;
     }
@@ -182,22 +284,16 @@ const OrderStatus = ({ isAdmin = false }) => {
       const unsubscribe = onSnapshot(
         ordersQuery,
         (snapshot) => {
-          console.log("onSnapshot déclenché, docs reçus:", snapshot.docs.length); // Debug
-          setOrders((prevOrders) => {
-            const newOrders = snapshot.docs
-              .map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                status: doc.data().status || ORDER_STATUS.PENDING,
-              }))
-              .filter((order) => order.items && Array.isArray(order.items) && order.items.length > 0)
-              .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-            // Garde-fou pour éviter les rendus inutiles
-            if (JSON.stringify(prevOrders) !== JSON.stringify(newOrders)) {
-              return newOrders;
-            }
-            return prevOrders;
-          });
+          const newOrders = snapshot.docs
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              status: doc.data().status || ORDER_STATUS.PENDING,
+            }))
+            .filter((order) => order.items && Array.isArray(order.items) && order.items.length > 0)
+            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+          
+          setOrders(newOrders);
           setLoading(false);
         },
         (err) => {
@@ -206,19 +302,17 @@ const OrderStatus = ({ isAdmin = false }) => {
           setLoading(false);
         }
       );
-      return () => {
-        console.log("Désabonnement de onSnapshot"); // Debug
-        unsubscribe();
-      };
+      return () => unsubscribe();
     });
   }, [isAdmin, effectiveUserId, navigate, fetchReferenceData]);
 
+  // Optimized filtered orders
   const filteredOrders = useMemo(() => {
     if (!Array.isArray(orders)) return [];
-    const dateFilteredOrders = isAdmin ? filterOrdersByDate(orders, selectedDate, dateFilterMode) : orders;
-    return dateFilteredOrders.filter((order) => order.status === activeTab);
-  }, [orders, activeTab, isAdmin, selectedDate, dateFilterMode, filterOrdersByDate]);
+    return orders.filter((order) => order.status === activeTab);
+  }, [orders, activeTab]);
 
+  // Optimized status counts
   const statusCounts = useMemo(() => {
     if (!Array.isArray(orders)) return {};
     return Object.keys(STATUS_LABELS).reduce((acc, status) => {
@@ -227,12 +321,14 @@ const OrderStatus = ({ isAdmin = false }) => {
     }, {});
   }, [orders]);
 
+  // Optimized delivery fee calculation
   const getDeliveryFee = useCallback((area) => {
     if (!area) return DEFAULT_DELIVERY_FEE;
-    const quartier = quartiersList.find((q) => q.name.toLowerCase() === area.toLowerCase());
+    const quartier = quartiersList.find((q) => q.name?.toLowerCase() === area?.toLowerCase());
     return quartier ? Number(quartier.fee) : DEFAULT_DELIVERY_FEE;
   }, [quartiersList]);
 
+  // Optimized total calculation
   const calculateTotal = useCallback((order) => {
     if (!order || !Array.isArray(order.items)) return 0;
     const itemsTotal = order.items.reduce((sum, item) => {
@@ -252,14 +348,16 @@ const OrderStatus = ({ isAdmin = false }) => {
     return Math.max(0, itemsTotal + deliveryFee - pointsReduction);
   }, [itemsData, extraLists, getDeliveryFee]);
 
+  // Optimized drag and drop handlers
   const handleDragStart = useCallback((e, order) => {
     e.dataTransfer.setData("orderId", order.id);
     setDraggedOrder(order);
-    e.currentTarget.classList.add("opacity-50");
+    e.currentTarget.style.opacity = "0.5";
   }, []);
 
   const handleDragEnd = useCallback((e) => {
-    e.currentTarget.classList.remove("opacity-50");
+    e.currentTarget.style.opacity = "1";
+    setDraggedOrder(null);
   }, []);
 
   const handleDrop = useCallback(async (e, newStatus) => {
@@ -301,10 +399,11 @@ const OrderStatus = ({ isAdmin = false }) => {
       setDraggedOrder(null);
     } catch (error) {
       console.error("Erreur de mise à jour du statut ou création de notification:", error);
-      setError("Impossible de mettre à jour le statut ou d’envoyer la notification");
+      setError("Impossible de mettre à jour le statut ou d'envoyer la notification");
     }
   }, [orders, isAdmin, itemsData, draggedOrder]);
 
+  // Optimized delivery fees update
   const updateOrderDeliveryFees = useCallback(async (orderId, area, newFee) => {
     const feeNumber = Number(newFee);
     if (isNaN(feeNumber) || feeNumber < 0) {
@@ -314,7 +413,7 @@ const OrderStatus = ({ isAdmin = false }) => {
 
     try {
       const orderRef = doc(db, "orders", orderId);
-      if (isAdmin && !quartiersList.some((q) => q.name.toLowerCase() === area.toLowerCase())) {
+      if (isAdmin && !quartiersList.some((q) => q.name?.toLowerCase() === area?.toLowerCase())) {
         const newQuartierRef = doc(collection(db, "quartiers"));
         await setDoc(newQuartierRef, { name: area, fee: feeNumber });
         setQuartiersList((prev) => [...prev, { id: newQuartierRef.id, name: area, fee: feeNumber }]);
@@ -326,71 +425,22 @@ const OrderStatus = ({ isAdmin = false }) => {
     }
   }, [isAdmin, quartiersList]);
 
-  const handlePreviousPeriod = useCallback(() => {
-    const newDate = new Date(selectedDate);
-    if (dateFilterMode === "day") newDate.setDate(newDate.getDate() - 1);
-    else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() - 7);
-    else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() - 1);
-    setSelectedDate(newDate);
-  }, [dateFilterMode, selectedDate]);
-
-  const handleNextPeriod = useCallback(() => {
-    const newDate = new Date(selectedDate);
-    if (dateFilterMode === "day") newDate.setDate(newDate.getDate() + 1);
-    else if (dateFilterMode === "week") newDate.setDate(newDate.getDate() + 7);
-    else if (dateFilterMode === "month") newDate.setMonth(newDate.getMonth() + 1);
-    setSelectedDate(newDate);
-  }, [dateFilterMode, selectedDate]);
-
   const renderTabs = () => (
-    <div className="p-4">
+    <div>
       {isAdmin && (
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <button
-                className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                onClick={handlePreviousPeriod}
-                aria-label="Période précédente"
-              >
-                {"<"}
-              </button>
-              <input
-                type="date"
-                value={formatDateForComparison(selectedDate)}
-                onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                className="border rounded px-2 py-1"
-                aria-label="Sélectionner une date"
-              />
-              <button
-                className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                onClick={handleNextPeriod}
-                aria-label="Période suivante"
-              >
-                {">"}
-              </button>
-            </div>
-            <select
-              value={dateFilterMode}
-              onChange={(e) => setDateFilterMode(e.target.value)}
-              className="border rounded px-2 py-1"
-              aria-label="Mode de filtrage par date"
-            >
-              <option value="day">Jour</option>
-              <option value="week">Semaine</option>
-              <option value="month">Mois</option>
-            </select>
-          </div>
         </div>
       )}
       <div className="flex flex-wrap gap-2 mb-6 border-b" role="tablist">
         {Object.entries(STATUS_LABELS).map(([status, label]) => (
-          <button
+          <motion.button
             key={status}
             onClick={() => setActiveTab(status)}
             role="tab"
             aria-selected={activeTab === status}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium ${
               activeTab === status
                 ? `${STATUS_COLORS[status]} border-b-2 border-white`
@@ -398,35 +448,91 @@ const OrderStatus = ({ isAdmin = false }) => {
             }`}
           >
             {label} ({statusCounts[status] || 0})
-          </button>
+          </motion.button>
         ))}
       </div>
+      
+      {/* Zones de drop pour les admins */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+          {Object.entries(STATUS_LABELS).map(([status, label]) => (
+            <motion.div
+              key={status}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => handleDrop(e, status)}
+              className={`p-4 rounded-lg border-2 border-dashed ${
+                draggedOrder && draggedOrder.status !== status
+                  ? 'border-blue-400 bg-blue-50'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="text-center">
+                <div className={`w-8 h-8 rounded-full mx-auto mb-2 flex items-center justify-center ${STATUS_COLORS[status]}`}>
+                  {status === ORDER_STATUS.PENDING && <Clock className="w-4 h-4" />}
+                  {status === ORDER_STATUS.PREPARING && <Package className="w-4 h-4" />}
+                  {status === ORDER_STATUS.READY_TO_DELIVER && <Check className="w-4 h-4" />}
+                  {status === ORDER_STATUS.DELIVERING && <Truck className="w-4 h-4" />}
+                  {status === ORDER_STATUS.DELIVERED && <Star className="w-4 h-4" />}
+                </div>
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-xs text-gray-500">{statusCounts[status] || 0} commande(s)</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+      
       <div className="max-w-5xl mx-auto">
         {filteredOrders.length === 0 ? (
-          <p className="text-center text-gray-500 py-10">Aucune commande dans cet état</p>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center text-gray-500 py-10"
+          >
+            Aucune commande dans cet état
+          </motion.p>
         ) : (
-          filteredOrders.map((order) => (
-            <OrderCard
-              key={order.id}
-              order={order}
-              itemsData={itemsData}
-              extraLists={extraLists}
-              formatDate={formatDate}
-              badgeClasses={STATUS_COLORS}
-              isAdmin={isAdmin}
-              onUpdateFees={updateOrderDeliveryFees}
-              deliveryFee={getDeliveryFee(order.address?.area)}
-              usersData={usersData}
-              calculateTotal={calculateTotal}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, order.status)}
-            />
-          ))
+          <AnimatePresence>
+            {filteredOrders.map((order, index) => (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <OrderCard
+                  order={order}
+                  itemsData={itemsData}
+                  extraLists={extraLists}
+                  formatDate={formatDate}
+                  badgeClasses={STATUS_COLORS}
+                  isAdmin={isAdmin}
+                  onUpdateFees={updateOrderDeliveryFees}
+                  deliveryFee={getDeliveryFee(order.address?.area)}
+                  usersData={usersData}
+                  calculateTotal={calculateTotal}
+                  onDragStart={(e) => handleDragStart(e, order)}
+                  onDragEnd={handleDragEnd}
+                  onDrop={(e) => handleDrop(e, order.status)}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <OrdersLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
@@ -435,32 +541,6 @@ const OrderStatus = ({ isAdmin = false }) => {
           {isAdmin ? "Tableau de bord des commandes" : "Mes commandes"}
         </h2>
       </header>
-      {loading && (
-        <div className="flex flex-col items-center justify-center p-4">
-          <svg
-            className="animate-spin h-12 w-12 text-green-600"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-label="Chargement"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <span className="mt-2 text-gray-600">Chargement des commandes...</span>
-        </div>
-      )}
       {error && (
         <p className="text-center text-red-600 p-4" role="alert">
           {error}
@@ -471,7 +551,62 @@ const OrderStatus = ({ isAdmin = false }) => {
           {isAdmin ? "Aucune commande trouvée" : "Vous n’avez aucune commande"}
         </p>
       )}
-      {!loading && orders.length > 0 && renderTabs()}
+      {!loading && orders.length > 0 && (
+        <div className="flex justify-between items-center mb-8">
+          <motion.h1 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="text-3xl font-bold text-gray-800"
+          >
+            {isAdmin ? "Gestion des commandes" : "Suivi de vos commandes"}
+          </motion.h1>
+        </div>
+      )}
+
+        {/* Notification pour les commandes en livraison */}
+        {!isAdmin && orders.some(order => order.status === ORDER_STATUS.DELIVERING) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl shadow-sm"
+          >
+            <div className="flex items-center">
+              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                <Truck className="w-5 h-5 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-green-800">Commande en cours de livraison</h3>
+                <p className="text-sm text-green-600">
+                  Vous avez {orders.filter(order => order.status === ORDER_STATUS.DELIVERING).length} commande(s) en livraison. 
+                  N'oubliez pas de confirmer la réception une fois livrée !
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Notification pour les admins */}
+        {isAdmin && orders.some(order => order.status === ORDER_STATUS.READY_TO_DELIVER) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm"
+          >
+            <div className="flex items-center">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                <Package className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-blue-800">Commandes prêtes à livrer</h3>
+                <p className="text-sm text-blue-600">
+                  Vous avez {orders.filter(order => order.status === ORDER_STATUS.READY_TO_DELIVER).length} commande(s) prête(s) à être livrée(s).
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {!loading && orders.length > 0 && renderTabs()}
       <Footer />
     </div>
   );
@@ -485,7 +620,7 @@ OrderStatus.defaultProps = {
   isAdmin: false,
 };
 
-const OrderCard = ({
+const OrderCard = React.memo(({
   order,
   itemsData,
   extraLists,
@@ -501,21 +636,33 @@ const OrderCard = ({
   onDrop,
 }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
   const navigate = useNavigate();
 
-  const user = order.userId
-    ? usersData.byId[order.userId]
-    : order.contact?.phone && usersData.byPhone[order.contact.phone];
-  const clientName =
+  const user = useMemo(() => 
+    order.userId
+      ? usersData.byId[order.userId]
+      : order.contact?.phone && usersData.byPhone[order.contact.phone],
+    [order.userId, order.contact?.phone, usersData]
+  );
+
+  const clientName = useMemo(() => 
     user
       ? `${user.lastName || ""} ${user.firstName || ""} ${user.email || ""}`.trim() ||
         "Utilisateur inconnu"
-      : order.contact?.name || "Client inconnu";
-  const phoneNumber =
-    user?.phone || order.address?.phone || order.contact?.phone || "Non fourni";
+      : order.contact?.name || "Client inconnu",
+    [user, order.contact?.name]
+  );
 
-  const handleConfirmDelivery = async () => {
+  const phoneNumber = useMemo(() => 
+    user?.phone || order.address?.phone || order.contact?.phone || "Non fourni",
+    [user?.phone, order.address?.phone, order.contact?.phone]
+  );
+
+  const handleConfirmDelivery = useCallback(async () => {
+    setIsUpdating(true);
     try {
       await updateDoc(doc(db, "orders", order.id), {
         status: ORDER_STATUS.DELIVERED,
@@ -537,145 +684,226 @@ const OrderCard = ({
     } catch (error) {
       console.error("Erreur lors de la confirmation de la livraison:", error);
       setPaymentError("Erreur lors de la confirmation de la livraison");
+    } finally {
+      setIsUpdating(false);
     }
-  };
+  }, [order.id, order.items, calculateTotal, navigate]);
+
+  const handleShowDetails = useCallback(() => {
+    setShowDetails(prev => !prev);
+  }, []);
+
+  const handleShowModal = useCallback(() => {
+    setShowConfirmModal(true);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setShowConfirmModal(false);
+  }, []);
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      whileHover={{ y: -5, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}
+      className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 overflow-hidden"
       draggable={isAdmin}
-      onDragStart={(e) => isAdmin && onDragStart(e, order)}
+      onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.currentTarget.classList.add("bg-gray-200");
-      }}
-      onDragLeave={(e) => e.currentTarget.classList.remove("bg-gray-200")}
       onDrop={onDrop}
-      className="mb-6 bg-white rounded-lg shadow-lg p-4 cursor-move"
     >
-      <div className="flex flex-wrap items-center gap-4 border-b pb-3 mb-3">
-        <span className={`px-3 py-1 rounded-full text-sm ${badgeClasses[order.status]}`}>
-          {STATUS_LABELS[order.status] || "En attente"}
-        </span>
-        <div className="ml-auto text-sm text-gray-500">{formatDate(order.timestamp)}</div>
-      </div>
-      <p className="text-sm text-gray-600 mb-3 italic">{STATUS_COMMENTS[order.status]}</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div>
-          <p className="text-sm text-gray-500">N° de commande</p>
-          <p className="font-medium">#{order.id.slice(0, 8)}</p>
+      <div className="p-4">
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <h3 className="font-semibold text-gray-800">Commande #{order.id.slice(-8)}</h3>
+            <p className="text-sm text-gray-500">{formatDate(order.timestamp)}</p>
+          </div>
+          <motion.span
+            className={`px-3 py-1 rounded-full text-xs font-medium ${badgeClasses[order.status]}`}
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+          >
+            {STATUS_LABELS[order.status] || "En attente"}
+          </motion.span>
         </div>
-        <div>
-          <p className="text-sm text-gray-500">Total (avec livraison)</p>
-          <p className="font-medium text-green-600">{formatPrice(calculateTotal(order))} FCFA</p>
-          {order.pointsUsed > 0 && (
-            <p className="text-sm text-gray-600">
-              Réduction : {formatPrice(order.pointsReduction)} FCFA ({formatPrice(order.pointsUsed)} points)
-            </p>
-          )}
+
+        {/* Indicateur de progression amélioré */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-gray-50 rounded-lg p-3 mb-4"
+        >
+          <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+            <Package className="w-4 h-4 mr-1" />
+            Progression de votre commande
+          </h4>
+          <ProgressIndicator status={order.status} />
+        </motion.div>
+
+        <div className="space-y-2 mb-3">
+          {order.items.map((item, index) => (
+            <OrderItem
+              key={`${item.dishId}-${index}`}
+              item={item}
+              itemsData={itemsData}
+              extraLists={extraLists}
+            />
+          ))}
         </div>
-        <div>
-          <p className="text-sm text-gray-500">Livraison</p>
-          <div className="flex items-center">
+
+        <div className="border-t pt-3">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="font-medium">{order.address?.area || "Non spécifié"}</p>
-              <p className="text-sm">{formatPrice(order.deliveryFee || deliveryFee)} FCFA</p>
+              <p className="font-semibold text-gray-800">
+                Total: {formatPriceToUse(calculateTotal(order))} Fcfa
+              </p>
+              {deliveryFee > 0 && (
+                <p className="text-sm text-gray-500">
+                  Livraison: {formatPriceToUse(deliveryFee)} Fcfa
+                </p>
+              )}
             </div>
-            {isAdmin && (
-              <button
-                onClick={() => {
-                  const newFee = prompt(
-                    `Frais pour ${order.address?.area || "inconnu"} (FCFA):`,
-                    order.deliveryFee || deliveryFee
-                  );
-                  if (newFee !== null) onUpdateFees(order.id, order.address?.area || "inconnu", newFee);
-                }}
-                className="ml-2 text-xs p-1 bg-gray-200 rounded hover:bg-gray-300"
-                aria-label="Modifier les frais de livraison"
-              >
-                ✏️
-              </button>
-            )}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleShowDetails}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              {showDetails ? "Masquer" : "Détails"}
+            </motion.button>
           </div>
         </div>
-      </div>
-      {order.loyaltyPoints > 0 && (
-        <div className="mb-4 bg-gray-50 p-2 rounded">
-          <p className="text-sm font-bold">Points de fidélité :</p>
-          <p className="text-sm">
-            Gagnés : {formatPrice(order.loyaltyPoints)} points
-            {isAdmin ? " (à valider après paiement)" : " (crédités après validation du paiement)"}
-          </p>
-        </div>
-      )}
-      <div className="mb-4 bg-gray-50 p-2 rounded">
-        <p className="text-sm font-bold">Coordonnées :</p>
-        <p className="text-sm">{clientName} - {phoneNumber}</p>
-      </div>
-      <div className="mb-4">
-        <h6 className="font-bold mb-3">Articles :</h6>
-        <ul className="space-y-4">
-          {Array.isArray(order.items) && order.items.length > 0 ? (
-            order.items.map((item, index) => (
-              <OrderItem key={index} item={item} itemsData={itemsData} extraLists={extraLists} />
-            ))
-          ) : (
-            <li className="text-gray-500">Aucun article</li>
+
+        {/* Bouton de confirmation de livraison - Simple et visible */}
+        {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleShowModal}
+            className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-lg"
+          >
+            ✅ Confirmer la livraison
+          </motion.button>
+        )}
+
+        {/* Bouton pour les admins - Simple et visible */}
+        {isAdmin && order.status === ORDER_STATUS.READY_TO_DELIVER && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleConfirmDelivery}
+            disabled={isUpdating}
+            className="w-full mt-3 bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-lg"
+          >
+            {isUpdating ? "⏳ Confirmation..." : "🚚 Confirmer la livraison"}
+          </motion.button>
+        )}
+
+        <AnimatePresence>
+          {showDetails && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="border-t pt-3 mt-3"
+            >
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Client:</span>
+                  <span className="font-medium">{clientName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Téléphone:</span>
+                  <span className="font-medium">{phoneNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Adresse:</span>
+                  <span className="font-medium text-right">
+                    {order.address?.area || "Non spécifiée"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Paiement:</span>
+                  <span className="font-medium">{order.paymentMethod?.name || "Non spécifié"}</span>
+                </div>
+                {order.pointsUsed > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Points utilisés:</span>
+                    <span className="font-medium">{order.pointsUsed} points</span>
+                  </div>
+                )}
+                {order.loyaltyPoints > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Points gagnés:</span>
+                    <span className="font-medium">{order.loyaltyPoints} points</span>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           )}
-        </ul>
+        </AnimatePresence>
       </div>
-      {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
-        <div className="flex gap-4">
-          <button
-            onClick={() => setShowConfirmModal(true)}
-            className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition mt-2"
-            aria-label="Confirmer la livraison"
+
+      {/* Modal de confirmation de livraison */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
           >
-            Confirmer la livraison
-          </button>
-          <button
-            onClick={() => updateDoc(doc(db, "orders", order.id), { status: ORDER_STATUS.FAILED })}
-            className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition mt-2"
-            aria-label="Signaler un problème"
-          >
-            Signaler un problème
-          </button>
-        </div>
-      )}
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <h5 className="font-semibold mb-4">Confirmer la réception de votre commande</h5>
-            <p className="text-sm text-gray-600 mb-6">
-              Avez-vous bien reçu votre commande #{order.id.slice(0, 8)} ?
-            </p>
-            <div className="flex gap-4">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
-                aria-label="Annuler la confirmation"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleConfirmDelivery}
-                className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                aria-label="Confirmer la réception"
-              >
-                Oui, confirmer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-lg w-full max-w-md p-6"
+            >
+              <h5 className="font-semibold mb-4 text-center">Confirmer la réception</h5>
+              <p className="text-sm text-gray-600 mb-6 text-center">
+                Avez-vous bien reçu votre commande <strong>#{order.id.slice(-8)}</strong> ?
+              </p>
+              
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleCloseModal}
+                  className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
+                >
+                  Annuler
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleConfirmDelivery}
+                  disabled={isUpdating}
+                  className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                >
+                  {isUpdating ? "Confirmation..." : "Oui, confirmer"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {paymentError && (
-        <p className="text-red-600 text-sm mt-2" role="alert">
+        <motion.p
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-red-600 text-sm mt-2 text-center"
+          role="alert"
+        >
           {paymentError}
-        </p>
+        </motion.p>
       )}
-    </div>
+    </motion.div>
   );
-};
+});
 
 OrderCard.propTypes = {
   order: PropTypes.object.isRequired,
@@ -693,24 +921,40 @@ OrderCard.propTypes = {
   onDrop: PropTypes.func,
 };
 
-const OrderItem = ({ item, itemsData, extraLists }) => {
-  const itemPrice = Number(item.dishPrice || itemsData[item.dishId]?.price || 0);
-  const quantity = Number(item.quantity || 1);
-  const extrasTotal = item.selectedExtras
-    ? Object.entries(item.selectedExtras).reduce((sum, [extraListId, indexes]) => {
-        const extraList = extraLists[extraListId]?.extraListElements || [];
-        return sum + indexes.reduce((acc, index) => acc + Number(extraList[index]?.price || 0), 0);
-      }, 0)
-    : 0;
+const OrderItem = React.memo(({ item, itemsData, extraLists }) => {
+  const itemPrice = useMemo(() => 
+    Number(item.dishPrice || itemsData[item.dishId]?.price || 0),
+    [item.dishPrice, itemsData, item.dishId]
+  );
+  
+  const quantity = useMemo(() => 
+    Number(item.quantity || 1),
+    [item.quantity]
+  );
+  
+  const extrasTotal = useMemo(() => 
+    item.selectedExtras
+      ? Object.entries(item.selectedExtras).reduce((sum, [extraListId, indexes]) => {
+          const extraList = extraLists[extraListId]?.extraListElements || [];
+          return sum + indexes.reduce((acc, index) => acc + Number(extraList[index]?.price || 0), 0);
+        }, 0)
+      : 0,
+    [item.selectedExtras, extraLists]
+  );
+
+  const itemName = useMemo(() => 
+    item.dishName || itemsData[item.dishId]?.name || "Article inconnu",
+    [item.dishName, itemsData, item.dishId]
+  );
 
   return (
     <li className="pb-2 border-b border-gray-100">
       <div className="flex justify-between items-start">
         <div>
-          <p className="font-medium">{item.dishName || itemsData[item.dishId]?.name || "Article inconnu"}</p>
+          <p className="font-medium">{itemName}</p>
           <p className="text-sm text-gray-500">Quantité : {quantity}</p>
         </div>
-        <p className="text-sm text-green-600">+{formatPrice((itemPrice + extrasTotal) * quantity)} FCFA</p>
+        <p className="text-sm text-green-600">+{formatPriceToUse((itemPrice + extrasTotal) * quantity)} FCFA</p>
       </div>
       {item.selectedExtras && (
         <div className="ml-4 mt-2 text-sm text-gray-600">
@@ -725,7 +969,7 @@ const OrderItem = ({ item, itemsData, extraLists }) => {
                       <span>{extra.name || "Option supprimée"}</span>
                       {extra.price > 0 && (
                         <span className="text-green-500 ml-2">
-                          +{formatPrice(extra.price * quantity)} FCFA
+                          +{formatPriceToUse(extra.price * quantity)} FCFA
                         </span>
                       )}
                     </li>
@@ -738,7 +982,7 @@ const OrderItem = ({ item, itemsData, extraLists }) => {
       )}
     </li>
   );
-};
+});
 
 OrderItem.propTypes = {
   item: PropTypes.object.isRequired,
@@ -750,13 +994,15 @@ const Footer = () => (
   <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
     <div className="grid grid-cols-4">
       {[
-        { to: "/accueil", icon: "fas fa-home", label: "Accueil" },
-        { to: "/cart", icon: "fas fa-shopping-cart", label: "Panier" },
-        { to: "/complete_order", icon: "fas fa-shopping-bag", label: "Commandes" },
-        { to: "/profile", icon: "fas fa-user", label: "Compte" },
+        { to: "/accueil", icon: <Home className="w-5 h-5" />, label: "Accueil" },
+        { to: "/cart", icon: <ShoppingCart className="w-5 h-5" />, label: "Panier" },
+        { to: "/complete_order", icon: <Package className="w-5 h-5" />, label: "Commandes" },
+        { to: "/profile", icon: <User className="w-5 h-5" />, label: "Compte" },
       ].map(({ to, icon, label }) => (
         <Link key={to} to={to} className="text-gray-700 p-2 hover:text-green-600 transition-colors">
-          <i className={`${icon} text-lg`} aria-hidden="true"></i>
+          <div className="flex justify-center">
+            {icon}
+          </div>
           <span className="block text-xs mt-1">{label}</span>
         </Link>
       ))}
@@ -902,12 +1148,12 @@ const ThankYouPage = () => {
             </h3>
             {pointsUsed > 0 && (
               <p className="text-sm text-gray-600">
-                Vous avez utilisé {formatPrice(pointsUsed)} points pour une réduction de {formatPrice(pointsReduction)} FCFA.
+                Vous avez utilisé {formatPriceToUse(pointsUsed)} points pour une réduction de {formatPriceToUse(pointsReduction)} FCFA.
               </p>
             )}
             {loyaltyPoints > 0 && (
               <p className="text-sm text-gray-600">
-                Vous avez gagné {formatPrice(loyaltyPoints)} points pour cette commande (crédités après validation).
+                Vous avez gagné {formatPriceToUse(loyaltyPoints)} points pour cette commande (crédités après validation).
               </p>
             )}
           </div>

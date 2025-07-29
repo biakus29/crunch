@@ -1,0 +1,92 @@
+// scripts/updateMenus.js
+// Script CLI Node.js (CommonJS) pour renommer et créer des menus Firestore
+// Usage : node scripts/updateMenus.js
+
+const admin = require("firebase-admin");
+const serviceAccount = require("../path/to/serviceAccountKey.json"); // Remplace par le chemin de ta clé
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
+
+/**
+ * Renomme un document Firestore (collection "menus").
+ * @param {string} ancienId
+ * @param {string} nouveauId
+ */
+async function renameMenuDoc(ancienId, nouveauId) {
+  const ancienRef = db.collection("menus").doc(ancienId);
+  const snap = await ancienRef.get();
+  if (!snap.exists) {
+    console.warn(`Document ${ancienId} introuvable.`);
+    return;
+  }
+
+  const data = snap.data();
+  await db.collection("menus").doc(nouveauId).set(data);
+  await ancienRef.delete();
+  console.log(`Renommé ${ancienId} → ${nouveauId}`);
+}
+
+/**
+ * Crée un nouveau document dans la collection "menus".
+ * @param {string} menuId
+ * @param {Object} menuData
+ */
+async function createMenuDoc(menuId, menuData) {
+  await db.collection("menus").doc(menuId).set(menuData);
+  console.log(`Menu créé : ${menuId}`);
+}
+
+/**
+ * Fonction principale : renomme puis crée de nouveaux menus.
+ */
+async function updateAndCreateMenus() {
+  try {
+    // 1. Renommer les documents existants
+    await renameMenuDoc('GkKqYSmPRwsA5ahS9Q3A', 'llfuaLrSipQoLhE2nY0X');
+    await renameMenuDoc('uMYpPC3LsMnGHhX6z3u', 'FUocWTjJWoSMYVdgagJJ');
+
+    // 2. Créer deux nouveaux menus pour le restaurant cible
+    const restaurantId = '7hshiIZHLv7gKuaCdWOY';
+    const now = admin.firestore.Timestamp.now();
+
+    const newMenus = [
+      {
+        id: 'eV4FvJurrQBAYIqQ9xrk',
+        data: {
+          name: 'Menu Terminal 1',
+          cover: 'URL_COVER_1', // remplace par URL valide
+          createdAt: now,
+          restaurantId,
+        }
+      },
+      {
+        id: 'w7GfdWHo77RDO2MlDtSz',
+        data: {
+          name: 'Menu Terminal 2',
+          cover: 'URL_COVER_2', // remplace par URL valide
+          createdAt: now,
+          restaurantId,
+        }
+      }
+    ];
+
+    for (const { id, data } of newMenus) {
+      await createMenuDoc(id, data);
+    }
+
+    console.log('✅ Opérations terminées avec succès.');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Erreur lors de l\'exécution :', err);
+    process.exit(1);
+  }
+}
+
+// Exécution si lancé directement via `node scripts/updateMenus.js`
+if (require.main === module) {
+  updateAndCreateMenus();
+}

@@ -8,6 +8,26 @@ import backgroundImage1 from "../image/backlogin1.jpg";
 import backgroundImage2 from "../image/backlogin2.jpg";
 import backgroundImage3 from "../image/backlogin3.jpg";
 import backgroundImage4 from "../image/backlogin4.jpg";
+import { 
+  Phone, 
+  Mail, 
+  User, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  ArrowRight, 
+  Check, 
+  AlertCircle, 
+  Info,
+  ShoppingCart,
+  Package,
+  Home,
+  Star,
+  Clock,
+  MapPin,
+  LogIn,
+  LogOut
+} from 'lucide-react';
 
 const Login = () => {
   const [phoneNumber, setPhoneNumber] = useState("");

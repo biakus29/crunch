@@ -11,8 +11,7 @@ import {
   setDoc,
   getDoc,
 } from "firebase/firestore";
-import { formatPrice } from "./restaurantadmin";
-
+import { formatPrice } from "../utils/orderUtils";
 const DEFAULT_DELIVERY_FEE = 1000;
 
 // Fonction pour normaliser les prix

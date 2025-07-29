@@ -32,7 +32,7 @@ function App() {
     <CartProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<Logins />} />
           <Route path="/accueil" element={<Accueil />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/details/:id" element={<Detail />} />

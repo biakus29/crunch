@@ -4,7 +4,37 @@ import { doc, getDoc, setDoc, collection, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { FaStar } from "react-icons/fa";
 import PropTypes from "prop-types";
-import { formatPrice } from "./ordersstatuts";
+import { formatPrice } from "./oders";
+import { 
+  ShoppingCart, 
+  Package, 
+  Clock, 
+  Star, 
+  Check, 
+  X, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  ArrowRight, 
+  AlertCircle, 
+  Info,
+  Home,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  Trash2,
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  CreditCard,
+  Smartphone,
+  DollarSign,
+  ThumbsUp,
+  MessageCircle
+} from 'lucide-react';
 
 const ThankYouPage = ({ order }) => {
   const { orderId: paramOrderId } = useParams();

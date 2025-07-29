@@ -1,16 +1,39 @@
 
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  getDocs,
-  updateDoc,
-  doc,
-} from "firebase/firestore";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { doc, getDoc, collection, getDocs, updateDoc, Timestamp, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { 
+  ShoppingCart, 
+  Package, 
+  Clock, 
+  Star, 
+  Check, 
+  X, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  ArrowRight, 
+  AlertCircle, 
+  Info,
+  Home,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  Trash2,
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  CreditCard,
+  Smartphone,
+  DollarSign,
+  Truck,
+  Navigation,
+  Target
+} from 'lucide-react';
 import ThankYouPage from "./thankyou";
 import { normalizePhone } from "../utils/phoneutils";
 

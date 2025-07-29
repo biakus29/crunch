@@ -7,7 +7,61 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useCart } from "../context/cartcontext";
-import { FaShoppingCart } from "react-icons/fa";
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ShoppingCart, 
+  Star, 
+  Clock, 
+  MapPin, 
+  Phone, 
+  Mail, 
+  Heart, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  Check, 
+  AlertCircle, 
+  Info,
+  Package,
+  User,
+  Home,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  X
+} from 'lucide-react';
+
+// ==================== Loaders Personnalisés ====================
+const ProductLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        className="w-16 h-16 rounded-full border-4 border-green-400 border-t-transparent"
+      ></motion.div>
+      <motion.div 
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="absolute inset-0 flex items-center justify-center"
+      >
+        <Package className="w-8 h-8 text-green-500" />
+      </motion.div>
+    </div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-green-600 font-semibold"
+    >
+      Chargement du produit...
+    </motion.p>
+  </motion.div>
+);
 
 const ProductDetails = () => {
   const { id } = useParams(); // Utiliser l'ID au lieu du slug
@@ -410,40 +464,58 @@ const ProductDetails = () => {
   // Afficher les états de chargement, d'erreur ou vide
   if (loading) {
     return (
-      <div className="p-4">
-        <div className="animate-pulse">
-          <div className="h-64 bg-gray-200 rounded-lg mb-4"></div>
-          <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <ProductLoader />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 text-center">
-        <p className="text-red-600 font-medium mb-4">{error}</p>
-        <Link
-          to="/accueil"
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
         >
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Erreur de chargement</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate("/accueil")}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Home className="w-4 h-4 mr-2" />
           Retour à l'accueil
-        </Link>
+          </motion.button>
+        </motion.div>
       </div>
     );
   }
 
   if (!product) {
     return (
-      <div className="p-4 text-center">
-        <p className="text-gray-600 mb-4">Aucun produit trouvé.</p>
-        <Link
-          to="/accueil"
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
         >
+          <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Produit introuvable</h2>
+          <p className="text-gray-600 mb-4">Le produit que vous recherchez n'existe pas.</p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate("/accueil")}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Home className="w-4 h-4 mr-2" />
           Retour à l'accueil
-        </Link>
+          </motion.button>
+        </motion.div>
       </div>
     );
   }
@@ -475,11 +547,20 @@ const ProductDetails = () => {
         <meta name="twitter:image" content={pageImage} />
       </Helmet>
 
+      {/* Message de succès animé */}
+      <AnimatePresence>
       {successMessage && (
-        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50 animate-bounce">
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.8 }}
+            className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center"
+          >
+            <Check className="w-5 h-5 mr-2" />
           {successMessage}
-        </div>
+          </motion.div>
       )}
+      </AnimatePresence>
 
       <div className="p-3 bg-white shadow-sm">
         <div className="flex items-center">
@@ -676,125 +757,61 @@ const ProductDetails = () => {
         </div>
       </div>
 
+      {/* Modal pour les options du produit */}
+      <AnimatePresence>
       {selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="text-lg font-semibold">Options pour {selectedItem.name}</h3>
-              <button
-                onClick={() => {
-                  setSelectedItem(null);
-                  setSelectedExtras({});
-                  setSelectedSizes({});
-                  setValidationError(null);
-                  setQuantity(1);
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl focus:outline-none focus:ring-2 focus:ring-gray-500"
-                aria-label="Fermer la modale"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4">
-              {validationError && (
-                <div
-                  className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
-                  role="alert"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">{selectedItem.name}</h3>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setSelectedItem(null)}
+                  className="text-gray-400 hover:text-gray-600"
                 >
-                  <span>{validationError}</span>
-                  <button
-                    className="absolute top-0 right-0 px-2 py-1 text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    onClick={() => setValidationError(null)}
-                    aria-label="Fermer l'erreur"
-                  >
-                    ×
-                  </button>
+                  <X className="w-5 h-5" />
+                </motion.button>
                 </div>
-              )}
 
-              <div className="mb-6">
-                <h4 className="font-medium mb-3 text-gray-700">Quantité</h4>
-                <div className="flex items-center">
-                  <button
-                    className="bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500"
-                    onClick={() => handleQuantityChange(-1)}
-                    disabled={!selectedItem.available}
-                    aria-label="Diminuer la quantité"
-                  >
-                    -
-                  </button>
-                  <input
-                    type="text"
-                    className="w-10 text-center mx-2 border border-gray-300 rounded"
-                    value={quantity}
-                    readOnly
-                    aria-label={`Quantité sélectionnée : ${quantity}`}
-                  />
-                  <button
-                    className="bg-green-500 text-white px-3 py-1 rounded-full hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500"
-                    onClick={() => handleQuantityChange(1)}
-                    disabled={!selectedItem.available}
-                    aria-label="Augmenter la quantité"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {selectedItem.priceType === "sizes" &&
-              Object.keys(selectedItem.sizes || {}).length > 0 &&
-              Object.values(selectedItem.sizes).some((price) => price && convertPrice(price) > 0) ? (
-                <div className="mb-6">
-                  <h4 className="font-medium mb-3 text-gray-700">
-                    Taille <span className="text-red-500 ml-1" aria-hidden="true">*</span>
-                  </h4>
-                  <div className="space-y-2">
-                    {Object.entries(selectedItem.sizes)
-                      .filter(([_, price]) => price && convertPrice(price) > 0)
-                      .map(([size, price]) => (
-                        <label
+              {/* Sélection de taille si applicable */}
+              {selectedItem.priceType === 'sizes' && selectedItem.sizes && (
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Choisissez votre taille</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(selectedItem.sizes).map(([size, price]) => (
+                      <motion.button
                           key={size}
-                          htmlFor={`size-${selectedItem.id}-${size}`}
-                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setSelectedSizes(prev => ({ ...prev, [selectedItem.id]: size }))}
+                        className={`p-3 rounded-lg border-2 transition-all ${
                             selectedSizes[selectedItem.id] === size
-                              ? "bg-green-50 border-2 border-green-200"
-                              : "border border-gray-200 hover:border-green-200"
-                          } ${
-                            validationError?.includes("taille") && !selectedSizes[selectedItem.id]
-                              ? "border-red-400 bg-red-50"
-                              : ""
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-200 hover:border-green-300'
                           }`}
                         >
-                          <input
-                            id={`size-${selectedItem.id}-${size}`}
-                            type="radio"
-                            name={`size-${selectedItem.id}`}
-                            value={size}
-                            checked={selectedSizes[selectedItem.id] === size}
-                            onChange={(e) => {
-                              setValidationError(null);
-                              setSelectedSizes((prev) => ({
-                                ...prev,
-                                [selectedItem.id]: e.target.value,
-                              }));
-                            }}
-                            className="form-radio h-5 w-5 text-green-600 focus:ring-green-500"
-                            aria-required="true"
-                            aria-invalid={validationError?.includes("taille") && !selectedSizes[selectedItem.id]}
-                            aria-label={`Taille ${size} pour ${formatPrice(price)}`}
-                          />
-                          <div className="ml-3 flex-1">
-                            <span className="text-gray-700">{size}</span>
-                            <span className="text-sm text-gray-500 ml-2">{formatPrice(price)}</span>
-                          </div>
-                        </label>
+                        <div className="font-medium">{size}</div>
+                        <div className="text-sm text-gray-600">{convertPrice(price).toLocaleString()} FCFA</div>
+                      </motion.button>
                       ))}
                   </div>
                 </div>
-              ) : selectedItem.priceType === "sizes" ? (
-                <p className="text-red-600 text-sm mb-6">Aucune taille disponible</p>
-              ) : null}
+              )}
 
+              {/* Sélection des extras */}
               {selectedItem.assortments?.length === 0 ? (
                 selectedItem.priceType !== "sizes" && (
                   <p className="text-gray-500 text-center mb-6">Aucun complément associé à ce plat.</p>
@@ -878,37 +895,45 @@ const ProductDetails = () => {
                 })
               )}
 
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedItem(null);
-                    setSelectedExtras({});
-                    setSelectedSizes({});
-                    setValidationError(null);
-                    setQuantity(1);
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 flex-1"
-                  aria-label="Annuler la sélection"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => addProductToCart(false)}
-                  disabled={!validateExtras().isValid || !selectedItem.available}
-                  className={`px-4 py-2 rounded-lg flex-1 transition-all duration-200 ${
-                    validateExtras().isValid && selectedItem.available
-                      ? "bg-green-600 text-white hover:bg-green-700 focus:ring-2 focus:ring-green-500"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                  aria-label={`Confirmer pour ${formatPrice(calculateTotalPrice())}`}
-                >
-                  Confirmer ({formatPrice(calculateTotalPrice())})
-                </button>
+              {/* Prix total */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-gray-800">Total</span>
+                  <span className="text-2xl font-bold text-green-600">
+                    {calculateTotalPrice().toLocaleString()} FCFA
+                  </span>
               </div>
             </div>
-          </div>
-        </div>
+
+              {/* Bouton Commander avec animation incitative */}
+              <motion.button
+                whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(34, 197, 94, 0.3)" }}
+                whileTap={{ scale: 0.98 }}
+                onClick={addProductToCart}
+                className="relative w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group"
+              >
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  initial={false}
+                />
+                <motion.span
+                  className="relative z-10 flex items-center justify-center"
+                  animate={{ x: [0, 2, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" />
+                  Ajouter à ma commande
+                </motion.span>
+                <motion.div
+                  className="absolute inset-0 bg-white opacity-20"
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
+                />
+              </motion.button>
+            </motion.div>
+          </motion.div>
       )}
+      </AnimatePresence>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-md">
         <div className="flex">
@@ -918,7 +943,7 @@ const ProductDetails = () => {
             disabled={!product.available}
             aria-label="Ajouter au panier"
           >
-            <FaShoppingCart className="text-2xl" />
+            <ShoppingCart className="text-2xl" />
           </button>
           <button
             className="w-3/4 flex items-center justify-center bg-green-500 text-white py-3 text-lg font-semibold hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -926,6 +951,7 @@ const ProductDetails = () => {
             disabled={!product.available}
             aria-label="Ajouter à ma commande"
           >
+            <Check className="w-5 h-5 mr-2" />
             Ajouter à ma commande
           </button>
         </div>

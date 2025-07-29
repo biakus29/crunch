@@ -5,6 +5,45 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc, collection, getDocs, addDoc, deleteDoc, setDoc, query, where, orderBy, limit } from 'firebase/firestore';
 import logo from '../image/logo.png';
 import { useCart } from '../context/cartcontext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ANIMATION_VARIANTS, 
+  AnimatedComponents, 
+  FoodAnimations, 
+  CardAnimations,
+  useScrollTrigger 
+} from '../utils/animationSystem';
+import { 
+  User, 
+  Mail, 
+  Phone, 
+  MapPin, 
+  Edit, 
+  Save, 
+  X, 
+  Plus, 
+  Trash2, 
+  Star, 
+  Clock, 
+  Package, 
+  ShoppingCart, 
+  Home, 
+  LogOut,
+  Check,
+  AlertCircle,
+  Info,
+  Heart,
+  Settings,
+  CreditCard,
+  Bell,
+  ArrowLeft,
+  Camera,
+  Shield,
+  Award,
+  Gift,
+  TrendingUp,
+  Sparkles
+} from 'lucide-react';
 
 const Profile = () => {
   const [user, setUser] = useState(null); // Peut être un utilisateur Firebase ou un objet invité
@@ -37,6 +76,7 @@ const Profile = () => {
   const [orders, setOrders] = useState([]);
   const navigate = useNavigate();
   const { cartItems } = useCart();
+  const scrollAnimation = useScrollTrigger();
 
   // Validation des données d'adresse
   const validateAddress = useCallback((data) => {
@@ -407,9 +447,11 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <i className="fas fa-spinner fa-spin text-3xl text-green-600"></i>
-      </div>
+      <AnimatedComponents.AnimatedPage className="min-h-screen bg-gray-100">
+        <div className="flex items-center justify-center h-screen">
+          <AnimatedComponents.AnimatedLoader type="spinner" size="large" color="green" />
+        </div>
+      </AnimatedComponents.AnimatedPage>
     );
   }
 
@@ -425,71 +467,123 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-16">
+    <AnimatedComponents.AnimatedPage className="min-h-screen bg-gray-100 pb-16">
       {/* En-tête */}
-      <header className="bg-white shadow sticky top-0 z-10">
+      <motion.header
+        {...ANIMATION_VARIANTS.fadeInDown}
+        className="bg-white shadow sticky top-0 z-10"
+      >
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2">
-            <img src={logo} alt="Logo" className="h-8" />
+            <AnimatedComponents.AnimatedImage
+              src={logo}
+              alt="Logo"
+              className="h-8"
+              hoverZoom={false}
+            />
             <span className="font-bold text-green-600 text-lg">MANGE d'ABORD</span>
           </Link>
-          <button
+          <motion.button
+            {...ANIMATION_VARIANTS.buttonPress}
             onClick={() => (editMode ? setEditMode(false) : navigate(-1))}
-            className="text-gray-700 hover:text-gray-900"
+            className="text-gray-700 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100"
           >
-            <i className={`fas ${editMode ? 'fa-times' : 'fa-arrow-left'} text-xl`}></i>
-          </button>
+            <ArrowLeft className="w-5 h-5" />
+          </motion.button>
         </div>
-      </header>
+      </motion.header>
 
-      {/* Photo de profil et nom */}
-{/* Photo de profil et nom */}
-<div className="bg-white py-6 text-center border-b">
-  <div className="relative inline-block">
-    {user?.photoURL ? (
-      <img
-        src={user.photoURL}
-        alt="Profil"
-        className="w-24 h-24 rounded-full border-2 border-green-600 object-cover"
-      />
-    ) : (
-      <div className="w-24 h-24 rounded-full border-2 border-green-600 bg-gray-200 flex items-center justify-center">
-        <i className="fas fa-user text-4xl text-gray-500"></i>
-      </div>
-    )}
-    {editMode && !isGuest && (
-      <button className="absolute bottom-0 right-0 bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center">
-        <i className="fas fa-camera"></i>
-      </button>
-    )}
-  </div>
-  <h5 className="mt-3 text-xl font-bold">{formData.firstName} {formData.lastName}</h5>
-  <p className="text-sm text-gray-500">{formData.email || formData.phone || 'Invité'}</p>
-  {isGuest && (
-    <p className="text-xs text-gray-500 mt-1">
-      Compte simple - <Link to="/logins" className="text-green-600 hover:underline">Créer un compte complet</Link>
-    </p>
-  )}
-</div>
+              {/* Photo de profil et nom */}
+        <motion.div
+          {...ANIMATION_VARIANTS.fadeInUp}
+          className="bg-white py-6 text-center border-b"
+        >
+          <div className="relative inline-block">
+            {user?.photoURL ? (
+              <AnimatedComponents.AnimatedImage
+                src={user.photoURL}
+                alt="Profil"
+                className="w-24 h-24 rounded-full border-2 border-green-600 object-cover"
+                hoverZoom={false}
+              />
+            ) : (
+              <motion.div
+                className="w-24 h-24 rounded-full border-2 border-green-600 bg-gray-200 flex items-center justify-center"
+                whileHover={{ scale: 1.05 }}
+              >
+                <User className="w-12 h-12 text-gray-500" />
+              </motion.div>
+            )}
+            {editMode && !isGuest && (
+              <motion.button
+                {...ANIMATION_VARIANTS.buttonPress}
+                className="absolute bottom-0 right-0 bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center"
+              >
+                <Camera className="w-4 h-4" />
+              </motion.button>
+            )}
+          </div>
+          <motion.h5
+            className="mt-3 text-xl font-bold"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            {formData.firstName} {formData.lastName}
+          </motion.h5>
+          <motion.p
+            className="text-sm text-gray-500"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            {formData.email || formData.phone || 'Invité'}
+          </motion.p>
+          {isGuest && (
+            <motion.p
+              className="text-xs text-gray-500 mt-1"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              Compte simple - <Link to="/logins" className="text-green-600 hover:underline">Créer un compte complet</Link>
+            </motion.p>
+          )}
+        </motion.div>
 
       {/* Contenu principal avec onglets */}
-      <div className="container mx-auto px-4 mt-4">
-        {successMessage && (
-          <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg text-center">
-            {successMessage}
-          </div>
-        )}
+      <motion.div
+        {...scrollAnimation}
+        className="container mx-auto px-4 mt-4"
+      >
+        <AnimatePresence>
+          {successMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg text-center"
+            >
+              {successMessage}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Onglets */}
-        <div className="bg-white rounded-t-lg shadow-sm overflow-hidden">
+        <motion.div
+          className="bg-white rounded-t-lg shadow-sm overflow-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
           <div className="flex border-b">
             {[
-              { id: 'profile', label: 'Profil', icon: 'fa-user' },
-              { id: 'addresses', label: 'Adresses', icon: 'fa-map-marker-alt' },
-              { id: 'points', label: 'Points', icon: 'fa-star' },
-              { id: 'orders', label: 'Commandes', icon: 'fa-shopping-bag' },
-            ].map((tab) => (
-              <button
+              { id: 'profile', label: 'Profil', icon: User },
+              { id: 'addresses', label: 'Adresses', icon: MapPin },
+              { id: 'points', label: 'Points', icon: Star },
+              { id: 'orders', label: 'Commandes', icon: Package },
+            ].map((tab, index) => (
+              <motion.button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 py-3 px-4 text-base font-semibold text-center transition-all duration-200 ${
@@ -497,10 +591,15 @@ const Profile = () => {
                     ? 'bg-green-100 border-b-4 border-green-600 text-green-700'
                     : 'text-gray-600 hover:bg-green-50 hover:text-green-700'
                 } flex items-center justify-center space-x-2`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 + index * 0.1 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
-                <i className={`fas ${tab.icon} text-lg`}></i>
+                <tab.icon className="w-5 h-5" />
                 <span className="hidden sm:inline">{tab.label}</span>
-              </button>
+              </motion.button>
             ))}
           </div>
 
@@ -663,17 +762,57 @@ const Profile = () => {
 
             {/* Onglet Points de fidélité */}
             {activeTab === 'points' && (
-              <div>
-                <h6 className="font-bold text-lg mb-2">Points de fidélité</h6>
-                <div className="bg-gray-50 p-3 rounded-lg mb-3">
-                  <p className="text-sm font-semibold">Solde actuel</p>
-                  <p className="text-lg text-green-600">{userPoints} points</p>
-                  <p className="text-xs text-gray-500">
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <motion.h6
+                  className="font-bold text-lg mb-4 flex items-center"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <Star className="w-6 h-6 text-green-600 mr-2" />
+                  Points de fidélité
+                </motion.h6>
+                
+                <motion.div
+                  className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg mb-4 border border-green-200"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-green-800">Solde actuel</p>
+                    <motion.div
+                      className="flex items-center space-x-1"
+                      animate={{ 
+                        scale: [1, 1.1, 1],
+                        rotate: [0, 5, -5, 0]
+                      }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    >
+                      <Star className="w-4 h-4 text-green-600" />
+                      <Sparkles className="w-3 h-3 text-green-500" />
+                    </motion.div>
+                  </div>
+                  <motion.div
+                    className="text-2xl font-bold text-green-600 mb-2"
+                    animate={{ 
+                      scale: [1, 1.1, 1],
+                      color: ["#059669", "#10B981", "#059669"]
+                    }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    {userPoints} points
+                  </motion.div>
+                  <p className="text-xs text-green-700">
                     {userPoints > 0
                       ? `Équivaut à ${userPoints * 100} Fcfa pour vos prochaines commandes`
                       : 'Effectuez des commandes de 5000 Fcfa ou plus pour gagner des points !'}
                   </p>
-                </div>
+                </motion.div>
                 <div className="bg-green-50 p-3 rounded-lg mb-3">
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-semibold">Comment fonctionnent les points ?</p>
@@ -726,7 +865,7 @@ const Profile = () => {
                 ) : (
                   <p className="text-sm text-gray-500">Aucune transaction récente. Commandez pour gagner des points !</p>
                 )}
-              </div>
+              </motion.div>
             )}
 
             {/* Onglet Commandes */}
@@ -791,16 +930,19 @@ const Profile = () => {
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Bouton de déconnexion */}
-        <button
+        <motion.button
           onClick={handleSignOut}
           className="w-full py-2 border border-red-600 text-red-600 rounded-lg hover:bg-red-50 transition mt-4"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
         >
-          <i className="fas fa-sign-out-alt mr-2"></i> {isGuest ? 'Quitter le mode invité' : 'Déconnexion'}
-        </button>
-      </div>
+          <LogOut className="w-4 h-4 mr-2 inline" />
+          {isGuest ? 'Quitter le mode invité' : 'Déconnexion'}
+        </motion.button>
+      </motion.div>
 
       {/* Modal pour ajouter/éditer une adresse */}
       {showAddressModal && (
@@ -950,27 +1092,38 @@ const Profile = () => {
         </div>
       )}
       {/* Footer */}
-      <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
+      <motion.footer
+        {...ANIMATION_VARIANTS.fadeInUp}
+        className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg"
+      >
         <div className="grid grid-cols-4">
           <Link to="/accueil" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
-            <i className="fas fa-home text-lg"></i><span className="block text-xs mt-1">Accueil</span>
+            <Home className="w-5 h-5 mx-auto" />
+            <span className="block text-xs mt-1">Accueil</span>
           </Link>
           <Link to="/cart" className="relative text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
-            <i className="fas fa-shopping-cart text-lg"></i>
+            <ShoppingCart className="w-5 h-5 mx-auto" />
             {cartItems.length > 0 && (
-              <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full animate-pulse">{cartItems.length}</span>
+              <motion.span
+                {...ANIMATION_VARIANTS.scaleIn}
+                className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold text-white bg-green-600 rounded-full"
+              >
+                {cartItems.length}
+              </motion.span>
             )}
             <span className="block text-xs mt-1">Panier</span>
           </Link>
           <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
-            <i className="fas fa-shopping-bag text-lg"></i><span className="block text-xs mt-1">Commandes</span>
+            <Package className="w-5 h-5 mx-auto" />
+            <span className="block text-xs mt-1">Commandes</span>
           </Link>
           <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
-            <i className="fas fa-user text-lg"></i><span className="block text-xs mt-1">Compte</span>
+            <User className="w-5 h-5 mx-auto" />
+            <span className="block text-xs mt-1">Compte</span>
           </Link>
         </div>
-      </footer>
-    </div>
+      </motion.footer>
+    </AnimatedComponents.AnimatedPage>
   );
 };
 

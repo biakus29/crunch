@@ -5,7 +5,85 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ShoppingCart, 
+  Trash2, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  CreditCard, 
+  Package, 
+  MapPin, 
+  Phone, 
+  User, 
+  Check,
+  AlertCircle,
+  Info,
+  Star,
+  Clock,
+  Home,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save
+} from 'lucide-react';
 import "@fortawesome/fontawesome-free/css/all.min.css";
+
+// ==================== Loaders Personnalisés ====================
+const CartLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        className="w-16 h-16 rounded-full border-4 border-green-400 border-t-transparent"
+      ></motion.div>
+      <motion.div 
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="absolute inset-0 flex items-center justify-center"
+      >
+        <ShoppingCart className="w-8 h-8 text-green-500" />
+      </motion.div>
+    </div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-green-600 font-semibold"
+    >
+      Chargement du panier...
+    </motion.p>
+  </motion.div>
+);
+
+const EmptyCartLoader = () => (
+  <motion.div 
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="flex flex-col items-center justify-center h-40"
+  >
+    <motion.div 
+      animate={{ y: [0, -10, 0] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center"
+    >
+      <ShoppingCart className="w-8 h-8 text-gray-400" />
+    </motion.div>
+    <motion.p 
+      animate={{ opacity: [0.5, 1, 0.5] }}
+      transition={{ duration: 2, repeat: Infinity }}
+      className="mt-4 text-gray-500 font-semibold"
+    >
+      Votre panier est vide
+    </motion.p>
+  </motion.div>
+);
 
 const CartPage = () => {
   const { cartItems, removeFromCart, updateQuantity } = useCart();
@@ -104,11 +182,7 @@ const CartPage = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <div className="animate-pulse space-y-4 w-full max-w-md px-4 sm:px-6">
-          <div className="h-10 bg-gray-200 rounded-lg"></div>
-          <div className="h-24 bg-gray-200 rounded-lg"></div>
-          <div className="h-24 bg-gray-200 rounded-lg"></div>
-        </div>
+        <CartLoader />
       </div>
     );
   }
@@ -116,147 +190,162 @@ const CartPage = () => {
   if (cartItems.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 sm:px-6">
-        <p className="text-center text-base sm:text-lg md:text-xl text-gray-600 mb-6">
-          Votre panier est vide
-        </p>
+        <EmptyCartLoader />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mt-8"
+        >
         <Link
           to="/accueil"
-          className="bg-green-600 text-white px-6 py-2.5 sm:px-8 sm:py-3 rounded-full hover:bg-green-700 transition-all duration-300 shadow-lg text-sm sm:text-base"
+            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
         >
-          Découvrir la boutique
+            <Home className="w-5 h-5 mr-2" />
+            Découvrir nos plats
         </Link>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50 min-h-screen flex flex-col">
+    <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
-      <header className="bg-white shadow-sm p-4 sm:p-5 sticky top-0 z-10">
-        <h2 className="text-center font-bold text-lg sm:text-xl md:text-2xl text-gray-800">
-          Votre Panier
-        </h2>
+      <header className="bg-white shadow-sm p-4">
+        <div className="flex items-center justify-between">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate(-1)}
+            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 mr-2" />
+            Retour
+          </motion.button>
+          <h1 className="text-xl font-bold text-gray-800">Mon Panier</h1>
+          <div className="w-8"></div>
+        </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-5xl mx-auto space-y-4 sm:space-y-6">
         {/* Cart Items */}
-        <ul className="space-y-4">
-          {cartItems.map((item) => (
-            <li
-              key={item.id}
-              className="bg-white rounded-lg sm:rounded-xl shadow-md p-3 sm:p-4 flex items-start space-x-3 sm:space-x-4 transition-all hover:shadow-lg"
+      <div className="p-4 space-y-4">
+        <AnimatePresence>
+          {cartItems.map((item, index) => (
+            <motion.div
+              key={`${item.id}-${index}`}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+              className="bg-white rounded-xl shadow-sm p-4"
             >
-              <img
-                src={item.covers?.[0] || "/img/default-food.png"}
+              <div className="flex items-start space-x-4">
+                <div className="w-20 h-20 bg-gray-200 rounded-lg flex-shrink-0">
+                  {item.covers?.[0] ? (
+                    <img
+                      src={item.covers[0]}
                 alt={item.name}
-                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 object-cover rounded-lg aspect-square"
-              />
-              <div className="flex-1">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-semibold text-sm sm:text-base md:text-lg text-gray-800">
+                      className="w-full h-full object-cover rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-200 rounded-lg flex items-center justify-center">
+                      <Package className="w-8 h-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-800 text-sm sm:text-base truncate">
                     {item.name}
                   </h3>
-                  <button
-                    onClick={() => removeFromCart(item.id)}
-                    className="text-red-500 hover:text-red-600 transition-colors text-sm sm:text-base"
-                    aria-label="Supprimer l'article"
-                  >
-                    <i className="fas fa-trash-alt"></i>
-                  </button>
-                </div>
-                <p className="mt-1 text-green-600 font-medium text-sm sm:text-base">
+                  <p className="text-gray-500 text-xs sm:text-sm mt-1">
                   {convertPrice(item.price).toLocaleString()} FCFA
                 </p>
 
-                {item.selectedExtras && (
-                  <div className="mt-2 space-y-1">
-                    {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => {
-                      const extraList = extraLists.find((el) => el.id === extraListId);
-                      return (
-                        <div key={extraListId}>
-                          <p className="text-xs sm:text-sm font-medium text-gray-600">
-                            {extraList?.name || "Extras"} :
-                          </p>
-                          <ul className="list-disc list-inside ml-4 text-xs sm:text-sm text-gray-500">
-                            {indexes.map((idx) => {
-                              const { name, price } = getExtraDetails(extraListId, idx);
-                              return (
-                                <li key={idx}>
-                                  {name} (+{convertPrice(price).toLocaleString()} FCFA)
-                                </li>
-                              );
-                            })}
-                          </ul>
+                  {/* Extras display */}
+                  {item.selectedExtras && Object.keys(item.selectedExtras).length > 0 && (
+                    <div className="mt-2">
+                      {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
+                        <div key={extraListId} className="text-xs text-gray-600">
+                          {indexes.map((index) => {
+                            const { name } = getExtraDetails(extraListId, index);
+                            return <span key={index} className="mr-2">+ {name}</span>;
+                          })}
                         </div>
-                      );
-                    })}
+                      ))}
                   </div>
                 )}
+                </div>
 
-                <div className="mt-2 sm:mt-3 flex items-center space-x-3 sm:space-x-4">
-                  <button
-                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    disabled={item.quantity === 1}
-                    className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50 transition-colors"
-                    aria-label="Diminuer la quantité"
+                <div className="flex flex-col items-end space-y-2">
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => removeFromCart(item.id)}
+                    className="text-red-500 hover:text-red-700 transition-colors"
                   >
-                    −
-                  </button>
-                  <span className="font-medium text-gray-700 text-sm sm:text-base">
+                    <Trash2 className="w-4 h-4" />
+                  </motion.button>
+                  
+                  <div className="flex items-center space-x-2">
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </motion.button>
+                    
+                    <span className="w-8 text-center font-semibold text-gray-800">
                     {item.quantity}
                   </span>
-                  <button
+                    
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-                    aria-label="Augmenter la quantité"
+                      className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center hover:bg-green-200 transition-colors"
                   >
-                    +
-                  </button>
+                      <Plus className="w-4 h-4 text-green-600" />
+                    </motion.button>
+                  </div>
                 </div>
               </div>
-            </li>
+            </motion.div>
           ))}
-        </ul>
-
-        {/* Loyalty Card */}
-        {total < thresholdAmount ? (
-          <div className="bg-gradient-to-r from-yellow-100 to-yellow-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md flex items-center space-x-3 sm:space-x-4">
-            <i className="fas fa-gift text-xl sm:text-2xl md:text-3xl text-yellow-600"></i>
-            <div>
-              <h4 className="font-bold text-sm sm:text-base md:text-lg text-yellow-800">
-                Boostez votre fidélité !
-              </h4>
-              <p className="text-yellow-700 text-xs sm:text-sm md:text-base">
-                Ajoutez{" "}
-                <span className="font-semibold">
-                  {(thresholdAmount - total).toLocaleString()} FCFA
-                </span>{" "}
-                pour débloquer vos points fidélité{" "}
-                <span className="italic">(1 point = 100 FCFA)</span>
-              </p>
+        </AnimatePresence>
             </div>
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-green-100 to-green-200 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md flex items-center space-x-3 sm:space-x-4">
-            <i className="fas fa-award text-xl sm:text-2xl md:text-3xl text-green-600"></i>
-            <div>
-              <h4 className="font-bold text-sm sm:text-base md:text-lg text-green-800">
-                Félicitations !
-              </h4>
-              <p className="text-green-700 text-xs sm:text-sm md:text-base">
-                Vous gagnez{" "}
-                <span className="font-semibold">{points} points</span> (soit{" "}
-                {(points * 100).toLocaleString()} FCFA de crédit)
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* Footer */}
-      <footer className="bg-white shadow-inner p-4 sm:p-5 md:p-6 sticky bottom-16 sm:bottom-0 z-10">
-        <div className="max-w-5xl mx-auto">
+      {/* Loyalty Points */}
+      {points > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-4 mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Star className="w-5 h-5 text-yellow-500 mr-2" />
+              <span className="text-sm font-medium text-yellow-800">
+                Points fidélité gagnés : {points}
+              </span>
+            </div>
+            <motion.span
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full"
+            >
+              +{points} pts
+            </motion.span>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Checkout Section */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 z-30">
+        <div className="max-w-md mx-auto">
           <div className="flex justify-between items-center mb-3 sm:mb-4">
             <span className="font-semibold text-base sm:text-lg md:text-xl text-gray-700">
               Total :
@@ -265,61 +354,68 @@ const CartPage = () => {
               {total.toLocaleString()} FCFA
             </span>
           </div>
-          <button
+          
+          {/* Bouton Commander avec animation incitative */}
+          <motion.button
+            whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(34, 197, 94, 0.3)" }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleCheckout}
-            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 sm:py-3 md:py-4 rounded-full transition-all duration-300 shadow-lg flex items-center justify-center text-sm sm:text-base md:text-lg"
+            className="relative w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 sm:py-3 md:py-4 rounded-full transition-all duration-300 shadow-lg flex items-center justify-center text-sm sm:text-base md:text-lg overflow-hidden group"
           >
-            <i className="fas fa-check-circle mr-2"></i>
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-green-500 to-green-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              initial={false}
+            />
+            <motion.span
+              className="relative z-10 flex items-center"
+              animate={{ x: [0, 2, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              <Check className="mr-2 h-5 w-5" />
             Commander maintenant
-          </button>
+            </motion.span>
+            <motion.div
+              className="absolute inset-0 bg-white opacity-20"
+              animate={{ x: ["-100%", "100%"] }}
+              transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
+            />
+          </motion.button>
         </div>
       </footer>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 w-full bg-white shadow-lg p-2 sm:p-3 grid grid-cols-4 text-center z-20">
+      <nav className="fixed bottom-16 w-full bg-white shadow-lg p-2 sm:p-3 grid grid-cols-4 text-center z-20">
         <Link
           to="/accueil"
           className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-home text-base sm:text-lg md:text-xl mb-1"></i>
+          <Home className="text-base sm:text-lg md:text-xl mb-1" />
           <span className="block text-xs sm:text-sm">Boutique</span>
         </Link>
         <Link
           to="/cart"
           className="py-2 text-green-600 font-semibold"
         >
-          <i className="fas fa-shopping-cart text-base sm:text-lg md:text-xl mb-1"></i>
+          <ShoppingCart className="text-base sm:text-lg md:text-xl mb-1" />
           <span className="block text-xs sm:text-sm">Panier</span>
         </Link>
         <Link
           to="/orders"
           className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-shopping-bag text-base sm:text-lg md:text-xl mb-1"></i>
+          <Package className="text-base sm:text-lg md:text-xl mb-1" />
           <span className="block text-xs sm:text-sm">Commandes</span>
         </Link>
         <Link
           to="/profile"
           className="py-2 text-gray-600 hover:text-green-600 transition-colors"
         >
-          <i className="fas fa-user text-base sm:text-lg md:text-xl mb-1"></i>
+          <User className="text-base sm:text-lg md:text-xl mb-1" />
           <span className="block text-xs sm:text-sm">Compte</span>
         </Link>
       </nav>
 
-      {/* Toast Container */}
-      <ToastContainer
-        position="bottom-center"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        className="mb-20 sm:mb-4"
-      />
+      <ToastContainer />
     </div>
   );
 };

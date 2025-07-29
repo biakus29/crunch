@@ -18,8 +18,34 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
-import LoyaltyPointsManager from "./LoyaltyPoints"; // Import du composant
+import { 
+  FaUtensils, 
+  FaListAlt, 
+  FaBox, 
+  FaTags, 
+  FaShoppingBag, 
+  FaPlusCircle, 
+  FaCommentAlt, 
+  FaStar, 
+  FaCog, 
+  FaBars, 
+  FaTimes,
+  FaHome,
+  FaChartLine,
+  FaUser,
+  FaBell,
+  FaSearch,
+  FaChevronDown,
+  FaChevronRight,
+  FaChevronLeft,
+  FaCalendarAlt,
+  FaMoneyBillWave,
+  FaShippingFast
+} from "react-icons/fa";
+import { HiOutlineLogout } from "react-icons/hi";
+import LoyaltyPointsManager from "./LoyaltyPoints";
 import CreateOrderForm from "./CreateOrderForm";
+
 const ORDER_STATUS = {
   PENDING: "en_attente",
   PREPARING: "en_preparation",
@@ -66,13 +92,13 @@ const FAILURE_REASONS = [
   "Autre",
 ];
 
-export const formatPrice = (number) =>
+const formatPrice = (number) =>
   Number(number).toLocaleString("fr-FR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
 
-export const convertPrice = (price) => {
+const convertPrice = (price) => {
   if (typeof price === "string") {
     return parseFloat(price.replace(/\./g, ""));
   }
@@ -87,7 +113,6 @@ const calculateTimeDifferenceInMinutes = (start, end) => {
 };
 
 const calculateOrderTotals = (order, extraLists, items) => {
-  console.log("Calcul des totaux pour la commande:", order.id, { items: order.items, pointsUsed: order.pointsUsed, pointsReduction: order.pointsReduction });
   const subtotal = order.items.reduce((sum, item) => {
     const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
     const itemPrice = item.price !== undefined && !isNaN(convertPrice(item.price))
@@ -108,9 +133,17 @@ const calculateOrderTotals = (order, extraLists, items) => {
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
   const pointsReduction = Number(order.pointsReduction) || 0;
   const totalWithDelivery = subtotal + deliveryFee - pointsReduction;
-  console.log("Résultat des totaux:", { subtotal, deliveryFee, pointsReduction, totalWithDelivery });
   return { subtotal, totalWithDelivery, pointsReduction };
 };
+
+const getWeekNumber = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+};
+
 const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) => {
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
@@ -157,7 +190,6 @@ const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) =
 };
 
 const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
-  console.log("Rendu d'OrderCard pour la commande:", order.id, { status: order.status, items: order.items });
   const user = order.userId
     ? usersData.byId[order.userId]
     : order.contact?.phone && usersData.byPhone[order.contact.phone];
@@ -186,7 +218,6 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
       className="mb-3 p-3 bg-white rounded-lg shadow-md border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow w-full"
     >
       <div className="flex flex-col space-y-2 text-base">
-        {/* Infos Client */}
         <div className="font-medium text-gray-800 truncate" title={clientInfo}>
           Client: {clientInfo}
           <span className="ml-2 text-gray-600 text-sm">Tel: {phoneNumber}</span>
@@ -195,7 +226,6 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
         <div className="text-gray-600">Adresse: {description}</div>
         <div className="text-gray-600">Frais de livraison: {formatPrice(deliveryFee)} FCFA</div>
 
-        {/* ID et Statut */}
         <div className="flex justify-between items-center">
           <div className="text-gray-600">ID: #{order.id.slice(0, 6)}</div>
           <span
@@ -207,13 +237,11 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
           </span>
         </div>
 
-        {/* Articles */}
         <div className="border-t pt-2">
           <h4 className="font-semibold text-sm mb-1">Articles:</h4>
           <div className="max-h-32 overflow-y-auto text-sm">
             {order.items.map((item, index) => {
               const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
-              console.log(`Article ${item.dishId}:`, { price: item.price, dishPrice: item.dishPrice, currentItemPrice: currentItem?.price });
               const price = item.price !== undefined && !isNaN(convertPrice(item.price))
                 ? convertPrice(item.price)
                 : item.dishPrice !== undefined && !isNaN(convertPrice(item.dishPrice))
@@ -242,7 +270,6 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
           </div>
         </div>
 
-        {/* Résumé */}
         <div className="border-t pt-2 text-sm">
           <div className="flex justify-between">
             <span>Sous-total:</span>
@@ -255,8 +282,8 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
           <div className="flex justify-between">
             <span>Prix reduit:</span>
             <span className="text-red-600">
-        {formatPrice(Number(order.pointsReduction) || 0)} FCFA
-        </span>
+              {formatPrice(Number(order.pointsReduction) || 0)} FCFA
+            </span>
           </div>
           <div className="flex justify-between text-green-600 font-semibold">
             <span>Total:</span>
@@ -264,7 +291,6 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
           </div>
         </div>
 
-        {/* Statut de paiement */}
         <div className="flex items-center justify-between">
           <span className={`font-medium ${order.isPaid ? "text-green-600" : "text-red-600"}`}>
             Payé: {order.isPaid ? "Oui" : "Non"}
@@ -294,20 +320,20 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
             <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
           </label>
         </div>
-      <div className="flex items-center justify-between">
-  <span className="text-sm text-gray-600">
-    Points utilisés: {(Number(order.pointsUsed) || 0) > 0 ? (
-      <>
-        ✅ {order.pointsUsed}{" "}
-        
-      </>
-    ) : "-"}
-  </span>
-</div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">
+            Points utilisés: {(Number(order.pointsUsed) || 0) > 0 ? (
+              <>
+                ✅ {order.pointsUsed}{" "}
+              </>
+            ) : "-"}
+          </span>
+        </div>
       </div>
     </div>
   );
 };
+
 const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onClose, onUpdateFees, onDelete, onUpdateStatus }) => {
   const user = order.userId
     ? usersData.byId[order.userId]
@@ -354,7 +380,6 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
 
   const { subtotal, totalWithDelivery } = useMemo(() => {
     if (!editedItems || !extraLists) {
-      console.warn("Données manquantes pour OrderDetailsModal:", { editedItems, extraLists });
       return { subtotal: 0, totalWithDelivery: order.deliveryFee ?? DEFAULT_DELIVERY_FEE };
     }
     return calculateOrderTotals({ ...order, items: editedItems }, extraLists, items);
@@ -408,7 +433,7 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
         dishName: newItem.name,
         price: newItem.price,
         quantity: updatedItems[index].quantity,
-        selectedExtras: {}, // Réinitialiser les extras pour éviter les incohérences
+        selectedExtras: {},
         covers: newItem.covers || updatedItems[index].covers,
       };
       return updatedItems;
@@ -851,29 +876,29 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
                 </>
               )}
             </div>
-              <div className="bg-gray-50 p-2 rounded-lg">
-                <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
-                <div className="text-xs text-gray-700 space-y-0.5">
-                  <div className="flex justify-between">
-                    <span>Sous-total :</span>
-                    <span>{formatPrice(subtotal)} FCFA</span>
+            <div className="bg-gray-50 p-2 rounded-lg">
+              <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
+              <div className="text-xs text-gray-700 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Sous-total :</span>
+                  <span>{formatPrice(subtotal)} FCFA</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Frais :</span>
+                  <span>{formatPrice(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)} FCFA</span>
+                </div>
+                {(Number(order.pointsReduction) || 0) > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Réduction (points) :</span>
+                    <span>-{formatPrice(Number(order.pointsReduction))} FCFA</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Frais :</span>
-                    <span>{formatPrice(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)} FCFA</span>
-                  </div>
-                  {(Number(order.pointsReduction) || 0) > 0 && (
-                    <div className="flex justify-between text-red-600">
-                      <span>Réduction (points) :</span>
-                      <span>-{formatPrice(Number(order.pointsReduction))} FCFA</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold text-sm text-green-600">
-                    <span>Total :</span>
-                    <span>{formatPrice(totalWithDelivery)} FCFA</span>
-                  </div>
+                )}
+                <div className="flex justify-between font-bold text-sm text-green-600">
+                  <span>Total :</span>
+                  <span>{formatPrice(totalWithDelivery)} FCFA</span>
                 </div>
               </div>
+            </div>
             <div className="space-y-1">
               <label className="block font-bold text-xs">Statut :</label>
               <select
@@ -1002,7 +1027,6 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
   );
 });
 
-
 const RestaurantAdmin = () => {
   const [restaurant, setRestaurant] = useState(null);
   const [restaurantForm, setRestaurantForm] = useState({
@@ -1020,7 +1044,6 @@ const RestaurantAdmin = () => {
   const [usersData, setUsersData] = useState({});
   const [deliveryFees, setDeliveryFees] = useState({});
   const [draggedOrder, setDraggedOrder] = useState(null);
-  const [activeTab, setActiveTab] = useState("restaurant");
   const [viewMode, setViewMode] = useState("kanban");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1029,8 +1052,6 @@ const RestaurantAdmin = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dateFilterMode, setDateFilterMode] = useState('day');
   const [editingMenu, setEditingMenu] = useState(null);
-  const daysOfWeek = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
-  const [showPendingOrdersModal, setShowPendingOrdersModal] = useState(true);
   const [feedbacks, setFeedbacks] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);
   const [menuData, setMenuData] = useState({ 
@@ -1041,7 +1062,7 @@ const RestaurantAdmin = () => {
   const [categoryData, setCategoryData] = useState({
     name: "",
     description: "",
-    icon: "", // Assurez-vous que c'est une chaîne vide
+    icon: "",
     iconFile: null,
     iconPreview: "",
   });
@@ -1049,7 +1070,7 @@ const RestaurantAdmin = () => {
     name: "",
     description: "",
     priceType: "single",
-    price: "", // Remplace singlePrice
+    price: "",
     sizes: { L: "", XL: "" },
     saleMode: "pack",
     categoryId: "",
@@ -1068,13 +1089,29 @@ const RestaurantAdmin = () => {
     name: "",
     extraListElements: [{ name: "", price: "", required: false, multiple: false }],
   });
+  const [editingExtraList, setEditingExtraList] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("orders");
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [activeMenuSubSection, setActiveMenuSubSection] = useState("menus");
+  const [activeOrderSubSection, setActiveOrderSubSection] = useState("list");
+const menuItems = [
+  // { id: "dashboard", label: "Tableau de bord", icon: <FaHome /> },
+  { id: "restaurant", label: "Infos Restaurant", icon: <FaCog /> },
+  { id: "menus", label: "Menus", icon: <FaListAlt /> },
+  { id: "orders", label: "Commandes", icon: <FaShoppingBag /> },
+  { id: "categories", label: "Catégories", icon: <FaTags /> },
+  { id: "loyalty", label: "Points Fidélité", icon: <FaStar /> },
+  { id: "comments", label: "Avis Clients", icon: <FaCommentAlt /> },
+];
 
   const resetItemForm = () => {
     setItemData({
       name: "",
       description: "",
       priceType: "single",
-      price: "", // Remplace singlePrice
+      price: "",
       sizes: { L: "", XL: "" },
       saleMode: "pack",
       categoryId: "",
@@ -1091,113 +1128,32 @@ const RestaurantAdmin = () => {
     setEditingItem(null);
   };
 
-  const statusColumns = useMemo(
-    () => [
-      { id: ORDER_STATUS.PENDING, name: STATUS_LABELS[ORDER_STATUS.PENDING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.PENDING] },
-      { id: ORDER_STATUS.PREPARING, name: STATUS_LABELS[ORDER_STATUS.PREPARING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.PREPARING] },
-      { id: ORDER_STATUS.READY_TO_DELIVER, name: STATUS_LABELS[ORDER_STATUS.READY_TO_DELIVER], color: STATUS_COLUMN_COLORS[ORDER_STATUS.READY_TO_DELIVER] },
-      { id: ORDER_STATUS.DELIVERING, name: STATUS_LABELS[ORDER_STATUS.DELIVERING], color: STATUS_COLUMN_COLORS[ORDER_STATUS.DELIVERING] },
-      { id: ORDER_STATUS.DELIVERED, name: STATUS_LABELS[ORDER_STATUS.DELIVERED], color: STATUS_COLUMN_COLORS[ORDER_STATUS.DELIVERED] },
-    ],
-    []
-  );
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const q = query(collection(db, "restaurants"), where("uid", "==", user.uid));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const restaurantDoc = querySnapshot.docs[0];
-          setCurrentRestaurantId(restaurantDoc.id);
-          const data = restaurantDoc.data();
-          setRestaurant({ id: restaurantDoc.id, ...data });
-          setRestaurantForm({
-            name: data.name || "",
-            adresse: data.adresse || "",
-            city: data.city || "",
-            location: data.location || "",
-            contact: data.contact || "",
-          });
-        }
-        const usersSnap = await getDocs(collection(db, "usersrestau"));
-        setUsersData({
-          byId: usersSnap.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}),
-          byPhone: usersSnap.docs.reduce((acc, doc) => {
-            if (doc.data().phone) acc[doc.data().phone] = doc.data();
-            return acc;
-          }, {}),
-        });
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-useEffect(() => {
-  if (!currentRestaurantId) return;
-
-  const fetchStaticData = async () => {
-    try {
-      const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap] = await Promise.all([
-        getDocs(query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))),
-        getDocs(query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))),
-        getDocs(query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))),
-        getDocs(query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))),
-        getDocs(collection(db, "quartiers")),
-      ]);
-
-      setMenus(menusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setCategories(categoriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setItems(itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setExtraLists(extraListsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setDeliveryFees(
-        feesSnap.docs.reduce((acc, doc) => ({
-          ...acc,
-          [doc.data().name]: doc.data().fee,
-        }), {})
-      );
-    } catch (err) {
-      console.error("Erreur lors de la récupération des données statiques:", err);
-      setError("Erreur lors du chargement des données statiques");
+  const uploadImages = useCallback(async (files) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const maxSize = 5 * 1024 * 1024;
+    const validFiles = files.filter(file => 
+      allowedTypes.includes(file.type) && file.size <= maxSize
+    );
+  
+    if (validFiles.length !== files.length) {
+      setError("Certains fichiers sont invalides (type ou taille > 5MB).");
     }
-  };
+  
+    const urls = await Promise.all(
+      validFiles.map(async (file) => {
+        const fileRef = ref(storage, `menus/${uuidv4()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        return getDownloadURL(fileRef);
+      })
+    );
+    return urls;
+  }, []);
 
-  const ordersQuery = query(collection(db, "orders"));
-  const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
-    const allOrders = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      status: doc.data().status || ORDER_STATUS.PENDING,
-    }));
-    setOrders(allOrders);
-  }, (err) => {
-    console.error("Erreur dans l'écoute des commandes:", err);
-    setError("Erreur dans le suivi des commandes");
-  });
-
-  // Écoute des feedbacks avec restaurantId
-  const feedbackQuery = query(
-    collection(db, "feedback"),
-    where("restaurantId", "==", currentRestaurantId)
+const pendingOrders = useMemo(() => {
+  return orders.filter((order) => 
+    order && order.id && order.status === ORDER_STATUS.PENDING
   );
-  const unsubscribeFeedback = onSnapshot(feedbackQuery, (snapshot) => {
-    const feedbackData = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    setFeedbacks(feedbackData);
-  }, (err) => {
-    console.error("Erreur dans l'écoute des feedbacks:", err);
-    setError("Erreur dans le suivi des feedbacks");
-  });
-
-  fetchStaticData();
-  return () => {
-    unsubscribeOrders();
-    unsubscribeFeedback();
-  };
-}, [currentRestaurantId]);
-
+}, [orders]);
   const formatDateForComparison = (date) => {
     return date.toISOString().split('T')[0];
   };
@@ -1237,46 +1193,109 @@ useEffect(() => {
   const getDeliveryFee = (destination) => {
     return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
   };
-const ratedOrders = orders.filter((order) => {
-  const hasRating = order.rating && typeof order.rating === "object" && order.rating.rating !== undefined;
-  const matchesRestaurant = order.restaurantId === currentRestaurantId;
-  if (hasRating && matchesRestaurant) {
-    console.log("Commande notée trouvée:", {
-      orderId: order.id,
-      restaurantId: order.restaurantId,
-      rating: order.rating,
-      currentRestaurantId,
-    });
-  }
-  return hasRating && matchesRestaurant;
-});
 
-  const uploadImages = useCallback(async (files) => {
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    const validFiles = files.filter(file => 
-      allowedTypes.includes(file.type) && file.size <= maxSize
-    );
-  
-    if (validFiles.length !== files.length) {
-      setError("Certains fichiers sont invalides (type ou taille > 5MB).");
-    }
-  
-    const urls = await Promise.all(
-      validFiles.map(async (file) => {
-        const fileRef = ref(storage, `menus/${uuidv4()}_${file.name}`);
-        await uploadBytes(fileRef, file);
-        return getDownloadURL(fileRef);
-      })
-    );
-    return urls;
+  const ratedOrders = orders.filter((order) => {
+    const hasRating = order.rating && typeof order.rating === "object" && order.rating.rating !== undefined;
+    const matchesRestaurant = order.restaurantId === currentRestaurantId;
+    return hasRating && matchesRestaurant;
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const q = query(collection(db, "restaurants"), where("uid", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const restaurantDoc = querySnapshot.docs[0];
+          setCurrentRestaurantId(restaurantDoc.id);
+          const data = restaurantDoc.data();
+          setRestaurant({ id: restaurantDoc.id, ...data });
+          setRestaurantForm({
+            name: data.name || "",
+            adresse: data.adresse || "",
+            city: data.city || "",
+            location: data.location || "",
+            contact: data.contact || "",
+          });
+        }
+        const usersSnap = await getDocs(collection(db, "usersrestau"));
+        setUsersData({
+          byId: usersSnap.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}),
+          byPhone: usersSnap.docs.reduce((acc, doc) => {
+            if (doc.data().phone) acc[doc.data().phone] = doc.data();
+            return acc;
+          }, {}),
+        });
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
-const pendingOrders = useMemo(() => {
-    return filteredOrders.filter(
-      (order) => !order.status || order.status === ORDER_STATUS.PENDING
+  useEffect(() => {
+    if (!currentRestaurantId) return;
+
+    const fetchStaticData = async () => {
+      try {
+        const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap] = await Promise.all([
+          getDocs(query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))),
+          getDocs(query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))),
+          getDocs(query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))),
+          getDocs(query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))),
+          getDocs(collection(db, "quartiers")),
+        ]);
+
+        setMenus(menusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setCategories(categoriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setItems(itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setExtraLists(extraListsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setDeliveryFees(
+          feesSnap.docs.reduce((acc, doc) => ({
+            ...acc,
+            [doc.data().name]: doc.data().fee,
+          }), {})
+        );
+      } catch (err) {
+        console.error("Erreur lors de la récupération des données statiques:", err);
+        setError("Erreur lors du chargement des données statiques");
+      }
+    };
+
+    const ordersQuery = query(collection(db, "orders"));
+    const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
+      const allOrders = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        status: doc.data().status || ORDER_STATUS.PENDING,
+      }));
+      setOrders(allOrders);
+    }, (err) => {
+      console.error("Erreur dans l'écoute des commandes:", err);
+      setError("Erreur dans le suivi des commandes");
+    });
+
+    const feedbackQuery = query(
+      collection(db, "feedback"),
+      where("restaurantId", "==", currentRestaurantId)
     );
-  }, [filteredOrders]);
+    const unsubscribeFeedback = onSnapshot(feedbackQuery, (snapshot) => {
+      const feedbackData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setFeedbacks(feedbackData);
+    }, (err) => {
+      console.error("Erreur dans l'écoute des feedbacks:", err);
+      setError("Erreur dans le suivi des feedbacks");
+    });
+
+    fetchStaticData();
+    return () => {
+      unsubscribeOrders();
+      unsubscribeFeedback();
+    };
+  }, [currentRestaurantId]);
+
   const addMenu = async () => {
     if (!menuData.name) {
       setError("Le nom du menu est requis.");
@@ -1313,6 +1332,7 @@ const pendingOrders = useMemo(() => {
       setLoading(false);
     }
   };
+
   const addCategory = async () => {
     if (!categoryData.name) {
       setError("Le nom de la catégorie est requis.");
@@ -1323,21 +1343,13 @@ const pendingOrders = useMemo(() => {
       setLoading(true);
       setError(null);
   
-      // Log pour déboguer l'état
-      console.log("categoryData avant création:", categoryData);
-  
-      // Gestion de l'icône
       let iconUrl = "";
       if (categoryData.iconFile) {
         const uploadedUrls = await uploadImages([categoryData.iconFile]);
-        console.log("uploadedUrls:", uploadedUrls);
-        iconUrl = uploadedUrls[0] || ""; // Utiliser une chaîne vide si aucun URL n'est retourné
+        iconUrl = uploadedUrls[0] || "";
       } else {
         iconUrl = categoryData.icon || "";
       }
-  
-      // Log pour vérifier iconUrl
-      console.log("iconUrl final:", iconUrl);
   
       const newCategory = {
         name: categoryData.name,
@@ -1346,12 +1358,6 @@ const pendingOrders = useMemo(() => {
         restaurantId: currentRestaurantId,
         createdAt: Timestamp.now(),
       };
-  
-      // Validation finale avant envoi
-      if (Object.values(newCategory).some((value) => value === undefined)) {
-        console.error("Données invalides détectées:", newCategory);
-        throw new Error("Données invalides détectées dans newCategory");
-      }
   
       const docRef = await addDoc(collection(db, "categories"), newCategory);
       setCategories([...categories, { id: docRef.id, ...newCategory }]);
@@ -1438,6 +1444,7 @@ const pendingOrders = useMemo(() => {
       setError("Erreur lors de la suppression de la commande");
     }
   };
+
   const updateMenu = async () => {
     if (!editingMenu || !menuData.name) {
       setError("Le nom du menu est requis pour la mise à jour.");
@@ -1469,6 +1476,7 @@ const pendingOrders = useMemo(() => {
       setLoading(false);
     }
   };
+
   const startEditingMenu = (menu) => {
     setEditingMenu(menu);
     setMenuData({
@@ -1477,6 +1485,7 @@ const pendingOrders = useMemo(() => {
       coverPreviews: menu.covers || [],
     });
   };
+
   const updateCategory = async () => {
     if (!editingCategory || !categoryData.name) {
       setError("Le nom de la catégorie est requis.");
@@ -1487,21 +1496,13 @@ const pendingOrders = useMemo(() => {
       setLoading(true);
       setError(null);
   
-      // Log pour déboguer
-      console.log("categoryData avant mise à jour:", categoryData);
-  
-      // Gestion de l'icône
       let iconUrl = "";
       if (categoryData.iconFile) {
         const uploadedUrls = await uploadImages([categoryData.iconFile]);
-        console.log("uploadedUrls:", uploadedUrls);
         iconUrl = uploadedUrls[0] || "";
       } else {
         iconUrl = categoryData.icon || "";
       }
-  
-      // Log pour vérifier iconUrl
-      console.log("iconUrl final:", iconUrl);
   
       const updatedData = {
         name: categoryData.name,
@@ -1509,12 +1510,6 @@ const pendingOrders = useMemo(() => {
         icon: iconUrl,
         updatedAt: Timestamp.now(),
       };
-  
-      // Validation finale avant envoi
-      if (Object.values(updatedData).some((value) => value === undefined)) {
-        console.error("Données invalides détectées:", updatedData);
-        throw new Error("Données invalides détectées dans updatedData");
-      }
   
       await updateDoc(doc(db, "categories", editingCategory.id), updatedData);
       setCategories(
@@ -1531,6 +1526,7 @@ const pendingOrders = useMemo(() => {
       setLoading(false);
     }
   };
+
   const startEditingCategory = (category) => {
     setEditingCategory(category);
     setCategoryData({
@@ -1599,6 +1595,7 @@ const pendingOrders = useMemo(() => {
       return;
     }
   };
+
   const updateItem = async (itemId, newData) => {
     try {
       const uploadedCovers = newData.covers.some(file => file instanceof File)
@@ -1614,12 +1611,11 @@ const pendingOrders = useMemo(() => {
       const updatedData = {
         ...newData,
         covers: updatedCovers,
-        ...(newData.priceType === "single" ? { price: newData.price } : { sizes: newData.sizes }), // price au lieu de singlePrice
+        ...(newData.priceType === "single" ? { price: newData.price } : { sizes: newData.sizes }),
       };
       await updateDoc(doc(db, "items", itemId), updatedData);
       setItems(items.map((item) => (item.id === itemId ? { ...item, ...updatedData } : item)));
 
-      // Événement Pixel Facebook (optionnel)
       window.fbq('trackCustom', 'ModifyProduct', {
         content_ids: [itemId],
         content_name: newData.name,
@@ -1636,37 +1632,34 @@ const pendingOrders = useMemo(() => {
     }
   };
 
-
-
-const startEditing = (item) => {
-  console.log("Item passé à startEditing :", item); // Pour débogage
-  setEditingItem(item);
-  const newItemData = {
-    name: item.name || "",
-    description: item.description || "",
-    priceType: item.price ? "single" : "sizes",
-    price: item.price ? String(item.price) : "",
-    sizes: item.sizes
-      ? {
-          L: item.sizes.L !== undefined ? String(item.sizes.L) : "",
-          XL: item.sizes.XL !== undefined ? String(item.sizes.XL) : "",
-        }
-      : { L: "", XL: "" },
-    saleMode: item.saleMode || "pack",
-    categoryId: item.categoryId || "",
-    available: item.available !== undefined ? item.available : true,
-    scheduledDay: Array.isArray(item.scheduledDay) ? item.scheduledDay : [],
-    needAssortement: item.needAssortement !== undefined ? item.needAssortement : false,
-    assortments: Array.isArray(item.assortments) ? item.assortments : [],
-    extraLists: Array.isArray(item.extraLists) ? item.extraLists : [],
-    quantityleft: item.quantityleft !== undefined ? Number(item.quantityleft) : 0,
-    covers: Array.isArray(item.covers) ? item.covers : [],
-    coverPreviews: Array.isArray(item.covers) ? item.covers : [],
-    menuId: item.menuId || "",
+  const startEditing = (item) => {
+    setEditingItem(item);
+    const newItemData = {
+      name: item.name || "",
+      description: item.description || "",
+      priceType: item.price ? "single" : "sizes",
+      price: item.price ? String(item.price) : "",
+      sizes: item.sizes
+        ? {
+            L: item.sizes.L !== undefined ? String(item.sizes.L) : "",
+            XL: item.sizes.XL !== undefined ? String(item.sizes.XL) : "",
+          }
+        : { L: "", XL: "" },
+      saleMode: item.saleMode || "pack",
+      categoryId: item.categoryId || "",
+      available: item.available !== undefined ? item.available : true,
+      scheduledDay: Array.isArray(item.scheduledDay) ? item.scheduledDay : [],
+      needAssortement: item.needAssortement !== undefined ? item.needAssortement : false,
+      assortments: Array.isArray(item.assortments) ? item.assortments : [],
+      extraLists: Array.isArray(item.extraLists) ? item.extraLists : [],
+      quantityleft: item.quantityleft !== undefined ? Number(item.quantityleft) : 0,
+      covers: Array.isArray(item.covers) ? item.covers : [],
+      coverPreviews: Array.isArray(item.covers) ? item.covers : [],
+      menuId: item.menuId || "",
+    };
+    setItemData(newItemData);
   };
-  console.log("Nouvel itemData :", newItemData); // Pour débogage
-  setItemData(newItemData);
-};
+
   const updateRestaurantInfo = async () => {
     try {
       const restaurantRef = doc(db, "restaurants", currentRestaurantId);
@@ -1834,6 +1827,7 @@ const startEditing = (item) => {
     else if (dateFilterMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
     setSelectedDate(newDate);
   };
+
   const addAvailabilityToExistingItems = async () => {
     try {
       setLoading(true);
@@ -1848,7 +1842,7 @@ const startEditing = (item) => {
       for (const item of itemsToUpdate) {
         const updatedData = {
           ...item,
-          available: true, // Valeur par défaut : "in stock" (true)
+          available: true,
           updatedAt: Timestamp.now(),
         };
   
@@ -1864,6 +1858,7 @@ const startEditing = (item) => {
       setLoading(false);
     }
   };
+
   const generateSchemaOrgJSONLD = (items) => {
     return items.map((item) => ({
       "@context": "https://schema.org",
@@ -1880,7 +1875,7 @@ const startEditing = (item) => {
           : Math.min(convertPrice(item.sizes?.L || "0"), convertPrice(item.sizes?.XL || "0")),
         "availability": item.available === true 
           ? "https://schema.org/InStock" 
-          : "https://schema.org/OutOfStock", // Utilise la nouvelle valeur
+          : "https://schema.org/OutOfStock",
       },
       "url": `https://www.mangedabord.com/product/${item.id}`,
     }));
@@ -1896,1337 +1891,1272 @@ const startEditing = (item) => {
       return () => document.head.removeChild(script);
     }
   }, [items]);
-  
-  // Ajoutez un bouton dans votre UI sous la section "items"
-  <div className="mt-4">
-    <button
-      className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-      onClick={addAvailabilityToExistingItems}
-      disabled={loading}
-    >
-      {loading ? "Mise à jour en cours..." : "Ajouter 'available' aux produits existants"}
-    </button>
-  </div>
+
   return (
-    <div className="container mt-4">
-      <h2>Administration de {restaurant?.name || "votre restaurant"}</h2>
-      {loading && (
-        <div className="text-center p-4">
-          <div
-            className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"
-            role="status"
-          >
-            <span className="sr-only">Chargement...</span>
-          </div>
+<div className="flex h-screen bg-gray-50 overflow-hidden">
+  {/* Sidebar - Modern Design */}
+  <div
+    className={`bg-gradient-to-b from-green-700 to-green-800 text-white transition-all duration-300 fixed md:relative z-30 h-full 
+      ${sidebarOpen ? "w-64" : "w-20"} ${mobileMenuOpen ? "block" : "hidden md:block"}`}
+  >
+    {/* Sidebar Header */}
+    <div className="p-4 flex items-center justify-between border-b border-green-600 h-16">
+      {sidebarOpen && (
+        <div className="flex items-center">
+          <h1 className="text-xl font-bold">{restaurant?.name || "Restaurant"}</h1>
         </div>
       )}
-      {error && (
-        <p className="text-center text-red-600 p-4" role="alert">
-          {error}
-        </p>
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="p-1 rounded-full hover:bg-green-600 transition-colors"
+      >
+        {sidebarOpen ? <FaTimes className="w-5 h-5" /> : <FaBars className="w-5 h-5" />}
+      </button>
+    </div>
+
+    {/* User Profile Mini */}
+    {sidebarOpen && (
+      <div className="p-4 border-b border-green-600 flex items-center space-x-3">
+        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
+          <FaUser className="text-green-600" />
+        </div>
+        <div className="flex-1 truncate">
+          <p className="font-medium truncate">{restaurant?.name || "Admin"}</p>
+          <p className="text-xs text-green-200 truncate">Restaurant Manager</p>
+        </div>
+      </div>
+    )}
+
+      {/* Navigation */}
+      <nav className="mt-4 px-2">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              setActiveSection(item.id);
+              setMobileMenuOpen(false);
+            }}
+            className={`flex items-center w-full p-3 rounded-lg mb-1 text-left transition-colors ${
+              activeSection === item.id ? "bg-white text-green-700 font-medium" : "text-white hover:bg-green-600"
+            }`}
+          >
+            <span className="flex items-center">
+              <span className={`${sidebarOpen ? "mr-3" : "mx-auto"}`}>{item.icon}</span>
+              {sidebarOpen && <span>{item.label}</span>}
+            </span>
+            {sidebarOpen && activeSection === item.id && (
+              <span className="ml-auto bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                Actif
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      {/* Sidebar Footer */}
+      {sidebarOpen && (
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-green-600">
+          <button
+            className="flex items-center w-full p-2 text-white hover:bg-green-600 rounded-lg transition-colors"
+            onClick={() => auth.signOut()}
+          >
+            <HiOutlineLogout className="mr-3" />
+            Déconnexion
+          </button>
+        </div>
       )}
-      {!loading && (
-        <>
-        {showPendingOrdersModal && pendingOrders.length > 0 && (
+    </div>
+
+    {/* Main Content Area */}
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Top Navigation Bar */}
+      <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6">
+        <div className="flex items-center">
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-gray-600 mr-4 md:hidden"
+          >
+            <FaBars className="w-5 h-5" />
+          </button>
+          <h1 className="text-xl font-semibold text-gray-800">
+            {menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
+          </h1>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <button className="relative p-1 text-gray-500 hover:text-gray-700">
+            <FaBell className="w-5 h-5" />
+            <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
+
+          <div className="hidden md:flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+              <FaUser className="text-green-600" />
+            </div>
+            <span className="font-medium text-sm">{restaurant?.name || "Admin"}</span>
+            <FaChevronDown className="text-gray-400 text-xs" />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
+        {/* Dashboard Header Section */}
+        <div className="mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                {menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
+              </h2>
+              <p className="text-gray-600 mt-1">
+                {activeSection === "orders"
+                  ? "Gestion des commandes"
+                  : activeSection === "menus"
+                    ? "Gestion de vos menus, plats et extras"
+                    : activeSection === "restaurant"
+                      ? "Informations de votre établissement"
+                      : activeSection === "categories"
+                        ? "Gestion des catégories"
+                        : "Tableau de bord administratif"}
+              </p>
+            </div>
+
+            {/* {activeSection === "orders" && (
+              <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
+                <div className="relative">
+                  <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher..."
+                    className="pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                <button
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+                  onClick={() => setShowPendingModal(true)}
+                >
+                  <FaShoppingBag className="mr-2" />
+                  Commandes ({pendingOrders.length})
+                </button>
+              </div>
+            )} */}
+          </div>
+
+          {activeSection === "orders" && (
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+              <div className="flex items-center bg-white rounded-lg shadow-sm p-2">
+                <button
+                  className={`px-3 py-1 rounded-md ${
+                    dateFilterMode === "day" ? "bg-green-100 text-green-700" : "text-gray-600"
+                  }`}
+                  onClick={() => setDateFilterMode("day")}
+                >
+                  Jour
+                </button>
+                <button
+                  className={`px-3 py-1 rounded-md ${
+                    dateFilterMode === "week" ? "bg-green-100 text-green-700" : "text-gray-600"
+                  }`}
+                  onClick={() => setDateFilterMode("week")}
+                >
+                  Semaine
+                </button>
+                <button
+                  className={`px-3 py-1 rounded-md ${
+                    dateFilterMode === "month" ? "bg-green-100 text-green-700" : "text-gray-600"
+                  }`}
+                  onClick={() => setDateFilterMode("month")}
+                >
+                  Mois
+                </button>
+              </div>
+
+              <div className="flex items-center bg-white rounded-lg shadow-sm p-1">
+                <button
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
+                  onClick={handlePreviousPeriod}
+                >
+                  <FaChevronLeft />
+                </button>
+                <div className="px-3 py-1 text-sm font-medium">
+                  {dateFilterMode === "day"
+                    ? selectedDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+                    : dateFilterMode === "week"
+                      ? `Semaine ${getWeekNumber(selectedDate)}`
+                      : selectedDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+                </div>
+                <button
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
+                  onClick={handleNextPeriod}
+                >
+                  <FaChevronRight />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Stats Cards - Only for dashboard home */}
+        {/* {activeSection === "dashboard" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Commandes aujourd'hui</p>
+                  <p className="text-2xl font-bold mt-1">24</p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-full">
+                  <FaShoppingBag className="text-green-600" />
+                </div>
+              </div>
+              <p className="text-xs text-green-600 mt-2 flex items-center">
+                <FaChartLine className="mr-1" /> +12% vs hier
+              </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Revenu aujourd'hui</p>
+                  <p className="text-2xl font-bold mt-1">{formatPrice(125000)} FCFA</p>
+                </div>
+                <div className="p-3 bg-blue-100 rounded-full">
+                  <FaMoneyBillWave className="text-blue-600" />
+                </div>
+              </div>
+              <p className="text-xs text-blue-600 mt-2 flex items-center">
+                <FaChartLine className="mr-1" /> +8% vs hier
+              </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Livraisons en cours</p>
+                  <p className="text-2xl font-bold mt-1">5</p>
+                </div>
+                <div className="p-3 bg-purple-100 rounded-full">
+                  <FaShippingFast className="text-purple-600" />
+                </div>
+              </div>
+              <p className="text-xs text-purple-600 mt-2 flex items-center">
+                <FaChartLine className="mr-1" /> 2 livraisons terminées
+              </p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Nouveaux clients</p>
+                  <p className="text-2xl font-bold mt-1">3</p>
+                </div>
+                <div className="p-3 bg-yellow-100 rounded-full">
+                  <FaUser className="text-yellow-600" />
+                </div>
+              </div>
+              <p className="text-xs text-yellow-600 mt-2 flex items-center">
+                <FaChartLine className="mr-1" /> +50% cette semaine
+              </p>
+            </div>
+          </div>
+        )} */}
+
+        {/* Content Sections */}
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {activeSection === "restaurant" && (
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-6 text-gray-800">Informations du Restaurant</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {["name", "adresse", "city", "location", "contact"].map((field) => (
+                  <div key={field}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {field === "name"
+                        ? "Nom du restaurant"
+                        : field === "adresse"
+                          ? "Adresse"
+                          : field === "city"
+                            ? "Ville"
+                            : field === "location"
+                              ? "Coordonnées GPS"
+                              : "Contact"}
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      value={restaurantForm[field]}
+                      onChange={(e) => setRestaurantForm({ ...restaurantForm, [field]: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6">
+                <button
+                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  onClick={updateRestaurantInfo}
+                >
+                  Mettre à jour
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "menus" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h2 className="text-2xl font-bold mb-6">Gestion des Menus</h2>
+                <div className="flex flex-wrap gap-4 mb-4">
+                  <button
+                    className={`px-4 py-2 rounded-lg ${
+                      activeMenuSubSection === "menus" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                    } hover:bg-green-700 hover:text-white transition-colors`}
+                    onClick={() => setActiveMenuSubSection("menus")}
+                  >
+                    Menus
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg ${
+                      activeMenuSubSection === "items" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                    } hover:bg-green-700 hover:text-white transition-colors`}
+                    onClick={() => setActiveMenuSubSection("items")}
+                  >
+                    Plats
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg ${
+                      activeMenuSubSection === "extras" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                    } hover:bg-green-700 hover:text-white transition-colors`}
+                    onClick={() => setActiveMenuSubSection("extras")}
+                  >
+                    Extras
+                  </button>
+                </div>
+
+                {activeMenuSubSection === "menus" && (
+                  <div>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nom du menu *</label>
+                        <input
+                          type="text"
+                          placeholder="Nom du menu"
+                          className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                            !menuData.name && error ? "border-red-500" : ""
+                          }`}
+                          value={menuData.name}
+                          onChange={(e) => setMenuData({ ...menuData, name: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Images du menu</label>
+                        <input
+                          type="file"
+                          multiple
+                          className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files);
+                            const previews = files.map((file) => URL.createObjectURL(file));
+                            setMenuData({
+                              ...menuData,
+                              covers: editingMenu ? [...menuData.covers, ...files] : files,
+                              coverPreviews: editingMenu ? [...menuData.coverPreviews, ...previews] : previews,
+                            });
+                          }}
+                        />
+                      </div>
+                      {menuData.coverPreviews.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Prévisualisation</label>
+                          <div className="flex flex-wrap gap-2">
+                            {menuData.coverPreviews.map((preview, index) => (
+                              <div key={index} className="relative">
+                                <img
+                                  src={preview}
+                                  alt={`Prévisualisation ${index + 1}`}
+                                  className="w-24 h-24 object-cover rounded-lg"
+                                />
+                                <button
+                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                                  onClick={() => {
+                                    const newCovers = menuData.covers.filter((_, i) => i !== index);
+                                    const newPreviews = menuData.coverPreviews.filter((_, i) => i !== index);
+                                    setMenuData({ ...menuData, covers: newCovers, coverPreviews: newPreviews });
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4 flex gap-4">
+                      <button
+                        className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                        onClick={editingMenu ? updateMenu : addMenu}
+                        disabled={loading}
+                      >
+                        {loading ? "Chargement..." : editingMenu ? "Mettre à jour" : "Créer Menu"}
+                      </button>
+                      {editingMenu && (
+                        <button
+                          className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                          onClick={() => {
+                            setEditingMenu(null);
+                            setMenuData({ name: "", covers: [], coverPreviews: [] });
+                          }}
+                        >
+                          Annuler
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-6">
+                      <h2 className="text-2xl font-bold mb-6">Liste des Menus</h2>
+                      {menus.length === 0 ? (
+                        <p className="text-gray-500 text-center py-4">Aucun menu ajouté pour le moment</p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {menus.map((menu) => (
+                            <div
+                              key={menu.id}
+                              className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
+                            >
+                              <div className="flex items-start space-x-4">
+                                {menu.covers?.length > 0 ? (
+                                  <div className="relative w-24 h-24">
+                                    <img
+                                      src={menu.covers[0]}
+                                      alt={menu.name}
+                                      className="w-full h-full object-cover rounded-lg"
+                                      onError={(e) => (e.target.src = "/img/default.png")}
+                                    />
+                                    {menu.covers.length > 1 && (
+                                      <span className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs rounded-full px-2 py-1">
+                                        +{menu.covers.length - 1}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
+                                    <span className="text-gray-500 text-sm">Aucune image</span>
+                                  </div>
+                                )}
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-gray-800">{menu.name}</h4>
+                                  <p className="text-xs text-gray-500 mt-1">ID Restaurant: {menu.restaurantId}</p>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex justify-between">
+                                <button
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  onClick={() => startEditingMenu(menu)}
+                                >
+                                  Modifier
+                                </button>
+                                <button
+                                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                  onClick={() => deleteMenu(menu.id)}
+                                >
+                                  Supprimer
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {activeMenuSubSection === "items" && (
+                  <div>
+                    <div className="bg-white rounded-xl shadow-lg p-6">
+                      <h2 className="text-2xl font-bold mb-6">Gestion des Plats</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom du plat *</label>
+                          <input
+                            type="text"
+                            placeholder="Entrez le nom du plat"
+                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                              !itemData.name && error ? "border-red-500" : ""
+                            }`}
+                            value={itemData.name}
+                            onChange={(e) => setItemData({ ...itemData, name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Menu *</label>
+                          <select
+                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                              !itemData.menuId && error ? "border-red-500" : ""
+                            }`}
+                            value={itemData.menuId}
+                            onChange={(e) => setItemData({ ...itemData, menuId: e.target.value })}
+                          >
+                            <option value="">Sélectionner un menu</option>
+                            {menus.map((menu) => (
+                              <option key={menu.id} value={menu.id}>
+                                {menu.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+                          <select
+                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                              !itemData.categoryId && error ? "border-red-500" : ""
+                            }`}
+                            value={itemData.categoryId}
+                            onChange={(e) => setItemData({ ...itemData, categoryId: e.target.value })}
+                          >
+                            <option value="">Sélectionner une catégorie</option>
+                            {categories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Type de prix *</label>
+                          <select
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={itemData.priceType}
+                            onChange={(e) => setItemData({ ...itemData, priceType: e.target.value })}
+                          >
+                            <option value="single">Prix unique</option>
+                            <option value="sizes">Prix par taille (L/XL)</option>
+                          </select>
+                        </div>
+                        {itemData.priceType === "single" ? (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Prix (FCFA) *</label>
+                            <input
+                              type="number"
+                              placeholder="Prix"
+                              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                                !itemData.price && error ? "border-red-500" : ""
+                              }`}
+                              value={itemData.price}
+                              onChange={(e) => setItemData({ ...itemData, price: e.target.value })}
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Prix par taille (FCFA) *</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                placeholder="Prix L"
+                                className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                                  !itemData.sizes.L && error ? "border-red-500" : ""
+                                }`}
+                                value={itemData.sizes.L}
+                                onChange={(e) =>
+                                  setItemData({ ...itemData, sizes: { ...itemData.sizes, L: e.target.value } })
+                                }
+                              />
+                              <input
+                                type="number"
+                                placeholder="Prix XL"
+                                className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                                  !itemData.sizes.XL && error ? "border-red-500" : ""
+                                }`}
+                                value={itemData.sizes.XL}
+                                onChange={(e) =>
+                                  setItemData({ ...itemData, sizes: { ...itemData.sizes, XL: e.target.value } })
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                          <textarea
+                            placeholder="Décrivez le plat..."
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-y"
+                            rows="3"
+                            value={itemData.description}
+                            onChange={(e) => setItemData({ ...itemData, description: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Mode de vente</label>
+                          <select
+                            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={itemData.saleMode}
+                            onChange={(e) => setItemData({ ...itemData, saleMode: e.target.value })}
+                          >
+                            <option value="pack">Pack</option>
+                            <option value="kilo">Kilo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Images</label>
+                          <input
+                            type="file"
+                            multiple
+                            className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files);
+                              const previews = files.map((file) => URL.createObjectURL(file));
+                              setItemData({
+                                ...itemData,
+                                covers: editingItem ? [...itemData.covers, ...files] : files,
+                                coverPreviews: editingItem ? [...itemData.coverPreviews, ...previews] : previews,
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Extras</label>
+                          <div className="flex flex-wrap gap-2">
+                            {extraLists.length > 0 ? (
+                              extraLists.map((extra) => (
+                                <div
+                                  key={extra.id}
+                                  className={`px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
+                                    itemData.extraLists.includes(extra.id)
+                                      ? "bg-green-500 text-white"
+                                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                  }`}
+                                  onClick={() => {
+                                    setItemData({
+                                      ...itemData,
+                                      extraLists: itemData.extraLists.includes(extra.id)
+                                        ? itemData.extraLists.filter((id) => id !== extra.id)
+                                        : [...itemData.extraLists, extra.id],
+                                    });
+                                  }}
+                                >
+                                  {extra.name} ({extra.extraListElements.length})
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-gray-500 text-sm">Aucune liste d'extras disponible</p>
+                            )}
+                          </div>
+                        </div>
+                        {itemData.coverPreviews?.length > 0 && (
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Prévisualisation des images
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {itemData.coverPreviews.map((preview, index) => (
+                                <div key={index} className="relative">
+                                  <img
+                                    src={preview}
+                                    alt={`Prévisualisation ${index + 1}`}
+                                    className="w-24 h-24 object-cover rounded-lg"
+                                  />
+                                  <button
+                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                                    onClick={() => {
+                                      const newCovers = itemData.covers.filter((_, i) => i !== index);
+                                      const newPreviews = itemData.coverPreviews.filter((_, i) => i !== index);
+                                      setItemData({ ...itemData, covers: newCovers, coverPreviews: newPreviews });
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Jours de disponibilité</label>
+                          <div className="flex flex-wrap gap-2">
+                            {["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"].map((day) => (
+                              <button
+                                key={day}
+                                type="button"
+                                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                                  itemData.scheduledDay.includes(day)
+                                    ? "bg-green-500 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                }`}
+                                onClick={() => handleDaySelection(day)}
+                              >
+                                {day.charAt(0).toUpperCase() + day.slice(1)}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-700 hover:bg-red-200"
+                              onClick={() => setItemData({ ...itemData, scheduledDay: [] })}
+                            >
+                              Réinitialiser
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-6 flex gap-4">
+                        <button
+                          className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                          onClick={editingItem ? () => updateItem(editingItem.id, itemData) : addItem}
+                        >
+                          {editingItem ? "Mettre à jour" : "Ajouter le plat"}
+                        </button>
+                        {editingItem && (
+                          <button
+                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                            onClick={resetItemForm}
+                          >
+                            Annuler
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-6">
+                        <h2 className="text-2xl font-bold mb-6">Liste des plats</h2>
+                        {items.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">Aucun plat ajouté pour le moment</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {items.map((item) => (
+                              <div
+                                key={item.id}
+                                className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
+                              >
+                                <div className="flex items-start space-x-4">
+                                  {item.covers?.length > 0 ? (
+                                    <div className="relative w-24 h-24">
+                                      <img
+                                        src={item.covers[0]}
+                                        alt={item.name}
+                                        className="w-full h-full object-cover rounded-lg"
+                                        onError={(e) => (e.target.src = "/img/default.png")}
+                                      />
+                                      {item.covers.length > 1 && (
+                                        <span className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs rounded-full px-2 py-1">
+                                          +{item.covers.length - 1}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
+                                      <span className="text-gray-500 text-sm">Aucune image</span>
+                                    </div>
+                                  )}
+                                  <div className="flex-1">
+                                    <h4 className="font-semibold text-gray-800">{item.name}</h4>
+                                    <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
+                                    {item.price ? (
+                                      <p className="text-green-600 font-medium mt-1">{formatPrice(item.price)} FCFA</p>
+                                    ) : (
+                                      <p className="text-green-600 font-medium mt-1">
+                                        L: {formatPrice(item.sizes?.L)} FCFA | XL: {formatPrice(item.sizes?.XL)} FCFA
+                                      </p>
+                                    )}
+                                    {item.menuId && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Menu: {menus.find((m) => m.id === item.menuId)?.name || item.menuId}
+                                      </p>
+                                    )}
+                                    {item.scheduledDay.length > 0 && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Disponible: {item.scheduledDay.join(", ")}
+                                      </p>
+                                    )}
+                                    {item.extraLists?.length > 0 && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Extras: {item.extraLists.map((id) => extraLists.find((ex) => ex.id === id)?.name || id).join(", ")}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex justify-between">
+                                  <button
+                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                    onClick={() => startEditing(item)}
+                                  >
+                                    Modifier
+                                  </button>
+                                  <button
+                                    className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                    onClick={() => deleteItem(item.id)}
+                                  >
+                                    Supprimer
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {activeMenuSubSection === "extras" && (
+                  <div>
+                    <div className="bg-white rounded-xl shadow-lg p-6">
+                      <h2 className="text-2xl font-bold mb-6">Gestion des Extras</h2>
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la liste d'extras *</label>
+                          <input
+                            type="text"
+                            placeholder="Nom de la liste"
+                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                              !extraListData.name && error ? "border-red-500" : ""
+                            }`}
+                            value={extraListData.name}
+                            onChange={(e) => setExtraListData({ ...extraListData, name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Éléments de la liste</label>
+                          {extraListData.extraListElements.map((element, index) => (
+                            <div key={index} className="flex gap-2 mb-2">
+                              <input
+                                type="text"
+                                placeholder="Nom de l'élément"
+                                className="w-full p-2 border rounded-lg"
+                                value={element.name}
+                                onChange={(e) => updateExtraElement(index, "name", e.target.value)}
+                              />
+                              <input
+                                type="number"
+                                placeholder="Prix (FCFA)"
+                                className="w-32 p-2 border rounded-lg"
+                                value={element.price}
+                                onChange={(e) => updateExtraElement(index, "price", e.target.value)}
+                              />
+                              <label className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={element.required}
+                                  onChange={(e) => updateExtraElement(index, "required", e.target.checked)}
+                                  className="mr-1"
+                                />
+                                Requis
+                              </label>
+                              <label className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={element.multiple}
+                                  onChange={(e) => updateExtraElement(index, "multiple", e.target.checked)}
+                                  className="mr-1"
+                                />
+                                Multiple
+                              </label>
+                              <button
+                                className="text-red-600 hover:text-red-800"
+                                onClick={() =>
+                                  setExtraListData({
+                                    ...extraListData,
+                                    extraListElements: extraListData.extraListElements.filter((_, i) => i !== index),
+                                  })
+                                }
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            onClick={addExtraElement}
+                          >
+                            Ajouter un élément
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <button
+                          className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700"
+                          onClick={addExtraList}
+                          disabled={!extraListData.name}
+                        >
+                          Créer la liste
+                        </button>
+                      </div>
+                      <div className="mt-6">
+                        <h2 className="text-2xl font-bold mb-6">Liste des Extras</h2>
+                        {extraLists.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">Aucune liste d'extras ajoutée pour le moment</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {extraLists.map((extraList) => (
+                              <div
+                                key={extraList.id}
+                                className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
+                              >
+                                <h4 className="font-semibold text-gray-800">{extraList.name}</h4>
+                                <p className="text-sm text-gray-600">Éléments: {extraList.extraListElements.length}</p>
+                                <div className="text-sm text-gray-600 mt-2">
+                                  {extraList.extraListElements.map((element, index) => (
+                                    <p key={index}>
+                                      {element.name} ({element.price ? `${formatPrice(element.price)} FCFA` : "Gratuit"})
+                                      {element.required && " (Requis)"}
+                                      {element.multiple && " (Multiple)"}
+                                    </p>
+                                  ))}
+                                </div>
+                                <div className="mt-3 flex justify-between">
+                                  <button
+                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                    onClick={() => {
+                                      setExtraListData({
+                                        name: extraList.name,
+                                        extraListElements: extraList.extraListElements,
+                                      });
+                                      setEditingExtraList(extraList.id);
+                                    }}
+                                  >
+                                    Modifier
+                                  </button>
+                                  <button
+                                    className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                    onClick={() => {
+                                      if (window.confirm("Voulez-vous vraiment supprimer cette liste d'extras ?")) {
+                                        deleteExtraList(extraList.id);
+                                      }
+                                    }}
+                                  >
+                                    Supprimer
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === "orders" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h2 className="text-2xl font-bold mb-6">Gestion des Commandes</h2>
+                <div className="flex flex-wrap gap-4 mb-4">
+                 <button
+                    className={`px-4 py-2 rounded-lg ${
+                      activeOrderSubSection === "list" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                    } hover:bg-green-700 hover:text-white transition-colors`}
+                    onClick={() => setActiveOrderSubSection("list")}
+                  >
+                    Liste des Commandes ({filteredOrders.length})
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg ${
+                      activeOrderSubSection === "create" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                    } hover:bg-green-700 hover:text-white transition-colors`}
+                    onClick={() => setActiveOrderSubSection("create")}
+                  >
+                    Créer une Commande
+                  </button>
+                 {/* <button
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+                    onClick={() => setShowPendingModal(true)}
+                  >
+                    <FaShoppingBag className="mr-2" />
+                    Commandes en attente ({pendingOrders.length})
+                  </button> */}
+                </div>
+                {error && <p className="text-red-600 mb-4">{error}</p>}
+                {activeOrderSubSection === "list" && (
+                  <div>
+                    <div className="flex flex-wrap gap-4 mb-4">
+                      <button
+                        className={`px-4 py-2 rounded-lg ${
+                          viewMode === "kanban" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                        } hover:bg-green-700 hover:text-white transition-colors`}
+                        onClick={() => setViewMode("kanban")}
+                      >
+                        Vue Kanban
+                      </button>
+                      <button
+                        className={`px-4 py-2 rounded-lg ${
+                          viewMode === "list" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                        } hover:bg-green-700 hover:text-white transition-colors`}
+                        onClick={() => setViewMode("list")}
+                      >
+                        Vue Liste
+                      </button>
+                    </div>
+                    {viewMode === "kanban" ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {Object.entries(STATUS_LABELS).map(([status, label]) => (
+                          status !== ORDER_STATUS.FAILED && (
+                            <div
+                              key={status}
+                              className={`border p-4 rounded-lg min-h-[200px] ${STATUS_COLUMN_COLORS[status]}`}
+                              onDragOver={handleDragOver}
+                              onDragLeave={handleDragLeave}
+                              onDrop={(e) => handleDrop(e, status)}
+                            >
+                              <h3 className="text-lg font-semibold mb-3">{label}</h3>
+                              <div className="space-y-3">
+                                {filteredOrders
+                                  .filter((order) => order.status === status)
+                                  .map((order) => (
+                                    <OrderCard
+                                      key={order.id}
+                                      order={order}
+                                      items={items}
+                                      extraLists={extraLists}
+                                      usersData={usersData}
+                                      onShowDetails={showOrderDetails}
+                                      onDragStart={(e) => handleDragStart(e, order)}
+                                      onDragEnd={handleDragEnd}
+                                    />
+                                  ))}
+                              </div>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredOrders.map((order) => (
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            items={items}
+                            extraLists={extraLists}
+                            usersData={usersData}
+                            onShowDetails={showOrderDetails}
+                            onDragStart={(e) => handleDragStart(e, order)}
+                            onDragEnd={handleDragEnd}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {activeOrderSubSection === "create" && (
+                  <div>
+                    <h2 className="text-2xl font-bold mb-6">Créer une nouvelle commande</h2>
+                    <CreateOrderForm
+                      items={items}
+                      extraLists={extraLists}
+                      restaurantId={currentRestaurantId}
+                      deliveryFees={deliveryFees}
+                      getDeliveryFee={getDeliveryFee}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === "categories" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h2 className="text-2xl font-bold mb-6">Gestion des Catégories</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la catégorie *</label>
+                    <input
+                      type="text"
+                      placeholder="Entrez le nom de la catégorie"
+                      className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                        !categoryData.name && error ? "border-red-500" : ""
+                      }`}
+                      value={categoryData.name}
+                      onChange={(e) => setCategoryData({ ...categoryData, name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      placeholder="Décrivez la catégorie..."
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-y"
+                      rows="3"
+                      value={categoryData.description}
+                      onChange={(e) => setCategoryData({ ...categoryData, description: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Icône</label>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        setCategoryData({
+                          ...categoryData,
+                          iconFile: file,
+                          iconPreview: file ? URL.createObjectURL(file) : categoryData.icon,
+                        });
+                      }}
+                    />
+                  </div>
+                  {categoryData.iconPreview && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Prévisualisation de l'icône</label>
+                      <div className="relative">
+                        <img
+                          src={categoryData.iconPreview}
+                          alt="Prévisualisation de l'icône"
+                          className="w-24 h-24 object-cover rounded-lg"
+                          onError={(e) => (e.target.src = "/img/default.png")}
+                        />
+                        <button
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                          onClick={() =>
+                            setCategoryData({ ...categoryData, iconFile: null, iconPreview: "", icon: "" })
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6 flex gap-4">
+                  <button
+                    className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                    onClick={editingCategory ? updateCategory : addCategory}
+                    disabled={loading || !categoryData.name}
+                  >
+                    {loading ? "Chargement..." : editingCategory ? "Mettre à jour" : "Créer catégorie"}
+                  </button>
+                  {editingCategory && (
+                    <button
+                      className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryData({ name: "", description: "", icon: "", iconFile: null, iconPreview: "" });
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h2 className="text-2xl font-bold mb-6">Liste des Catégories</h2>
+                {categories.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">Aucune catégorie ajoutée pour le moment</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {categories.map((category) => (
+                      <div
+                        key={category.id}
+                        className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
+                      >
+                        <div className="flex items-start space-x-4">
+                          {category.icon ? (
+                            <img
+                              src={category.icon}
+                              alt={category.name}
+                              className="w-24 h-24 object-cover rounded-lg"
+                              onError={(e) => (e.target.src = "/img/default.png")}
+                            />
+                          ) : (
+                            <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
+                              <span className="text-gray-500 text-sm">Aucune icône</span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-800">{category.name}</h4>
+                            {category.description && (
+                              <p className="text-sm text-gray-600 line-clamp-2">{category.description}</p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">ID Restaurant: {category.restaurantId}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex justify-between">
+                          <button
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            onClick={() => startEditingCategory(category)}
+                          >
+                            Modifier
+                          </button>
+                          <button
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                            onClick={() => {
+                              if (window.confirm("Voulez-vous vraiment supprimer cette catégorie ?")) {
+                                deleteCategory(category.id);
+                              }
+                            }}
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === "loyalty" && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-6">Gestion des Points de Fidélité</h2>
+              <LoyaltyPointsManager restaurantId={currentRestaurantId} />
+            </div>
+          )}
+
+          {activeSection === "comments" && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-6">Avis Clients</h2>
+              {feedbacks.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">Aucun avis pour le moment</p>
+              ) : (
+                <div className="space-y-4">
+                  {feedbacks.map((feedback) => (
+                    <div
+                      key={feedback.id}
+                      className="p-4 border rounded-lg bg-gray-50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <FaStar className="text-yellow-400" />
+                          <span className="font-semibold">{feedback.rating.rating}/5</span>
+                        </div>
+                        <span className="text-sm text-gray-500">
+                          {feedback.timestamp ? new Date(feedback.timestamp.seconds * 1000).toLocaleString("fr-FR") : "Date inconnue"}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-2">{feedback.comment}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Par: {usersData.byId[feedback.userId]?.email || "Utilisateur inconnu"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedOrder && (
+            <OrderDetailsModal
+              order={selectedOrder}
+              items={items}
+              extraLists={extraLists}
+              usersData={usersData}
+              onClose={closeOrderDetails}
+              onUpdateFees={updateOrderDeliveryFees}
+              onDelete={deleteOrder}
+              onUpdateStatus={updateOrderStatus}
+            />
+          )}
+
+          {showPendingModal && (
             <PendingOrdersModal
               orders={pendingOrders}
               items={items}
               extraLists={extraLists}
               usersData={usersData}
-              onClose={() => setShowPendingOrdersModal(false)}
+              onClose={() => setShowPendingModal(false)}
             />
           )}
- <ul className="nav nav-tabs mb-4">
-            {["restaurant", "menus", "items", "categories", "orders", "extras", "create-order", "loyalty", "comments"].map((tab) => (
-              <li key={tab} className="nav-item">
-                <button
-                  className={`nav-link ${activeTab === tab ? "active" : ""}`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {tab === "restaurant"
-                    ? "Infos Restaurant"
-                    : tab === "menus"
-                    ? "Gestion des Menus"
-                    : tab === "items"
-                    ? "Gestion des Plats"
-                    : tab === "categories"
-                    ? "Gestion des Catégories"
-                    : tab === "orders"
-                    ? "Commandes"
-                    : tab === "extras"
-                    ? "Extras"
-                    : tab === "create-order"
-                    ? "Créer une Commande"
-                    : tab === "loyalty"
-                    ? "Points de fidélité"
-                    : "Commentaires"}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {activeTab === "restaurant" && (
-            <div>
-              <h3>Infos Restaurant</h3>
-              {["name", "adresse", "city", "location", "contact"].map((field) => (
-                <input
-                  key={field}
-                  type="text"
-                  name={field}
-                  placeholder={
-                    field === "name"
-                      ? "Nom du restaurant"
-                      : field === "adresse"
-                      ? "Adresse"
-                      : field === "city"
-                      ? "Ville"
-                      : field === "location"
-                      ? "Coordonnées GPS"
-                      : "Contact"
-                  }
-                  className="form-control mb-2"
-                  value={restaurantForm[field]}
-                  onChange={(e) => setRestaurantForm({ ...restaurantForm, [field]: e.target.value })}
-                />
-              ))}
-              <button className="btn btn-primary" onClick={updateRestaurantInfo}>
-                Mettre à jour les infos
-              </button>
-            </div>
-          )}
-
-            {activeTab === "menus" && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                  <h3 className="text-xl font-semibold mb-4 text-gray-800">
-                    {editingMenu ? "Modifier le Menu" : "Créer un Menu"}
-                  </h3>
-                  {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nom du menu *</label>
-                      <input
-                        type="text"
-                        placeholder="Nom du menu"
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                          !menuData.name && error ? "border-red-500" : ""
-                        }`}
-                        value={menuData.name}
-                        onChange={(e) => setMenuData({ ...menuData, name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Images du menu</label>
-                      <input
-                        type="file"
-                        multiple
-                        className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files);
-                          const previews = files.map(file => URL.createObjectURL(file));
-                          setMenuData({ 
-                            ...menuData, 
-                            covers: editingMenu 
-                              ? [...menuData.covers, ...files] 
-                              : files,
-                            coverPreviews: editingMenu 
-                              ? [...menuData.coverPreviews, ...previews] 
-                              : previews 
-                          });
-                        }}
-                      />
-                    </div>
-                    {menuData.coverPreviews.length > 0 && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Prévisualisation</label>
-                        <div className="flex flex-wrap gap-2">
-                          {menuData.coverPreviews.map((preview, index) => (
-                            <div key={index} className="relative">
-                              <img
-                                src={preview}
-                                alt={`Prévisualisation ${index + 1}`}
-                                className="w-24 h-24 object-cover rounded-lg"
-                              />
-                              <button
-                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                                onClick={() => {
-                                  const newCovers = menuData.covers.filter((_, i) => i !== index);
-                                  const newPreviews = menuData.coverPreviews.filter((_, i) => i !== index);
-                                  setMenuData({ ...menuData, covers: newCovers, coverPreviews: newPreviews });
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-4 flex gap-4">
-                    <button
-                      className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-                      onClick={editingMenu ? updateMenu : addMenu}
-                      disabled={loading}
-                    >
-                      {loading ? "Chargement..." : editingMenu ? "Mettre à jour" : "Créer Menu"}
-                    </button>
-                    {editingMenu && (
-                      <button
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-                        onClick={() => {
-                          setEditingMenu(null);
-                          setMenuData({ name: "", covers: [], coverPreviews: [] });
-                        }}
-                      >
-                        Annuler
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                  <h3 className="text-xl font-semibold mb-4 text-gray-800">Liste des Menus</h3>
-                  {menus.length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">Aucun menu ajouté pour le moment</p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {menus.map((menu) => (
-                        <div
-                          key={menu.id}
-                          className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
-                        >
-                          <div className="flex items-start space-x-4">
-                            {menu.covers?.length > 0 ? (
-                              <div className="relative w-24 h-24">
-                                <img
-                                  src={menu.covers[0]}
-                                  alt={menu.name}
-                                  className="w-full h-full object-cover rounded-lg"
-                                  onError={(e) => (e.target.src = "/img/default.png")}
-                                />
-                                {menu.covers.length > 1 && (
-                                  <span className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs rounded-full px-2 py-1">
-                                    +{menu.covers.length - 1}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
-                                <span className="text-gray-500 text-sm">Aucune image</span>
-                              </div>
-                            )}
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-800">{menu.name}</h4>
-                              <p className="text-xs text-gray-500 mt-1">ID Restaurant: {menu.restaurantId}</p>
-                            </div>
-                          </div>
-                          <div className="mt-3 flex justify-between">
-                            <button
-                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                              onClick={() => startEditingMenu(menu)}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              className="text-red-600 hover:text-red-800 text-sm font-medium"
-                              onClick={() => deleteMenu(menu.id)}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === "items" && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                  <h3 className="text-xl font-semibold mb-4 text-gray-800">
-                    {editingItem ? "Modifier le plat" : "Ajouter un nouveau plat"}
-                  </h3>
-                  {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nom du plat *</label>
-                      <input
-                        type="text"
-                        placeholder="Entrez le nom du plat"
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                          !itemData.name && error ? "border-red-500" : ""
-                        }`}
-                        value={itemData.name}
-                        onChange={(e) => setItemData({ ...itemData, name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Menu *</label>
-                      <select
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                          !itemData.menuId && error ? "border-red-500" : ""
-                        }`}
-                        value={itemData.menuId}
-                        onChange={(e) => setItemData({ ...itemData, menuId: e.target.value })}
-                      >
-                        <option value="">Sélectionner un menu</option>
-                        {menus.map((menu) => (
-                          <option key={menu.id} value={menu.id}>
-                            {menu.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
-                      <select
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                          !itemData.categoryId && error ? "border-red-500" : ""
-                        }`}
-                        value={itemData.categoryId}
-                        onChange={(e) => setItemData({ ...itemData, categoryId: e.target.value })}
-                      >
-                        <option value="">Sélectionner une catégorie</option>
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Type de prix *</label>
-                      <select
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        value={itemData.priceType}
-                        onChange={(e) => setItemData({ ...itemData, priceType: e.target.value })}
-                      >
-                        <option value="single">Prix unique</option>
-                        <option value="sizes">Prix par taille (L/XL)</option>
-                      </select>
-                    </div>
-                    {itemData.priceType === "single" ? (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Prix (FCFA) *</label>
-                        <input
-                          type="number"
-                          placeholder="Prix"
-                          className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                            !itemData.price && error ? "border-red-500" : ""
-                          }`}
-                          value={itemData.price}
-                          onChange={(e) => setItemData({ ...itemData, price: e.target.value })}
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Prix par taille (FCFA) *</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            placeholder="Prix L"
-                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                              !itemData.sizes.L && error ? "border-red-500" : ""
-                            }`}
-                            value={itemData.sizes.L}
-                            onChange={(e) => setItemData({ ...itemData, sizes: { ...itemData.sizes, L: e.target.value } })}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Prix XL"
-                            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                              !itemData.sizes.XL && error ? "border-red-500" : ""
-                            }`}
-                            value={itemData.sizes.XL}
-                            onChange={(e) => setItemData({ ...itemData, sizes: { ...itemData.sizes, XL: e.target.value } })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                      <textarea
-                        placeholder="Décrivez le plat..."
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-y"
-                        rows="3"
-                        value={itemData.description}
-                        onChange={(e) => setItemData({ ...itemData, description: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Mode de vente</label>
-                      <select
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        value={itemData.saleMode}
-                        onChange={(e) => setItemData({ ...itemData, saleMode: e.target.value })}
-                      >
-                        <option value="pack">Pack</option>
-                        <option value="kilo">Kilo</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Images</label>
-                      <input
-                        type="file"
-                        multiple
-                        className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files);
-                          const previews = files.map((file) => URL.createObjectURL(file));
-                          setItemData({
-                            ...itemData,
-                            covers: editingItem ? [...itemData.covers, ...files] : files,
-                            coverPreviews: editingItem ? [...itemData.coverPreviews, ...previews] : previews,
-                          });
-                        }}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Extras</label>
-                      <div className="flex flex-wrap gap-2">
-                        {extraLists.length > 0 ? (
-                          extraLists.map((extra) => (
-                            <div
-                              key={extra.id}
-                              className={`px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
-                                itemData.extraLists.includes(extra.id)
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                              }`}
-                              onClick={() => {
-                                setItemData({
-                                  ...itemData,
-                                  extraLists: itemData.extraLists.includes(extra.id)
-                                    ? itemData.extraLists.filter((id) => id !== extra.id)
-                                    : [...itemData.extraLists, extra.id],
-                                });
-                              }}
-                            >
-                              {extra.name} ({extra.extraListElements.length})
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-500 text-sm">Aucune liste d'extras disponible</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {itemData.coverPreviews?.length > 0 && (
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Prévisualisation des images</label>
-                      <div className="flex flex-wrap gap-2">
-                        {itemData.coverPreviews.map((preview, index) => (
-                          <div key={index} className="relative">
-                            <img
-                              src={preview}
-                              alt={`Prévisualisation ${index + 1}`}
-                              className="w-24 h-24 object-cover rounded-lg"
-                            />
-                            <button
-                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                              onClick={() => {
-                                const newCovers = itemData.covers.filter((_, i) => i !== index);
-                                const newPreviews = itemData.coverPreviews.filter((_, i) => i !== index);
-                                setItemData({ ...itemData, covers: newCovers, coverPreviews: newPreviews });
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Jours de disponibilité</label>
-                    <div className="flex flex-wrap gap-2">
-                      {daysOfWeek.map((day) => (
-                        <button
-                          key={day}
-                          type="button"
-                          className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                            itemData.scheduledDay.includes(day)
-                              ? "bg-green-500 text-white"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
-                          onClick={() => handleDaySelection(day)}
-                        >
-                          {day.charAt(0).toUpperCase() + day.slice(1)}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-700 hover:bg-red-200"
-                        onClick={() => setItemData({ ...itemData, scheduledDay: [] })}
-                      >
-                        Réinitialiser
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex gap-4">
-                    <button
-                      className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-                      onClick={editingItem ? () => updateItem(editingItem.id, itemData) : addItem}
-                    >
-                      {editingItem ? "Mettre à jour" : "Ajouter le plat"}
-                    </button>
-                    {editingItem && (
-                      <button
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-                        onClick={resetItemForm}
-                      >
-                        Annuler
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                  <h3 className="text-xl font-semibold mb-4 text-gray-800">Liste des plats</h3>
-                  {items.length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">Aucun plat ajouté pour le moment</p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
-                        >
-                          <div className="flex items-start space-x-4">
-                            {item.covers?.length > 0 ? (
-                              <div className="relative w-24 h-24">
-                                <img
-                                  src={item.covers[0]}
-                                  alt={item.name}
-                                  className="w-full h-full object-cover rounded-lg"
-                                  onError={(e) => (e.target.src = "/img/default.png")}
-                                />
-                                {item.covers.length > 1 && (
-                                  <span className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs rounded-full px-2 py-1">
-                                    +{item.covers.length - 1}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
-                                <span className="text-gray-500 text-sm">Aucune image</span>
-                              </div>
-                            )}
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-800">{item.name}</h4>
-                              <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
-                              {item.price ? (
-                                <p className="text-green-600 font-medium mt-1">{formatPrice(item.price)} FCFA</p>
-                              ) : (
-                                <p className="text-green-600 font-medium mt-1">
-                                  L: {formatPrice(item.sizes?.L)} FCFA | XL: {formatPrice(item.sizes?.XL)} FCFA
-                                </p>
-                              )}
-                              {item.menuId && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Menu: {menus.find((m) => m.id === item.menuId)?.name || item.menuId}
-                                </p>
-                              )}
-                              {item.scheduledDay.length > 0 && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Disponible: {item.scheduledDay.join(", ")}
-                                </p>
-                              )}
-                              {item.extraLists?.length > 0 && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Extras: {item.extraLists.map((id) => extraLists.find((ex) => ex.id === id)?.name || id).join(", ")}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="mt-3 flex justify-between">
-                            <button
-                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                              onClick={() => startEditing(item)}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              className="text-red-600 hover:text-red-800 text-sm font-medium"
-                              onClick={() => deleteItem(item.id)}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-{activeTab === "categories" && (
-  <div className="space-y-6">
-    {/* Formulaire d'ajout/modification de catégorie */}
-    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-      <h3 className="text-xl font-semibold mb-4 text-gray-800">
-        {editingCategory ? "Modifier la catégorie" : "Créer une nouvelle catégorie"}
-      </h3>
-      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la catégorie *</label>
-          <input
-            type="text"
-            placeholder="Entrez le nom de la catégorie"
-            className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-              !categoryData.name && error ? "border-red-500" : ""
-            }`}
-            value={categoryData.name}
-            onChange={(e) => setCategoryData({ ...categoryData, name: e.target.value })}
-          />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-          <textarea
-            placeholder="Décrivez la catégorie..."
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-y"
-            rows="3"
-            value={categoryData.description}
-            onChange={(e) => setCategoryData({ ...categoryData, description: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Icône</label>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="w-full p-2 border rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-            onChange={(e) => {
-              const file = e.target.files[0];
-              setCategoryData({
-                ...categoryData,
-                iconFile: file,
-                iconPreview: file ? URL.createObjectURL(file) : categoryData.icon,
-              });
-            }}
-          />
-        </div>
-        {categoryData.iconPreview && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Prévisualisation de l'icône</label>
-            <div className="relative">
-              <img
-                src={categoryData.iconPreview}
-                alt="Prévisualisation de l'icône"
-                className="w-24 h-24 object-cover rounded-lg"
-                onError={(e) => (e.target.src = "/img/default.png")}
-              />
-              <button
-                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
-                onClick={() =>
-                  setCategoryData({ ...categoryData, iconFile: null, iconPreview: "", icon: "" })
-                }
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="mt-6 flex gap-4">
-        <button
-          className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-          onClick={editingCategory ? updateCategory : addCategory}
-          disabled={loading || !categoryData.name}
-        >
-          {loading ? "Chargement..." : editingCategory ? "Mettre à jour" : "Créer catégorie"}
-        </button>
-        {editingCategory && (
-          <button
-            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-            onClick={() => {
-              setEditingCategory(null);
-              setCategoryData({ name: "", description: "", icon: "", iconFile: null, iconPreview: "" });
-            }}
-          >
-            Annuler
-          </button>
-        )}
-      </div>
-    </div>
-
-    {/* Liste des catégories */}
-    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-      <h3 className="text-xl font-semibold mb-4 text-gray-800">Liste des catégories</h3>
-      {categories.length === 0 ? (
-        <p className="text-gray-500 text-center py-4">Aucune catégorie ajoutée pour le moment</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {categories.map((category) => (
-            <div
-              key={category.id}
-              className="p-4 border rounded-lg hover:shadow-md transition-shadow bg-gray-50"
-            >
-              <div className="flex items-start space-x-4">
-                {category.icon ? (
-                  <img
-                    src={category.icon}
-                    alt={category.name}
-                    className="w-24 h-24 object-cover rounded-lg"
-                    onError={(e) => (e.target.src = "/img/default.png")}
-                  />
-                ) : (
-                  <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
-                    <span className="text-gray-500 text-sm">Aucune icône</span>
-                  </div>
-                )}
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800">{category.name}</h4>
-                  <p className="text-sm text-gray-600 line-clamp-2">{category.description || "Aucune description"}</p>
-                  <p className="text-xs text-gray-500 mt-1">ID Restaurant: {category.restaurantId}</p>
-                </div>
-              </div>
-              <div className="mt-3 flex justify-between">
-                <button
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  onClick={() => startEditingCategory(category)}
-                >
-                  Modifier
-                </button>
-                <button
-                  className="text-red-600 hover:text-red-800 text-sm font-medium"
-                  onClick={() => {
-                    if (window.confirm("Voulez-vous vraiment supprimer cette catégorie ?")) {
-                      deleteCategory(category.id);
-                    }
-                  }}
-                >
-                  Supprimer
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      </main>
     </div>
   </div>
-)}
-            {activeTab === "orders" && (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-semibold">Gestion des Commandes</h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                        onClick={handlePreviousPeriod}
-                      >
-                        {"<"}
-                      </button>
-                      <input
-                        type="date"
-                        value={formatDateForComparison(selectedDate)}
-                        onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                        className="border rounded px-2 py-1"
-                      />
-                      <button
-                        className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                        onClick={handleNextPeriod}
-                      >
-                        {">"}
-                      </button>
-                    </div>
-                    <select
-                      value={dateFilterMode}
-                      onChange={(e) => setDateFilterMode(e.target.value)}
-                      className="border rounded px-2 py-1"
-                    >
-                      <option value="day">Jour</option>
-                      <option value="week">Semaine</option>
-                      <option value="month">Mois</option>
-                    </select>
-                    <button
-                      className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300"
-                      onClick={() => setViewMode(viewMode === "table" ? "kanban" : "table")}
-                    >
-                      {viewMode === "table" ? "Vue Kanban" : "Vue Tableau"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mb-4 text-sm text-gray-600">
-                  {dateFilterMode === "day" && `Commandes du ${selectedDate.toLocaleDateString("fr-FR")}`}
-                  {dateFilterMode === "week" && (
-                    (() => {
-                      const start = new Date(selectedDate);
-                      start.setDate(start.getDate() - start.getDay());
-                      const end = new Date(start);
-                      end.setDate(start.getDate() + 6);
-                      return `Commandes de la semaine du ${start.toLocaleDateString("fr-FR")} au ${end.toLocaleDateString("fr-FR")}`;
-                    })()
-                  )}
-                  {dateFilterMode === "month" && (
-                    `Commandes de ${selectedDate.toLocaleString("fr-FR", { month: "long", year: "numeric" })}`
-                  )}
-                  {` (${filteredOrders.length} commande${filteredOrders.length !== 1 ? "s" : ""})`}
-                </div>
-
-                {viewMode === "kanban" ? (
-                  <div className="overflow-x-auto whitespace-nowrap pb-4">
-                    <div className="inline-flex gap-6">
-                      {statusColumns.map((column) => (
-                        <div
-                          key={column.id}
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, column.id)}
-                          className={`p-4 rounded-lg border ${column.color} min-h-[500px] w-[350px] flex-shrink-0 shadow-sm`}
-                        >
-                          <h4 className="font-semibold text-lg mb-4 text-gray-800 sticky top-0 bg-inherit z-10 py-2">
-                            {column.name} (
-                            {
-                              filteredOrders.filter((order) =>
-                                column.id === ORDER_STATUS.PENDING
-                                  ? !order.status || order.status === ORDER_STATUS.PENDING
-                                  : order.status === column.id
-                              ).length
-                            }
-                            )
-                          </h4>
-                          <div className="space-y-3 overflow-y-auto max-h-[450px]">
-                            {filteredOrders
-                              .filter((order) =>
-                                column.id === ORDER_STATUS.PENDING
-                                  ? !order.status || order.status === ORDER_STATUS.PENDING
-                                  : order.status === column.id
-                              )
-                              .map((order) => (
-                                <OrderCard
-                                  key={order.id}
-                                  order={order}
-                                  items={items}
-                                  extraLists={extraLists}
-                                  usersData={usersData}
-                                  onShowDetails={showOrderDetails}
-                                  onDragStart={(e) => handleDragStart(e, order)}
-                                  onDragEnd={handleDragEnd}
-                                />
-                              ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <table className="table w-full text-xs">
-                    <thead>
-                      <tr>
-                        <th>Client</th>
-                        <th>Quartier</th>
-                        <th>Adresse</th>
-                        <th>Frais de livraison</th>
-                        <th>ID Commande</th>
-                        <th>Date</th>
-                        <th>Total</th>
-                        <th>Points</th> {/* Nouvelle colonne pour indiquer l'utilisation des points */}
-                        <th>Statut</th>
-                        <th>Payé</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredOrders?.map((order) => {
-                        const user = order.userId
-                          ? usersData.byId[order.userId]
-                          : order.contact?.phone && usersData.byPhone[order.contact.phone];
-                        const clientName = user
-                          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
-                          : order.contact?.name || "Client inconnu";
-                        const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non spécifié";
-                        const address = order.address || {};
-                        const quartier = address.area || "Non spécifié";
-                        const description = address.completeAddress || "Non spécifié";
-                        const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-                        const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
-
-                        return (
-                          <tr key={order.id}>
-                            <td className="truncate">{clientName}</td>
-                            <td className="truncate">{quartier}</td>
-                            <td className="truncate">{description}</td>
-                            <td>{formatPrice(deliveryFee)} FCFA</td>
-                            <td className="truncate">#{order.id.slice(0, 6)}</td>
-                            <td>
-                              {order.timestamp
-                                ? new Date(order.timestamp.seconds * 1000).toLocaleDateString("fr-FR")
-                                : "N/A"}
-                            </td>
-                            <td className="text-green-600 font-semibold">{formatPrice(totalWithDelivery)} FCFA</td>
-                            {/* Indicateur simple pour les points utilisés */}
-                           <td>
-                              {(Number(order.pointsUsed) || 0) > 0 
-                                ? `✅ ${formatPrice(Number(order.pointsReduction) || 0)} FCFA` 
-                                : "-"}
-                            </td>
-                            <td>
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full ${
-                                  STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                {STATUS_LABELS[order.status] || "En attente"}
-                              </span>
-                            </td>
-                            <td className={order.isPaid ? "text-green-600" : "text-red-600"}>
-                              {order.isPaid ? "Oui" : "Non"}
-                            </td>
-                            <td>
-                              <button
-                                className="btn btn-primary btn-sm text-xs bg-green-600 text-white rounded-lg px-3 py-1 hover:bg-green-700"
-                                onClick={() => showOrderDetails(order)}
-                              >
-                                Détails
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-
-                {selectedOrder && (
-                  <OrderDetailsModal
-                    order={selectedOrder}
-                    items={items}
-                    extraLists={extraLists}
-                    usersData={usersData}
-                    onClose={closeOrderDetails}
-                    onUpdateFees={updateOrderDeliveryFees}
-                    onDelete={deleteOrder}
-                    onUpdateStatus={updateOrderStatus}
-                  />
-                )}
-              </div>
-            )}
-{activeTab === "comments" && (
-  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-    <div className="flex justify-between items-center mb-6">
-      <h3 className="text-xl font-semibold text-gray-800">Avis et Feedbacks Clients</h3>
-      <div className="flex items-center gap-4">
-        {/* Statistiques globales pour les avis */}
-        {ratedOrders.length > 0 && (
-          <div className="flex items-center bg-blue-50 px-4 py-2 rounded-lg">
-            <span className="text-2xl font-bold text-blue-600 mr-2">
-              {(
-                ratedOrders.reduce((sum, order) => sum + order.rating.rating, 0) /
-                ratedOrders.length
-              ).toFixed(1)}
-            </span>
-            <div className="flex">
-              {[...Array(5)].map((_, i) => (
-                <i
-                  key={i}
-                  className={`fas fa-star text-sm ${
-                    i <
-                    Math.round(
-                      ratedOrders.reduce((sum, order) => sum + order.rating.rating, 0) /
-                        ratedOrders.length
-                    )
-                      ? "text-yellow-400"
-                      : "text-gray-300"
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="ml-2 text-sm text-gray-600">
-              ({ratedOrders.length} avis)
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-
-    {error && (
-      <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
-        <p>{error}</p>
-      </div>
-    )}
-
-    {/* Section pour les avis (ratedOrders) */}
-    <div className="mb-8">
-      <h4 className="text-lg font-semibold text-gray-700 mb-4">Avis Clients</h4>
-      {ratedOrders.length === 0 ? (
-        <div className="text-center py-8">
-          <i className="fas fa-comment-slash text-4xl text-gray-300 mb-3"></i>
-          <p className="text-gray-500">Aucun avis client pour le moment</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {ratedOrders.map((order) => {
-            const user = order.userId
-              ? usersData.byId[order.userId]
-              : order.contact?.phone && usersData.byPhone[order.contact.phone];
-            const clientInfo = user
-              ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-                user.email ||
-                "Utilisateur inconnu"
-              : order.contact?.name ||
-                (order.contact?.phone ? `Client (${order.contact.phone})` : "Client anonyme");
-            const ratingDate = order.rating?.date
-              ? new Date(
-                  typeof order.rating.date === "object" && "seconds" in order.rating.date
-                    ? order.rating.date.seconds * 1000
-                    : order.rating.date
-                ).toLocaleDateString("fr-FR", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Date inconnue";
-
-            return (
-              <div
-                key={order.id}
-                className="p-6 border rounded-lg hover:shadow-md transition-shadow"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h4 className="font-medium text-gray-900">{clientInfo}</h4>
-                    <p className="text-sm text-gray-500">
-                      Commande #{order.id.slice(0, 6)} • {ratingDate}
-                    </p>
-                  </div>
-                  <div className="flex items-center">
-                    {[...Array(5)].map((_, i) => (
-                      <i
-                        key={i}
-                        className={`fas fa-star ${
-                          i < order.rating.rating ? "text-yellow-400" : "text-gray-300"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {order.rating.comment && (
-                  <div className="bg-gray-50 p-4 rounded-lg mt-2">
-                    <p className="text-gray-700 italic">"{order.rating.comment}"</p>
-                  </div>
-                )}
-
-                <div className="mt-4 pt-4 border-t">
-                  <h5 className="text-sm font-medium text-gray-700 mb-2">
-                    Articles commandés
-                  </h5>
-                  <ul className="space-y-1 text-sm text-gray-600">
-                    {order.items?.slice(0, 3).map((item, index) => {
-                      const dish = items.find((i) => i.id === item.dishId);
-                      return (
-                        <li key={index} className="flex justify-between">
-                          <span>
-                            {dish?.name || item.dishName || "Article inconnu"} × {item.quantity}
-                          </span>
-                          <span>
-                            {formatPrice(
-                              (item.price || item.dishPrice || dish?.price || 0) * item.quantity
-                            )}{" "}
-                            FCFA
-                          </span>
-                        </li>
-                      );
-                    })}
-                    {order.items?.length > 3 && (
-                      <li className="text-blue-600">
-                        + {order.items.length - 3} autres articles
-                      </li>
-                    )}
-                  </ul>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <button
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    onClick={() => showOrderDetails(order)}
-                  >
-                    Voir la commande complète
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-
-    {/* Section pour les feedbacks */}
-    <div>
-      <h4 className="text-lg font-semibold text-gray-700 mb-4">Feedbacks Clients</h4>
-      {feedbacks.length === 0 ? (
-        <div className="text-center py-8">
-          <i className="fas fa-comment-slash text-4xl text-gray-300 mb-3"></i>
-          <p className="text-gray-500">Aucun feedback client pour le moment</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {feedbacks.map((feedback) => {
-            // Récupérer les informations de l'utilisateur ou du client
-            const user = feedback.userId
-              ? usersData.byId[feedback.userId]
-              : feedback.contact?.phone && usersData.byPhone[feedback.contact.phone];
-            const clientInfo = user
-              ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
-                user.email ||
-                "Utilisateur inconnu"
-              : feedback.contact?.name ||
-                (feedback.contact?.phone ? `Client (${feedback.contact.phone})` : "Client anonyme");
-
-            // Formater la date du feedback
-            const feedbackDate = feedback.timestamp
-              ? new Date(
-                  typeof feedback.timestamp === "object" && "seconds" in feedback.timestamp
-                    ? feedback.timestamp.seconds * 1000
-                    : feedback.timestamp
-                ).toLocaleDateString("fr-FR", {
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Date inconnue";
-
-            // Récupérer la commande associée pour afficher les articles
-            const order = orders.find((o) => o.id === feedback.orderId);
-
-            return (
-              <div
-                key={feedback.id}
-                className="p-6 border rounded-lg hover:shadow-md transition-shadow"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h4 className="font-medium text-gray-900">{clientInfo}</h4>
-                    <p className="text-sm text-gray-500">
-                      Commande #{feedback.orderId.slice(0, 6)} • {feedbackDate}
-                    </p>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-sm font-medium text-gray-600">
-                      Recommande : {feedback.recommend ? "✅ Oui" : "❌ Non"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Afficher les notes */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Service de livraison :</p>
-                    <div className="flex">
-                      {[...Array(5)].map((_, i) => (
-                        <i
-                          key={i}
-                          className={`fas fa-star ${
-                            i < feedback.deliveryService ? "text-yellow-400" : "text-gray-300"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Qualité des plats :</p>
-                    <div className="flex">
-                      {[...Array(5)].map((_, i) => (
-                        <i
-                          key={i}
-                          className={`fas fa-star ${
-                            i < feedback.foodQuality ? "text-yellow-400" : "text-gray-300"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Afficher le commentaire sur les points de fidélité */}
-                {feedback.pointsExperience && (
-                  <div className="bg-gray-50 p-4 rounded-lg mt-2">
-                    <p className="text-gray-700 italic">
-                      Commentaire sur les points : "{feedback.pointsExperience}"
-                    </p>
-                  </div>
-                )}
-
-                {/* Afficher les articles de la commande associée */}
-                {order && (
-                  <div className="mt-4 pt-4 border-t">
-                    <h5 className="text-sm font-medium text-gray-700 mb-2">
-                      Articles commandés
-                    </h5>
-                    <ul className="space-y-1 text-sm text-gray-600">
-                      {order.items?.slice(0, 3).map((item, index) => {
-                        const dish = items.find((i) => i.id === item.dishId);
-                        return (
-                          <li key={index} className="flex justify-between">
-                            <span>
-                              {dish?.name || item.dishName || "Article inconnu"} × {item.quantity}
-                            </span>
-                            <span>
-                              {formatPrice(
-                                (item.price || item.dishPrice || dish?.price || 0) * item.quantity
-                              )}{" "}
-                              FCFA
-                            </span>
-                          </li>
-                        );
-                      })}
-                      {order.items?.length > 3 && (
-                        <li className="text-blue-600">
-                          + {order.items.length - 3} autres articles
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Action pour voir la commande complète */}
-                <div className="mt-4 flex justify-end">
-                  <button
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    onClick={() => showOrderDetails(order)}
-                  >
-                    Voir la commande complète
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  </div>
-)}
-          {activeTab === "extras" && (
-            <>
-              <h3>Créer une Extra List</h3>
-              <input
-                type="text"
-                placeholder="Nom de l'extra list"
-                className="form-control mb-2"
-                value={extraListData.name}
-                onChange={(e) => setExtraListData({ ...extraListData, name: e.target.value })}
-              />
-              {extraListData.extraListElements.map((el, index) => (
-                <div key={index} className="mb-2 p-2 border rounded">
-                  <input
-                    type="text"
-                    placeholder="Nom de l'élément"
-                    className="form-control mb-1"
-                    value={el.name}
-                    onChange={(e) => updateExtraElement(index, "name", e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Prix (facultatif)"
-                    className="form-control mb-1"
-                    value={el.price}
-                    onChange={(e) => updateExtraElement(index, "price", e.target.value)}
-                  />
-                  <div className="d-flex gap-3">
-                    <div className="form-check">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={el.required}
-                        onChange={(e) => updateExtraElement(index, "required", e.target.checked)}
-                      />
-                      <label className="form-check-label">Obligatoire</label>
-                    </div>
-                    <div className="form-check">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={el.multiple}
-                        onChange={(e) => updateExtraElement(index, "multiple", e.target.checked)}
-                      />
-                      <label className="form-check-label">Multiple</label>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <button className="btn btn-secondary mb-2" onClick={addExtraElement}>
-                Ajouter un élément
-              </button>
-              <br />
-              <button className="btn btn-success" onClick={addExtraList}>
-                Créer Extra List
-              </button>
-              <h3 className="mt-4">Liste des Extras</h3>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Nom</th>
-                    <th>Éléments</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {extraLists.map((extra) => (
-                    <tr key={extra.id}>
-                      <td>{extra.name}</td>
-                      <td>
-                        {extra.extraListElements
-                          ?.map((el) =>
-                            `${el.name}${el.price ? ` (${el.price} FCFA)` : ""} - ${
-                              el.required ? "Obligatoire" : el.multiple ? "Multiple" : "Optionnel"
-                            }`
-                          )
-                          .join(", ") || "Aucun élément"}
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => deleteExtraList(extra.id)}
-                        >
-                          Supprimer
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-          
-          {activeTab === "create-order" && (
-            <CreateOrderForm
-              restaurantId={currentRestaurantId}
-              items={items}
-              extraLists={extraLists}
-              usersData={usersData}
-              setUsersData={setUsersData}
-              setError={setError}
-            />
-          )}
-          {activeTab === "loyalty" && (
-  <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-    <h3 className="text-xl font-semibold mb-4 text-gray-800">Gestion des Points de Fidélité</h3>
-    {currentRestaurantId ? (
-      <LoyaltyPointsManager restaurantId={currentRestaurantId} />
-    ) : (
-      <p className="text-gray-500">Chargement des informations du restaurant...</p>
-    )}
-  </div>
-)}
-        </>
-      )}
-    </div>
-  );
+);
 };
 
-export default RestaurantAdmin; 
+export default RestaurantAdmin;

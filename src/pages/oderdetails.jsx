@@ -18,6 +18,35 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import { 
+  Home, 
+  Briefcase, 
+  HelpCircle, 
+  CreditCard, 
+  Smartphone, 
+  DollarSign, 
+  MapPin, 
+  Phone, 
+  User, 
+  Package, 
+  Clock, 
+  Star, 
+  Check, 
+  X, 
+  Plus, 
+  Minus, 
+  ArrowLeft, 
+  ArrowRight, 
+  AlertCircle, 
+  Info,
+  ShoppingCart,
+  Heart,
+  Settings,
+  Bell,
+  Edit,
+  Save,
+  Trash2
+} from 'lucide-react';
 
 // Constantes
 const ORDER_STATUS = {
@@ -386,7 +415,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
   useEffect(() => {
     if (data.area && quartiersList.length > 0) {
       const selectedQuartier = quartiersList.find(
-        (q) => q.name.toLowerCase() === data.area.toLowerCase()
+        (q) => q.name?.toLowerCase() === data.area?.toLowerCase()
       );
       const fee = selectedQuartier ? selectedQuartier.fee : 0;
       setDeliveryFee(fee);

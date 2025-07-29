@@ -5,12 +5,21 @@ const CartContext = createContext();
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
 
+  // Fonction pour générer une clé unique pour un article avec ses options
+  const generateItemKey = (item) => {
+    const extrasKey = item.selectedExtras ? JSON.stringify(item.selectedExtras) : '';
+    const sizeKey = item.selectedSize || '';
+    return `${item.id}-${extrasKey}-${sizeKey}`;
+  };
+
   const addToCart = (item) => {
     setCartItems((prevItems) => {
-      const existing = prevItems.find((cartItem) => cartItem.id === item.id);
+      const itemKey = generateItemKey(item);
+      const existing = prevItems.find((cartItem) => generateItemKey(cartItem) === itemKey);
+      
       if (existing) {
         return prevItems.map((cartItem) =>
-          cartItem.id === item.id
+          generateItemKey(cartItem) === itemKey
             ? { ...cartItem, quantity: cartItem.quantity + 1 }
             : cartItem
         );
@@ -26,6 +35,11 @@ export const CartProvider = ({ children }) => {
   };
 
   const updateQuantity = (itemId, quantity) => {
+    if (quantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    
     setCartItems((prevItems) =>
       prevItems.map((item) =>
         item.id === itemId ? { ...item, quantity } : item
