@@ -760,7 +760,7 @@ const OrderAddress = ({ cartItems, cartTotal }) => {
             quartiers={quartiersList}
             filteredQuartiers={filteredQuartiers}
             onQuartierSelect={handleQuartierSelect}
-            showPhone={true}
+            showPhone
           />
           {deliveryFee > 0 && (
             <div className="mt-3 text-gray-700">

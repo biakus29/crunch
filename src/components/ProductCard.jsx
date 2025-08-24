@@ -1,246 +1,366 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { CardAnimations } from '../utils/animationSystem';
-import Slider from 'react-slick';
+import { ShoppingCart, Star, Clock, Heart, Flame, Award } from 'lucide-react';
+const AddToCartModal = lazy(() => import('./AddToCartModal'));
 
-const ProductCard = ({ 
-  item, 
-  onAddClick, 
-  onViewContent,
-  showPromo = true,
-  showAddButton = true 
-}) => {
-  const itemSliderSettings = { 
-    dots: true, 
-    infinite: false, 
-    speed: 500, 
-    slidesToShow: 1, 
-    slidesToScroll: 1 
-  };
+const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', showPromo = false, extraLists = [] }) => {
+  const {
+    name,
+    description,
+    price,
+    image,
+    covers,
+    category,
+    rating = 4.5,
+    preparationTime = '15-20 min',
+    isAvailable = true,
+    isPopular = false,
+    discount = 0,
+    originalPrice
+  } = product;
 
-  const convertPrice = (price) => {
-    if (!price || price === undefined || price === null) return 0;
-    try {
-      if (typeof price === 'string') {
-        return parseFloat(price.replace(/\./g, '')) || 0;
+  const [isFavorite, setIsFavorite] = React.useState(false);
+  const [selectedItem, setSelectedItem] = React.useState(null);
+  const imageUrl = covers?.[0] || image || '/api/placeholder/400/400';
+  const finalPrice = discount > 0 ? price * (1 - discount / 100) : price;
+
+  const handleAddToCart = () => {
+    if (isAvailable) {
+      // Normaliser la liste d'IDs de compléments (supporte extraLists ou assortments)
+      const extraIds = (product.extraLists && product.extraLists.length > 0)
+        ? product.extraLists
+        : (product.assortments || []);
+      // Si le produit a des compléments, ouvrir le modal
+      if (Array.isArray(extraIds) && extraIds.length > 0) {
+        setSelectedItem({
+          ...product,
+          extraLists: extraIds
+        });
+      } else {
+        // Sinon, ajouter directement au panier (flux parent)
+        if (onAddToCart) {
+          onAddToCart(product);
+        }
       }
-      return Number(price) || 0;
-    } catch (err) {
-      console.warn('Erreur dans convertPrice:', price, err);
-      return 0;
     }
   };
 
-  return (
-    <motion.div
-      className="bg-white rounded shadow-sm overflow-hidden relative"
-      variants={CardAnimations.cardGridStagger.item}
-      {...CardAnimations.productCardHover}
-    >
-      <Link
-        to={`/detail/${item.id}`}
-        className="no-underline text-black"
-        onClick={() => onViewContent && onViewContent(item)}
+  // Succès du modal: rien à faire ici, l'ajout est géré dans le modal via le contexte global
+  const handleAddToCartSuccess = () => {};
+
+  const toggleFavorite = (e) => {
+    e.stopPropagation();
+    setIsFavorite(!isFavorite);
+  };
+
+  if (viewMode === 'list') {
+    return (
+      <motion.div
+        className={`bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border border-gray-100 overflow-hidden ${className}`}
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        whileHover={{ scale: 1.02 }}
+        transition={{ duration: 0.4 }}
       >
-        <div className="relative w-48 h-48 mx-auto bg-gray-100 rounded-t">
-          {/* Badge de promotion */}
-          {showPromo && item.promo && (
-            <motion.div
-              className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10"
-              {...CardAnimations.promotionBadge}
-            >
-              -{item.promo}%
-            </motion.div>
-          )}
-
-          {/* Badge "Nouveau" si l'item est récent */}
-          {item.isNew && (
-            <motion.div
-              className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10"
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              whileHover={{ scale: 1.1, rotate: 5 }}
-              transition={{ 
-                type: "spring",
-                stiffness: 200,
-                damping: 15
-              }}
-            >
-              Nouveau
-            </motion.div>
-          )}
-
-          {/* Badge "Populaire" si l'item est populaire */}
-          {item.isPopular && (
-            <motion.div
-              className="absolute top-2 right-2 bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10"
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              whileHover={{ scale: 1.1, rotate: 5 }}
-              transition={{ 
-                type: "spring",
-                stiffness: 200,
-                damping: 15
-              }}
-            >
-              ⭐ Populaire
-            </motion.div>
-          )}
-
-          {/* Images du produit */}
-          {item.covers?.length > 0 ? (
-            <Slider {...itemSliderSettings}>
-              {item.covers.map((cover, index) => (
-                <div key={index}>
-                  <motion.img
-                    src={cover}
-                    alt={`${item.name} ${index + 1}`}
-                    className="w-48 h-48 object-cover"
-                    {...CardAnimations.productImageHover}
-                  />
-                </div>
-              ))}
-            </Slider>
-          ) : (
-            <motion.img
-              src="/img/default.png"
-              alt={item.name}
-              className="w-48 h-48 object-cover"
-              {...CardAnimations.productImageHover}
+        <div className="flex p-6 md:p-8 min-h-[180px] md:min-h-[220px]">
+          {/* Image plus grande */}
+          <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-2xl overflow-hidden flex-shrink-0 shadow-lg">
+            <img
+              src={imageUrl}
+              alt={name}
+              className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
             />
-          )}
-        </div>
-
-        <div className="p-3">
-          {/* Nom du produit */}
-          <motion.h6 
-            className="font-medium"
-            whileHover={{ color: "#059669" }}
-            transition={{ duration: 0.2 }}
-          >
-            {item.name}
-          </motion.h6>
-
-          {/* Description du produit */}
-          {item.description && (
-            <motion.p 
-              className="text-gray-600 text-sm mt-1 line-clamp-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 }}
-            >
-              {item.description}
-            </motion.p>
-          )}
-
-          {/* Prix du produit */}
-          <div className="mt-2">
-            {item.priceType === 'sizes' ? (
-              Object.keys(item.sizes || {}).length > 0 ? (
-                <motion.p 
-                  className="text-green-600 text-sm"
-                  {...CardAnimations.priceAnimation}
-                >
-                  {Object.entries(item.sizes).map(([size, price]) => (
-                    <span key={size}>
-                      {size}: {convertPrice(price).toLocaleString()} Fcfa
-                      {size !== Object.keys(item.sizes)[Object.keys(item.sizes).length - 1] ? ', ' : ''}
-                    </span>
-                  ))}
-                </motion.p>
-              ) : (
-                <motion.p 
-                  className="text-red-600 text-sm"
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                >
-                  Aucune taille disponible
-                </motion.p>
-              )
-            ) : (
-              <motion.div className="flex items-center justify-between">
-                <motion.h6 
-                  className="text-green-600 font-semibold"
-                  {...CardAnimations.priceAnimation}
-                >
-                  {convertPrice(item.price).toLocaleString()} Fcfa
-                </motion.h6>
-                
-                {/* Prix barré si promotion */}
-                {item.originalPrice && item.promo && (
-                  <motion.span 
-                    className="text-gray-500 line-through text-sm"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    {convertPrice(item.originalPrice).toLocaleString()} Fcfa
-                  </motion.span>
-                )}
-              </motion.div>
+            {!isAvailable && (
+              <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center rounded-2xl">
+                <span className="text-white text-sm font-bold">Indisponible</span>
+              </div>
+            )}
+            {isPopular && isAvailable && (
+              <div className="absolute -top-2 -left-2">
+                <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-2 rounded-full shadow-lg">
+                  <Flame className="w-5 h-5" />
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Note et avis */}
-          {item.rating && (
-            <motion.div 
-              className="flex items-center mt-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              <div className="flex items-center">
-                {[...Array(5)].map((_, i) => (
-                  <motion.span
-                    key={i}
-                    className={`text-sm ${i < Math.floor(item.rating) ? 'text-yellow-400' : 'text-gray-300'}`}
-                    whileHover={{ scale: 1.2 }}
-                    transition={{ duration: 0.1 }}
-                  >
-                    ★
-                  </motion.span>
-                ))}
+          {/* Content avec plus d'espace */}
+          <div className="flex-1 ml-6 md:ml-8 flex flex-col justify-between py-2">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900 line-clamp-2 md:text-2xl lg:text-3xl leading-tight mb-2">
+                    {name}
+                  </h3>
+                  {category && (
+                    <span className="inline-block bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 px-4 py-2 rounded-full text-sm font-semibold">
+                      {category}
+                    </span>
+                  )}
+                </div>
+                <motion.button
+                  onClick={toggleFavorite}
+                  className="ml-4 p-3 rounded-full hover:bg-gray-100 flex-shrink-0 shadow-md"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Heart 
+                    className={`w-6 h-6 ${isFavorite ? 'text-red-500 fill-current' : 'text-gray-400'}`}
+                  />
+                </motion.button>
               </div>
-              <span className="text-gray-500 text-xs ml-1">
-                ({item.ratingCount || 0} avis)
-              </span>
+
+              <p className="text-gray-600 text-base md:text-lg leading-relaxed line-clamp-3">
+                {description || "Délicieux plat préparé avec des ingrédients frais et de qualité. Une explosion de saveurs qui ravira vos papilles."}
+              </p>
+
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`w-5 h-5 ${
+                        i < Math.floor(rating) 
+                          ? 'text-yellow-400 fill-current' 
+                          : 'text-gray-300'
+                      }`}
+                    />
+                  ))}
+                  <span className="text-base text-gray-700 ml-2 font-semibold">({rating})</span>
+                </div>
+                <div className="flex items-center text-gray-600 text-base">
+                  <Clock className="w-5 h-5 mr-2" />
+                  <span className="font-medium">{preparationTime}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-4">
+              <div className="space-y-1">
+                {discount > 0 && originalPrice && (
+                  <span className="text-base text-gray-500 line-through block">
+                    {originalPrice?.toLocaleString()} FCFA
+                  </span>
+                )}
+                <div className="flex items-center space-x-3">
+                  <span className="text-3xl font-bold text-orange-600 md:text-4xl">
+                    {finalPrice?.toLocaleString()} FCFA
+                  </span>
+                  {discount > 0 && (
+                    <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-sm px-3 py-1 rounded-full font-bold shadow-lg">
+                      -{discount}%
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <motion.button
+                onClick={handleAddToCart}
+                disabled={!isAvailable}
+                className={`px-8 py-4 rounded-2xl font-bold text-base transition-all duration-300 flex items-center space-x-3 shadow-lg md:px-10 md:py-5 md:text-lg ${
+                  isAvailable
+                    ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white hover:shadow-2xl transform hover:-translate-y-1'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                }`}
+                whileHover={isAvailable ? { scale: 1.05 } : {}}
+                whileTap={isAvailable ? { scale: 0.95 } : {}}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                <span>
+                  {isAvailable ? 'Ajouter' : 'Indisponible'}
+                </span>
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Grid View - Cards VRAIMENT épaisses et imposantes
+  return (
+    <motion.div
+      className={`bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 border-2 border-gray-100 hover:border-orange-200 overflow-hidden relative group ${className}`}
+      style={{ minHeight: '480px' }} // Force une hauteur minimale importante
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -12, scale: 1.03 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
+      {/* Image Container - Beaucoup plus haute */}
+      <div className="relative h-72 md:h-80 lg:h-[320px] overflow-hidden">
+        <motion.img
+          src={imageUrl}
+          alt={name}
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          loading="lazy"
+        />
+        
+        {/* Gradient overlay plus prononcé */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
+        
+        {/* Badges repositionnés et plus gros */}
+        <div className="absolute top-4 left-4 flex flex-col space-y-3">
+          {isPopular && isAvailable && (
+            <motion.div
+              className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2 rounded-2xl text-sm font-bold flex items-center space-x-2 shadow-xl"
+              initial={{ scale: 0, rotate: -10 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ delay: 0.2, type: "spring" }}
+            >
+              <Flame className="w-4 h-4" />
+              <span>Populaire</span>
+            </motion.div>
+          )}
+          {discount > 0 && (
+            <motion.div
+              className="bg-gradient-to-r from-red-500 to-pink-500 text-white px-4 py-2 rounded-2xl text-sm font-bold shadow-xl"
+              initial={{ scale: 0, rotate: 10 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ delay: 0.3, type: "spring" }}
+            >
+              -{discount}%
+            </motion.div>
+          )}
+          {rating >= 4.5 && (
+            <motion.div
+              className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-4 py-2 rounded-2xl text-sm font-bold shadow-xl flex items-center space-x-1"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.4, type: "spring" }}
+            >
+              <Award className="w-4 h-4" />
+              <span>Top</span>
             </motion.div>
           )}
         </div>
-      </Link>
 
-      {/* Bouton d'ajout au panier */}
-      {showAddButton && (
-        <motion.button
-          onClick={(e) => onAddClick && onAddClick(item, e)}
-          className="bg-green-600 text-white px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 hover:bg-green-700 transition-colors duration-200"
-          {...CardAnimations.addToCartButton}
-          aria-label={`Ajouter ${item.name} au panier avec options`}
-        >
-          +
-        </motion.button>
-      )}
+        {/* Category badge en haut à droite */}
+        {category && (
+          <div className="absolute top-4 right-4">
+            <span className="bg-white/95 backdrop-blur-sm text-gray-800 px-4 py-2 rounded-2xl text-sm font-bold shadow-lg">
+              {category}
+            </span>
+          </div>
+        )}
 
-      {/* Bouton favori */}
-      {item.isFavorite !== undefined && (
+        {/* Favorite button plus gros */}
         <motion.button
-          className="absolute top-2 right-2 bg-white bg-opacity-80 p-1 rounded-full"
-          whileHover={{ scale: 1.1, backgroundColor: "rgba(255, 255, 255, 0.95)" }}
+          onClick={toggleFavorite}
+          className="absolute bottom-4 right-4 p-3 rounded-2xl bg-white/95 backdrop-blur-sm hover:bg-white shadow-xl border border-gray-200"
+          whileHover={{ scale: 1.2 }}
           whileTap={{ scale: 0.9 }}
-          transition={{ duration: 0.2 }}
         >
-          <motion.span
-            className={`text-lg ${item.isFavorite ? 'text-red-500' : 'text-gray-400'}`}
-            animate={item.isFavorite ? { scale: [1, 1.3, 1] } : {}}
-            transition={{ duration: 0.3 }}
-          >
-            ❤️
-          </motion.span>
+          <Heart 
+            className={`w-6 h-6 ${isFavorite ? 'text-red-500 fill-current' : 'text-gray-600'}`}
+          />
         </motion.button>
-      )}
+
+        {/* Unavailable overlay */}
+        {!isAvailable && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+            <div className="bg-white/95 backdrop-blur-sm px-6 py-4 rounded-2xl shadow-xl">
+              <span className="text-gray-800 font-bold text-lg">Non disponible</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Content - Beaucoup plus d'espace et de contenu */}
+      <div className="p-6 md:p-8 space-y-6 flex-1 flex flex-col">
+        {/* Title and Category */}
+        <div className="space-y-3">
+          <h3 className="text-xl font-bold text-gray-900 line-clamp-2 leading-tight md:text-2xl lg:text-3xl">
+            {name}
+          </h3>
+          
+          {/* Rating plus visible */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-5 h-5 md:w-6 md:h-6 ${
+                      i < Math.floor(rating) 
+                        ? 'text-yellow-400 fill-current' 
+                        : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-base text-gray-700 font-bold md:text-lg">({rating})</span>
+            </div>
+            <div className="flex items-center text-gray-600 text-base md:text-lg">
+              <Clock className="w-5 h-5 mr-2" />
+              <span className="font-semibold">{preparationTime}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Description plus longue */}
+        <div className="flex-1">
+          <p className="text-gray-600 text-base md:text-lg leading-relaxed line-clamp-4">
+            {description || "Savourez ce délicieux plat préparé avec des ingrédients frais et de qualité premium. Une explosion de saveurs authentiques qui ravira vos papilles et vous transportera dans un voyage culinaire inoubliable."}
+          </p>
+        </div>
+
+        {/* Price Section plus imposante */}
+        <div className="space-y-4 pt-4 border-t border-gray-100">
+          <div className="space-y-2">
+            {discount > 0 && originalPrice && (
+              <span className="text-lg text-gray-500 line-through block font-medium">
+                {originalPrice.toLocaleString()} FCFA
+              </span>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-3xl font-bold text-orange-600 md:text-4xl lg:text-5xl">
+                {finalPrice?.toLocaleString()} FCFA
+              </span>
+              {discount > 0 && (
+                <span className="bg-gradient-to-r from-red-500 to-pink-500 text-white text-base px-4 py-2 rounded-2xl font-bold shadow-lg">
+                  -{discount}%
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Add to Cart Button plus gros et imposant */}
+          <motion.button
+            onClick={handleAddToCart}
+            disabled={!isAvailable}
+            className={`w-full flex items-center justify-center px-8 py-5 rounded-2xl font-bold transition-all duration-400 text-lg md:text-xl md:py-6 shadow-xl ${
+              isAvailable
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white hover:shadow-2xl transform hover:-translate-y-2'
+                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            }`}
+            whileHover={isAvailable ? { scale: 1.02 } : {}}
+            whileTap={isAvailable ? { scale: 0.98 } : {}}
+          >
+            <ShoppingCart className="w-6 h-6 mr-3" />
+            {isAvailable ? 'Ajouter au panier' : 'Non disponible'}
+          </motion.button>
+
+          {/* Modal pour l'ajout au panier avec compléments */}
+          <Suspense fallback={null}>
+            <AddToCartModal
+              isOpen={!!selectedItem}
+              onClose={() => setSelectedItem(null)}
+              item={selectedItem}
+              extraLists={extraLists}
+              onSuccess={handleAddToCartSuccess}
+            />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* Hover effect border plus visible */}
+      <div className="absolute inset-0 rounded-3xl ring-4 ring-orange-500/30 opacity-0 group-hover:opacity-100 transition-all duration-500 pointer-events-none" />
+      
+      {/* Glow effect au hover */}
+      <div className="absolute -inset-1 bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10 blur-xl" />
     </motion.div>
   );
 };
 
-export default ProductCard; 
+export default React.memo(ProductCard);

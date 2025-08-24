@@ -1,41 +1,46 @@
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Admin from "./pages/Admin";
-import Accueil from "./pages/acceuil";
-import Detail from "./pages/Details";
-import Panier from "./pages/panier";
-import AddRestaurant from "./pages/Addrestaurants";
-import RestaurantAdmin from "./pages/restaurantadmin";
-import Login from "./pages/loginrestau";
-import OrdersPage from "./pages/oders";
-import ProductDetails from "./pages/detail";
 import { CartProvider } from "./context/cartcontext";
-import OrderAddress from "./pages/oderdetails";
+// Global styles
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import CategoryListing from "./pages/categorieslist";
-import FinalOrderStatus from "./pages/ordersstatuts";
-import Profile from "./pages/profile";
-import Auth from "./pages/login";
-import QuartiersAdmin from "./pages/quartieradmin";
-import EmployeeManager from "./pages/employer";
-import { ThankYouPage } from './pages/ordersstatuts';
-import Logins from "./pages/loginstart";
-import MenuPage from "./pages/menu";
-import PaymentSuccess from "./pages/payementsuccess"; // Standardisé
-import PaymentFailure from "./pages/payementfailed"; // Standardisé
-import SuperAdmin from "./pages/superadmin";
-import CartPage from "./pages/panier"; // Assurez-vous que le chemin est correct
-import MaintenancePage from "./pages/maintenance";
-import ChangerId from "./pages/maj";
-import OrderTracking from "./pages/ordertrack";
+
+// Lazy-loaded pages (route-based code splitting)
+const Admin = lazy(() => import('./pages/Admin'));
+const Accueil = lazy(() => import('./pages/acceuil'));
+const Panier = lazy(() => import('./pages/panier'));
+const AddRestaurant = lazy(() => import('./pages/Addrestaurants'));
+const RestaurantAdmin = lazy(() => import('./pages/restaurantadmin'));
+const Login = lazy(() => import('./pages/loginrestau'));
+const OrdersPage = lazy(() => import('./pages/oders'));
+const ProductDetails = lazy(() => import('./pages/detail'));
+const OrderAddress = lazy(() => import('./pages/oderdetails'));
+const CategoryListing = lazy(() => import('./pages/categorieslist'));
+const FinalOrderStatus = lazy(() => import('./pages/ordersstatuts'));
+const Profile = lazy(() => import('./pages/profile'));
+const Auth = lazy(() => import('./pages/login'));
+const QuartiersAdmin = lazy(() => import('./pages/quartieradmin'));
+const EmployeeManager = lazy(() => import('./pages/employer'));
+const ThankYouPage = lazy(() => import('./pages/ordersstatuts').then(m => ({ default: m.ThankYouPage })));
+const Logins = lazy(() => import('./pages/loginstart'));
+const MenuPage = lazy(() => import('./pages/menu'));
+const PaymentSuccess = lazy(() => import('./pages/payementsuccess'));
+const PaymentFailure = lazy(() => import('./pages/payementfailed'));
+const SuperAdmin = lazy(() => import('./pages/superadmin'));
+const CartPage = lazy(() => import('./pages/panier'));
+const MaintenancePage = lazy(() => import('./pages/maintenance'));
+const ChangerId = lazy(() => import('./pages/maj'));
+const OrderTracking = lazy(() => import('./pages/ordertrack'));
+
 function App() {
   return (
     <CartProvider>
       <Router>
-        <Routes>
+        <Suspense fallback={<div style={{ padding: 16 }}>Chargement...</div>}>
+          <Routes>
           <Route path="/" element={<Logins />} />
           <Route path="/accueil" element={<Accueil />} />
           <Route path="/admin" element={<Admin />} />
-          <Route path="/details/:id" element={<Detail />} />
+          <Route path="/details/:id" element={<ProductDetails />} />
           <Route path="/panier" element={<Panier />} />
           <Route path="/addrestaurant" element={<AddRestaurant />} />
           <Route path="/admin-restaurant/:id" element={<RestaurantAdmin />} />
@@ -60,7 +65,8 @@ function App() {
           <Route path="/commande/me/:numeroTelephoneClient" element={<OrderTracking />} />
 
           {/* <Route path="*" element={<NotFoundPage />} /> */}
-        </Routes>
+          </Routes>
+        </Suspense>
       </Router>
     </CartProvider>
   );

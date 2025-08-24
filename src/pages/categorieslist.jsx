@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from "react";
+
 import { Link, useParams } from "react-router-dom";
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useCart } from "../context/cartcontext";
 import Slider from "react-slick";
+const AddToCartModal = lazy(() => import('../components/AddToCartModal'));
+
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
@@ -290,8 +293,12 @@ const CategoryListing = () => {
   const handleAddClick = useCallback(
     (item, e) => {
       e.preventDefault();
-      setSelectedItem(item);
-      setSelectedExtras({}); // Réinitialiser les extras
+      // Normaliser les IDs de compléments attendus par AddToCartModal
+      const extraIds = (item.extraLists && item.extraLists.length > 0)
+        ? item.extraLists
+        : (item.assortments || []);
+      setSelectedItem({ ...item, extraLists: extraIds });
+      setSelectedExtras({}); // Réinitialiser les extras (plus utilisé par le modal partagé)
       setValidationError(null);
     },
     []
@@ -348,7 +355,7 @@ const CategoryListing = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 flexed flex-col items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center">
         <p className="text-red-600 text-center">{error}</p>
         <button
           onClick={fetchData}
@@ -399,211 +406,27 @@ const CategoryListing = () => {
         )}
       </div>
 
-      {selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="text-lg font-semibold">Options pour {selectedItem.name}</h3>
-              <button
-                onClick={() => {
-                  setSelectedItem(null);
-                  setSelectedExtras({});
-                  setValidationError(null);
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4">
-              {validationError && (
-                <div
-                  className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
-                  role="alert"
-                >
-                  {validationError}
-                  <button
-                    className="absolute top-0 right-0 px-2 py-1 text-red-700"
-                    onClick={() => setValidationError(null)}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-              {/* Size Selection */}
-              {selectedItem.priceType === "sizes" && (
-                Object.keys(selectedItem.sizes || {}).length > 0 ? (
-                  <div className="mb-6">
-                    <h4 className="font-medium mb-3 text-gray-700">
-                      Taille <span className="text-red-500 ml-1">*</span>
-                    </h4>
-                    <div className="space-y-2">
-                      {Object.entries(selectedItem.sizes).map(([size, price], index) => (
-                        <label
-                          key={size}
-                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                            selectedSizes[selectedItem.id] === size
-                              ? "bg-green-50 border-2 border-green-200"
-                              : "border border-gray-200 hover:border-green-200"
-                          } ${
-                            validationError?.includes("taille") && !selectedSizes[selectedItem.id]
-                              ? "border-red-400 bg-red-50"
-                              : ""
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="size"
-                            value={size}
-                            checked={selectedSizes[selectedItem.id] === size}
-                            onChange={(e) => {
-                              setValidationError(null);
-                              setSelectedSizes((prev) => ({
-                                ...prev,
-                                [selectedItem.id]: e.target.value,
-                              }));
-                            }}
-                            className="form-radio h-5 w-5 text-green-600 focus:ring-green-500"
-                            aria-required="true"
-                            aria-invalid={validationError?.includes("taille") && !selectedSizes[selectedItem.id]}
-                          />
-                          <div className="ml-3 flex-1">
-                            <span className="text-gray-700">{size}</span>
-                            <span className="text-sm text-gray-500 ml-2">
-                              {convertPrice(price).toLocaleString()} Fcfa
-                            </span>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-red-600 text-sm">Aucune taille disponible</p>
-                )
-              )}
-              {/* Extras Selection */}
-              {selectedItem.assortments?.length === 0 ? (
-                selectedItem.priceType !== "sizes" && (
-                  <p className="text-gray-500 text-center">Aucun complément associé à ce plat.</p>
-                )
-              ) : (
-                selectedItem.assortments.map((assortmentId) => {
-                  const extraList = extraLists.find((el) => el.id === assortmentId);
-                  if (!extraList) return null;
-
-                  const hasError = validationError?.includes(extraList.name);
-
-                  return (
-                    <div key={extraList.id} className="mb-6">
-                      <h4
-                        className={`font-medium mb-3 text-gray-700 ${
-                          hasError ? "text-red-600" : ""
-                        }`}
-                      >
-                        {extraList.name}
-                        {extraList.extraListElements?.some((el) => el.required) && (
-                          <span className="text-red-500 ml-1">*</span>
-                        )}
-                      </h4>
-                      <div className="space-y-2">
-                        {extraList.extraListElements?.map((el, index) => (
-                          <label
-                            key={index}
-                            className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                              Array.isArray(selectedExtras[assortmentId]) && selectedExtras[assortmentId].includes(index)
-                                ? "bg-green-50 border-2 border-green-200"
-                                : "border border-gray-200 hover:border-green-200"
-                            } ${
-                              el.required &&
-                              hasError &&
-                              !(Array.isArray(selectedExtras[assortmentId]) && selectedExtras[assortmentId].includes(index))
-                                ? "border-red-400 bg-red-50"
-                                : ""
-                            }`}
-                          >
-                            <input
-                              type={el.multiple ? "checkbox" : "radio"}
-                              checked={Array.isArray(selectedExtras[assortmentId]) && selectedExtras[assortmentId].includes(index)}
-                              onChange={(e) => {
-                                setValidationError(null);
-                                const currentSelection = Array.isArray(selectedExtras[assortmentId])
-                                  ? [...selectedExtras[assortmentId]]
-                                  : [];
-                                if (el.multiple) {
-                                  if (e.target.checked) {
-                                    currentSelection.push(index);
-                                  } else {
-                                    const idx = currentSelection.indexOf(index);
-                                    if (idx !== -1) {
-                                      currentSelection.splice(idx, 1);
-                                    }
-                                  }
-                                } else {
-                                  currentSelection.length = 0;
-                                  if (e.target.checked) {
-                                    currentSelection.push(index);
-                                  }
-                                }
-                                setSelectedExtras({
-                                  ...selectedExtras,
-                                  [assortmentId]: currentSelection,
-                                });
-                              }}
-                              className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
-                              aria-required={el.required}
-                              aria-invalid={
-                                el.required &&
-                                hasError &&
-                                !(Array.isArray(selectedExtras[assortmentId]) && selectedExtras[assortmentId].includes(index))
-                              }
-                            />
-                            <div className="ml-3 flex-1">
-                              <span className="text-gray-700">{el.name}</span>
-                              {el.price && (
-                                <span className="text-sm text-gray-500 ml-2">
-                                  + {convertPrice(el.price).toLocaleString()} FCFA
-                                </span>
-                              )}
-                            </div>
-                            {el.required && (
-                              <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
-                                Obligatoire
-                              </span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedItem(null);
-                    setSelectedExtras({});
-                    setValidationError(null);
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 flex-1"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleAddToCart}
-                  disabled={!validateExtras().isValid || !selectedItem.available}
-                  className={`px-4 py-2 rounded-lg flex-1 transition-all duration-200 ${
-                    validateExtras().isValid && selectedItem.available
-                      ? "bg-green-600 text-white hover:bg-green-700"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                >
-                  Confirmer ({calculateTotalPrice().toLocaleString()} FCFA)
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal standardisé AddToCartModal */}
+      <Suspense fallback={null}>
+        <AddToCartModal
+          isOpen={!!selectedItem}
+          onClose={() => {
+            setSelectedItem(null);
+            setSelectedExtras({});
+            setValidationError(null);
+          }}
+          item={selectedItem}
+          extraLists={extraLists}
+          onSuccess={(msg) => {
+            setSuccessMessage(msg);
+            setTimeout(() => setSuccessMessage(""), 3000);
+            // Reset state
+            setSelectedItem(null);
+            setSelectedExtras({});
+            setValidationError(null);
+          }}
+        />
+      </Suspense>
 
       <footer className="fixed bottom-0 w-full bg-white border-t text-center z-40 shadow-lg">
         <div className="grid grid-cols-4">

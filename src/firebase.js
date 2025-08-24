@@ -32,24 +32,26 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
-// Activer la persistance hors ligne pour Firestore
-let persistenceInitialized = false;
+// Persistance hors ligne désactivée temporairement pour éviter les erreurs d'assertion interne
+let persistenceInitialized = true;
+console.log("Persistance hors ligne désactivée pour éviter les conflits d'état.");
 
-enableIndexedDbPersistence(db)
-  .then(() => {
-    persistenceInitialized = true;
-    console.log("Persistance hors ligne activée avec succès.");
-  })
-  .catch((err) => {
-    persistenceInitialized = true;
-    if (err.code === "failed-precondition") {
-      console.warn("La persistance hors ligne ne peut être activée que dans un seul onglet à la fois.");
-    } else if (err.code === "unimplemented") {
-      console.warn("La persistance hors ligne n'est pas prise en charge par ce navigateur.");
-    } else {
-      console.error("Erreur lors de l'activation de la persistance hors ligne :", err);
-    }
-  });
+// Optionnel: Réactiver la persistance si nécessaire
+// enableIndexedDbPersistence(db)
+//   .then(() => {
+//     persistenceInitialized = true;
+//     console.log("Persistance hors ligne activée avec succès.");
+//   })
+//   .catch((err) => {
+//     persistenceInitialized = true;
+//     if (err.code === "failed-precondition") {
+//       console.warn("La persistance hors ligne ne peut être activée que dans un seul onglet à la fois.");
+//     } else if (err.code === "unimplemented") {
+//       console.warn("La persistance hors ligne n'est pas prise en charge par ce navigateur.");
+//     } else {
+//       console.error("Erreur lors de l'activation de la persistance hors ligne :", err);
+//     }
+//   });
 
 // Initialisation de messaging avec gestion de compatibilité
 let messaging = null;

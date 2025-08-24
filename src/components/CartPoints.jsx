@@ -1,61 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { CardAnimations } from '../utils/animationSystem';
-import { Star, Sparkles, Gift, TrendingUp } from 'lucide-react';
+import { Star, Sparkles, Gift } from 'lucide-react';
+import { useCartPoints } from '../hooks/cart/useCartPoints';
 
 const CartPoints = ({ cartTotal, onPointsChange }) => {
-  const [userPoints, setUserPoints] = useState(0);
-  const [pointsToUse, setPointsToUse] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [showInfo, setShowInfo] = useState(false);
-
-  useEffect(() => {
-    const fetchUserPoints = async () => {
-      try {
-        if (auth.currentUser) {
-          const userDoc = await getDoc(doc(db, 'usersrestau', auth.currentUser.uid));
-          if (userDoc.exists()) {
-            const points = userDoc.data().points || 0;
-            setUserPoints(points);
-          }
-        }
-      } catch (error) {
-        console.error('Erreur lors de la récupération des points:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserPoints();
-  }, []);
-
-  // Calcul des points gagnés sur cette commande
-  const calculateEarnedPoints = (total) => {
-    const LOYALTY_THRESHOLD = 5000;
-    const FIRST_RATE = 0.1;
-    const NORMAL_RATE = 0.05;
-    const CREDIT_PER_POINT = 100;
-
-    if (total < LOYALTY_THRESHOLD) return 0;
-    
-    const deliveryFee = 1000;
-    const baseTotal = total - deliveryFee;
-    // Pour simplifier, on considère que c'est une commande normale
-    const rate = NORMAL_RATE;
-    return Math.floor((baseTotal * rate) / CREDIT_PER_POINT);
-  };
-
-  const earnedPoints = calculateEarnedPoints(cartTotal);
-  const maxPointsToUse = Math.min(userPoints, Math.floor(cartTotal / 100));
-  const pointsReduction = pointsToUse * 100;
-
-  const handlePointsChange = (newPoints) => {
-    const clampedPoints = Math.max(0, Math.min(newPoints, maxPointsToUse));
-    setPointsToUse(clampedPoints);
-    onPointsChange && onPointsChange(clampedPoints, clampedPoints * 100);
-  };
+  const { state, actions } = useCartPoints(cartTotal, onPointsChange);
+  const {
+    userPoints,
+    pointsToUse,
+    loading,
+    showInfo,
+    earnedPoints,
+    maxPointsToUse,
+    pointsReduction,
+    isAuthenticated,
+  } = state;
+  const { handlePointsChange, toggleInfo } = actions;
 
   if (loading) {
     return (
@@ -69,7 +29,7 @@ const CartPoints = ({ cartTotal, onPointsChange }) => {
     );
   }
 
-  if (!auth.currentUser) {
+  if (!isAuthenticated) {
     return (
       <motion.div
         className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4"
@@ -114,7 +74,7 @@ const CartPoints = ({ cartTotal, onPointsChange }) => {
             <span className="font-semibold text-green-800">Points de fidélité</span>
           </div>
           <motion.button
-            onClick={() => setShowInfo(!showInfo)}
+            onClick={toggleInfo}
             className="text-green-600 hover:text-green-800"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}

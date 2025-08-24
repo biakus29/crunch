@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CardAnimations } from '../utils/animationSystem';
 import { 
   Gift, 
   Tag, 
@@ -12,97 +11,12 @@ import {
   X,
   Sparkles
 } from 'lucide-react';
+import { useCartPromotions, resolveIconComponent } from '../hooks/cart/useCartPromotions';
 
 const CartPromotions = ({ cartTotal, onPromoApplied }) => {
-  const [appliedPromo, setAppliedPromo] = useState(null);
-  const [showPromoInput, setShowPromoInput] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-
-  // Promotions disponibles
-  const availablePromos = [
-    {
-      code: 'POPULAR50',
-      name: 'Offre Spéciale -50%',
-      description: 'Sur tous les plats populaires',
-      discount: 0.5,
-      minTotal: 5000,
-      validUntil: '2024-12-31',
-      icon: Fire,
-      color: 'from-red-500 to-pink-500'
-    },
-    {
-      code: 'FREESHIP',
-      name: 'Livraison Gratuite',
-      description: 'Commande minimum 8000 FCFA',
-      freeShipping: true,
-      minTotal: 8000,
-      validUntil: '2024-12-25',
-      icon: Gift,
-      color: 'from-green-500 to-emerald-500'
-    },
-    {
-      code: 'FAMILY30',
-      name: 'Menu Famille -30%',
-      description: 'Parfait pour 4-6 personnes',
-      discount: 0.3,
-      minTotal: 10000,
-      validUntil: '2024-12-28',
-      icon: Sparkles,
-      color: 'from-purple-500 to-indigo-500'
-    },
-    {
-      code: 'FLASH40',
-      name: 'Flash Sale -40%',
-      description: 'Seulement aujourd\'hui',
-      discount: 0.4,
-      minTotal: 3000,
-      validUntil: '2024-12-20',
-      icon: Zap,
-      color: 'from-orange-500 to-red-500'
-    }
-  ];
-
-  const handleApplyPromo = () => {
-    const promo = availablePromos.find(p => p.code === promoCode.toUpperCase());
-    
-    if (!promo) {
-      alert('Code promo invalide');
-      return;
-    }
-
-    if (cartTotal < promo.minTotal) {
-      alert(`Commande minimum de ${promo.minTotal} FCFA requise`);
-      return;
-    }
-
-    setAppliedPromo(promo);
-    setShowPromoInput(false);
-    setPromoCode('');
-    
-    // Calculer la réduction
-    let discount = 0;
-    if (promo.discount) {
-      discount = cartTotal * promo.discount;
-    }
-    
-    onPromoApplied && onPromoApplied(promo, discount);
-  };
-
-  const handleRemovePromo = () => {
-    setAppliedPromo(null);
-    onPromoApplied && onPromoApplied(null, 0);
-  };
-
-  const calculateDiscount = () => {
-    if (!appliedPromo) return 0;
-    
-    if (appliedPromo.discount) {
-      return cartTotal * appliedPromo.discount;
-    }
-    return 0;
-  };
-
-  const discount = calculateDiscount();
+  const { state, actions, helpers } = useCartPromotions(cartTotal, { onPromoApplied });
+  const { appliedPromo, showPromoInput, promoCode, availablePromos, discount } = state;
+  const { setShowPromoInput, setPromoCode, applyPromo, removePromo } = actions;
 
   return (
     <div className="space-y-4">
@@ -153,7 +67,7 @@ const CartPromotions = ({ cartTotal, onPromoApplied }) => {
                     className="flex-1 px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                   <motion.button
-                    onClick={handleApplyPromo}
+                    onClick={() => applyPromo(promoCode)}
                     className="bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-700"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -178,7 +92,7 @@ const CartPromotions = ({ cartTotal, onPromoApplied }) => {
               >
                 <div className="flex items-start space-x-2">
                   <div className={`w-8 h-8 bg-gradient-to-r ${promo.color} rounded-full flex items-center justify-center`}>
-                    <promo.icon className="w-4 h-4 text-white" />
+                    {(() => { const Icon = resolveIconComponent(promo.icon, { Gift, Fire, Zap, Sparkles }); return <Icon className="w-4 h-4 text-white" />; })()}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
@@ -218,7 +132,7 @@ const CartPromotions = ({ cartTotal, onPromoApplied }) => {
                   }}
                   transition={{ duration: 2, repeat: Infinity }}
                 >
-                  <appliedPromo.icon className="w-6 h-6" />
+                  {(() => { const Icon = resolveIconComponent(appliedPromo.icon, { Gift, Fire, Zap, Sparkles }); return <Icon className="w-6 h-6" />; })()}
                 </motion.div>
                 <div>
                   <h4 className="font-bold">{appliedPromo.name}</h4>
@@ -226,7 +140,7 @@ const CartPromotions = ({ cartTotal, onPromoApplied }) => {
                 </div>
               </div>
               <motion.button
-                onClick={handleRemovePromo}
+                onClick={removePromo}
                 className="bg-white bg-opacity-20 p-2 rounded-full hover:bg-opacity-30"
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
@@ -254,4 +168,4 @@ const CartPromotions = ({ cartTotal, onPromoApplied }) => {
   );
 };
 
-export default CartPromotions; 
+export default CartPromotions;

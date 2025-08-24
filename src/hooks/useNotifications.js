@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { messaging, isSupported } from "../firebase";
 import { getToken, onMessage } from "firebase/messaging";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
 const VAPID_KEY = "BHnVLhfreD5NmV_RYjOvSkJoh2NtJNV1hFOxi__f-SFz9Cf_iatVJC807jWukr6TicgDNHVx-rErZkWBA84rq88";
@@ -91,8 +91,8 @@ const useNotifications = (onNotificationReceived) => {
         });
         if (newToken && auth.currentUser) {
           const userRef = doc(db, "usersrestau", auth.currentUser.uid);
-          const userDoc = await userRef.get();
-          const currentToken = userDoc.data()?.fcmToken;
+          const userSnapshot = await getDoc(userRef);
+          const currentToken = userSnapshot.data()?.fcmToken;
           if (newToken !== currentToken) {
             await updateDoc(userRef, { fcmToken: newToken });
             console.log("Token FCM mis à jour:", newToken);

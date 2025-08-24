@@ -221,7 +221,7 @@ export const AnimatedComponents = {
         src={src}
         alt={alt}
         className={className}
-        whileHover={hoverZoom ? { scale: 1.1 } : {}}
+        whileHover={hoverZoom ? { scale: 1.1 } : "false"}
         transition={{ duration: 0.3, ease: "easeOut" }}
       />
     </motion.div>
@@ -694,4 +694,4 @@ export default {
   useAnimation,
   useFoodAnimations,
   useScrollTrigger
-}; 
+};

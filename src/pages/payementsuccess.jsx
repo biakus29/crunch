@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/cartcontext";
 import { db } from "../firebase";
-import { doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
+import { doc, updateDoc, getDoc, Timestamp, collection, query, where, getDocs } from "firebase/firestore";
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
@@ -61,6 +61,23 @@ const PaymentSuccess = () => {
           paymentRef: transactionId,
           timestamp: Timestamp.now(),
         });
+
+        // Mettre à jour le statut du paiement dans la collection payments
+        const paymentsQuery = query(
+          collection(db, "payments"),
+          where("transactionId", "==", transactionId),
+          where("orderId", "==", orderId)
+        );
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        
+        if (!paymentsSnapshot.empty) {
+          const paymentDoc = paymentsSnapshot.docs[0];
+          await updateDoc(paymentDoc.ref, {
+            status: isPaymentSuccess ? "completed" : "failed",
+            updatedAt: new Date(),
+            paymentCompletedAt: isPaymentSuccess ? new Date() : null
+          });
+        }
 
         // Vider le panier et supprimer les données en attente
         clearCart();

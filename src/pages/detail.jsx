@@ -7,6 +7,7 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useCart } from "../context/cartcontext";
+import AddToCartModal from '../components/AddToCartModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShoppingCart, 
@@ -76,30 +77,11 @@ const ProductDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [selectedExtras, setSelectedExtras] = useState({});
-  const [selectedSizes, setSelectedSizes] = useState({});
   const [successMessage, setSuccessMessage] = useState("");
   const [validationError, setValidationError] = useState(null);
 
   console.log("ID extrait de l'URL :", id);
 
-  // Initialiser la taille par défaut pour les produits avec tailles
-  useEffect(() => {
-    if (
-      product &&
-      product.priceType === "sizes" &&
-      product.sizes &&
-      Object.keys(product.sizes).length > 0 &&
-      Object.values(product.sizes).some((price) => price && convertPrice(price) > 0)
-    ) {
-      const validSize = Object.keys(product.sizes).find(
-        (size) => product.sizes[size] && convertPrice(product.sizes[size]) > 0
-      );
-      if (validSize) {
-        setSelectedSizes({ [product.id]: validSize });
-      }
-    }
-  }, [product]);
 
   // Récupérer les avis
   const fetchReviews = async (productId) => {
@@ -223,57 +205,7 @@ const ProductDetails = () => {
     return convertPrice(price).toLocaleString("fr-FR", { currency: "XAF" }) + " FCFA";
   };
 
-  const validateExtras = useCallback(() => {
-    if (!selectedItem) return { isValid: false, error: null };
 
-    if (
-      selectedItem.priceType === "sizes" &&
-      Object.keys(selectedItem.sizes || {}).length > 0 &&
-      !selectedSizes[selectedItem.id]
-    ) {
-      return { isValid: false, error: "Veuillez sélectionner une taille." };
-    }
-
-    for (const assortmentId of selectedItem.assortments || []) {
-      const extraList = extraLists.find((el) => el.id === assortmentId);
-      if (!extraList) continue;
-
-      const requiredElements = extraList.extraListElements?.filter((el) => el.required) || [];
-      if (requiredElements.length === 0) continue;
-
-      const selected = selectedExtras[assortmentId] || [];
-      if (selected.length === 0) {
-        return {
-          isValid: false,
-          error: `Veuillez sélectionner tous les extras obligatoires pour « ${extraList.name} ».`,
-        };
-      }
-    }
-    return { isValid: true, error: null };
-  }, [selectedItem, selectedSizes, selectedExtras, extraLists]);
-
-  const calculateTotalPrice = useCallback(() => {
-    const itemToUse = selectedItem || product;
-    let total = itemToUse
-      ? itemToUse.priceType === "sizes" && selectedSizes[itemToUse.id]
-        ? convertPrice(itemToUse.sizes[selectedSizes[itemToUse.id]])
-        : convertPrice(itemToUse.price)
-      : 0;
-    if (isNaN(total)) total = 0;
-
-    Object.entries(selectedExtras).forEach(([assortmentId, indexes]) => {
-      const extraList = extraLists.find((el) => el.id === assortmentId);
-      if (extraList && itemToUse.assortments?.includes(assortmentId)) {
-        indexes.forEach((index) => {
-          const extra = extraList.extraListElements[index];
-          if (extra && extra.price) {
-            total += convertPrice(extra.price);
-          }
-        });
-      }
-    });
-    return total * quantity;
-  }, [selectedItem, product, selectedSizes, selectedExtras, extraLists, quantity]);
 
   const handleQuantityChange = (delta) => {
     setQuantity((prev) => Math.max(1, prev + delta));
@@ -281,53 +213,46 @@ const ProductDetails = () => {
 
   const handleCartAction = (navigateToCheckout) => {
     if (!product?.available) return;
-    setSelectedItem(product);
-    setSelectedExtras({});
-    setValidationError(null);
-    setSelectedSizes(
-      product.priceType === "sizes" &&
-      product.sizes &&
-      Object.values(product.sizes).some((price) => price && convertPrice(price) > 0)
-        ? {
-            [product.id]: Object.keys(product.sizes).find(
-              (size) => product.sizes[size] && convertPrice(product.sizes[size]) > 0
-            ),
-          }
-        : {}
-    );
-    console.log(`Action panier déclenchée pour ${product.name} (navigateToCheckout: ${navigateToCheckout})`);
+    
+    // Vérifier s'il y a des compléments à demander
+    const hasExtras = product.assortments && product.assortments.length > 0;
+    
+    if (hasExtras) {
+      // Ouvrir le modal pour les compléments
+      setSelectedItem({
+        ...product,
+        extraLists: product.assortments || [],
+        navigateToCheckout
+      });
+      console.log(`Modal ouvert pour ${product.name} avec compléments:`, product.assortments);
+    } else {
+      // Ajouter directement au panier sans modal
+      const cartItem = {
+        ...product,
+        restaurantId: product.restaurantId || "default_restaurant_id",
+        quantity: 1,
+        selectedExtras: {},
+        selectedSize: product.priceType === "sizes" ? Object.keys(product.sizes || {})[0] : null,
+        price: product.priceType === "sizes" && product.sizes 
+          ? convertPrice(Object.values(product.sizes)[0])
+          : convertPrice(product.price),
+      };
+      
+      addToCart(cartItem);
+      setSuccessMessage(`${product.name} ajouté au panier !`);
+      setTimeout(() => setSuccessMessage(""), 3000);
+      
+      console.log(`Ajout direct au panier : ${product.name}, navigation vers ${navigateToCheckout ? "/accueil" : "/cart"}`);
+      navigate(navigateToCheckout ? "/accueil" : "/cart");
+      if (navigateToCheckout) trackInitiateCheckout();
+    }
   };
 
-  const addProductToCart = (navigateToCheckout = false) => {
-    const validation = validateExtras();
-    if (!validation.isValid) {
-      setValidationError(validation.error);
-      console.log(`Validation échouée : ${validation.error}`);
-      return;
-    }
-
-    const totalPrice = calculateTotalPrice();
-    const cartItem = {
-      ...selectedItem,
-      restaurantId: selectedItem.restaurantId || "default_restaurant_id",
-      quantity,
-      selectedExtras,
-      selectedSize: selectedItem.priceType === "sizes" ? selectedSizes[selectedItem.id] : null,
-      price: totalPrice / quantity,
-    };
-
-    addToCart(cartItem);
-    setSuccessMessage(
-      `${selectedItem.name}${selectedItem.priceType === "sizes" && selectedSizes[selectedItem.id] ? ` (${selectedSizes[selectedItem.id]})` : ""} ajouté au panier !`
-    );
+  const handleAddToCartSuccess = (message) => {
+    setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(""), 3000);
-    setSelectedItem(null);
-    setSelectedExtras({});
-    setSelectedSizes({});
-    setValidationError(null);
-    setQuantity(1);
-
-    trackAddToCart(totalPrice);
+    
+    const navigateToCheckout = selectedItem?.navigateToCheckout;
     console.log(`Ajout au panier : ${selectedItem.name} (${selectedItem.id}), navigation vers ${navigateToCheckout ? "/accueil" : "/cart"}`);
     navigate(navigateToCheckout ? "/accueil" : "/cart");
     if (navigateToCheckout) trackInitiateCheckout();
@@ -350,31 +275,15 @@ const ProductDetails = () => {
     }
   };
 
-  const trackAddToCart = (totalPrice) => {
-    if (window.fbq && selectedItem) {
-      window.fbq("track", "AddToCart", {
-        content_ids: [selectedItem.id],
-        content_name: selectedItem.name,
-        content_type: "product",
-        value: totalPrice,
-        currency: "XAF",
-        availability: selectedItem.available ? "in stock" : "out of stock",
-        num_items: quantity,
-      });
-    }
-  };
 
   const trackInitiateCheckout = () => {
     if (window.fbq && selectedItem) {
-      const totalPrice = calculateTotalPrice();
       window.fbq("track", "InitiateCheckout", {
         content_ids: [selectedItem.id],
         content_name: selectedItem.name,
         content_type: "product",
-        value: totalPrice,
         currency: "XAF",
         availability: selectedItem.available ? "in stock" : "out of stock",
-        num_items: quantity,
       });
     }
   };
@@ -456,7 +365,7 @@ const ProductDetails = () => {
       <i
         key={i}
         className={`icofont-star ${i < rating ? "text-yellow-400" : "text-gray-300"}`}
-        aria-hidden="true"
+        aria-hidden={true}
       ></i>
     ));
   }, []);
@@ -731,17 +640,11 @@ const ProductDetails = () => {
                       onClick={(e) => {
                         e.preventDefault();
                         if (!item.available) return;
-                        setSelectedItem(item);
-                        setSelectedExtras({});
-                        setValidationError(null);
-                        if (item.priceType === "sizes" && item.sizes) {
-                          const validSize = Object.keys(item.sizes).find(
-                            (size) => item.sizes[size] && convertPrice(item.sizes[size]) > 0
-                          );
-                          if (validSize) {
-                            setSelectedSizes((prev) => ({ ...prev, [item.id]: validSize }));
-                          }
-                        }
+                        setSelectedItem({
+                          ...item,
+                          extraLists: item.assortments || [],
+                          navigateToCheckout: false
+                        });
                         console.log(`Produit recommandé sélectionné : ${item.name} (${item.id})`);
                       }}
                       disabled={!item.available}
@@ -757,183 +660,16 @@ const ProductDetails = () => {
         </div>
       </div>
 
-      {/* Modal pour les options du produit */}
-      <AnimatePresence>
-      {selectedItem && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setSelectedItem(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">{selectedItem.name}</h3>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setSelectedItem(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-5 h-5" />
-                </motion.button>
-                </div>
-
-              {/* Sélection de taille si applicable */}
-              {selectedItem.priceType === 'sizes' && selectedItem.sizes && (
-                <div className="mb-4">
-                  <h4 className="font-medium text-gray-700 mb-2">Choisissez votre taille</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(selectedItem.sizes).map(([size, price]) => (
-                      <motion.button
-                          key={size}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setSelectedSizes(prev => ({ ...prev, [selectedItem.id]: size }))}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                            selectedSizes[selectedItem.id] === size
-                            ? 'border-green-500 bg-green-50 text-green-700'
-                            : 'border-gray-200 hover:border-green-300'
-                          }`}
-                        >
-                        <div className="font-medium">{size}</div>
-                        <div className="text-sm text-gray-600">{convertPrice(price).toLocaleString()} FCFA</div>
-                      </motion.button>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sélection des extras */}
-              {selectedItem.assortments?.length === 0 ? (
-                selectedItem.priceType !== "sizes" && (
-                  <p className="text-gray-500 text-center mb-6">Aucun complément associé à ce plat.</p>
-                )
-              ) : (
-                selectedItem.assortments.map((assortmentId) => {
-                  const extraList = extraLists.find((el) => el.id === assortmentId);
-                  if (!extraList) return null;
-
-                  const hasError = validationError?.includes(extraList.name);
-
-                  return (
-                    <div key={extraList.id} className="mb-6">
-                      <h4 className={`font-medium mb-3 text-gray-700 ${hasError ? "text-red-600" : ""}`}>
-                        {extraList.name}
-                        {extraList.extraListElements?.some((el) => el.required) && (
-                          <span className="text-red-500 ml-1" aria-hidden="true">*</span>
-                        )}
-                      </h4>
-                      <div className="space-y-2">
-                        {extraList.extraListElements?.map((el, index) => (
-                          <label
-                            key={index}
-                            htmlFor={`extra-${assortmentId}-${index}`}
-                            className={`flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                              selectedExtras[assortmentId]?.includes(index)
-                                ? "bg-green-50 border-2 border-green-200"
-                                : "border border-gray-200 hover:border-green-200"
-                            } ${
-                              el.required &&
-                              hasError &&
-                              !selectedExtras[assortmentId]?.includes(index)
-                                ? "border-red-400 bg-red-50"
-                                : ""
-                            }`}
-                          >
-                            <input
-                              id={`extra-${assortmentId}-${index}`}
-                              type={el.multiple ? "checkbox" : "radio"}
-                              name={el.multiple ? undefined : `extra-${assortmentId}`}
-                              checked={selectedExtras[assortmentId]?.includes(index) || false}
-                              onChange={(e) => {
-                                setValidationError(null);
-                                const newSelection = [...(selectedExtras[assortmentId] || [])];
-                                if (el.multiple) {
-                                  e.target.checked
-                                    ? newSelection.push(index)
-                                    : newSelection.splice(newSelection.indexOf(index), 1);
-                                } else {
-                                  newSelection.length = 0;
-                                  newSelection.push(index);
-                                }
-                                setSelectedExtras({
-                                  ...selectedExtras,
-                                  [assortmentId]: newSelection,
-                                });
-                              }}
-                              className="form-checkbox h-5 w-5 text-green-600 focus:ring-green-500"
-                              aria-required={el.required}
-                              aria-invalid={
-                                el.required &&
-                                hasError &&
-                                !selectedExtras[assortmentId]?.includes(index)
-                              }
-                              aria-label={`${el.name}${el.price ? ` pour ${formatPrice(el.price)}` : ""}`}
-                            />
-                            <div className="ml-3 flex-1">
-                              <span className="text-gray-700">{el.name}</span>
-                              {el.price && (
-                                <span className="text-sm text-gray-500 ml-2">+ {formatPrice(el.price)}</span>
-                              )}
-                            </div>
-                            {el.required && (
-                              <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">Obligatoire</span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-
-              {/* Prix total */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-800">Total</span>
-                  <span className="text-2xl font-bold text-green-600">
-                    {calculateTotalPrice().toLocaleString()} FCFA
-                  </span>
-              </div>
-            </div>
-
-              {/* Bouton Commander avec animation incitative */}
-              <motion.button
-                whileHover={{ scale: 1.02, boxShadow: "0 10px 25px rgba(34, 197, 94, 0.3)" }}
-                whileTap={{ scale: 0.98 }}
-                onClick={addProductToCart}
-                className="relative w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group"
-              >
-                <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  initial={false}
-                />
-                <motion.span
-                  className="relative z-10 flex items-center justify-center"
-                  animate={{ x: [0, 2, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                >
-                  <ShoppingCart className="w-5 h-5 mr-2" />
-                  Ajouter à ma commande
-                </motion.span>
-                <motion.div
-                  className="absolute inset-0 bg-white opacity-20"
-                  animate={{ x: ["-100%", "100%"] }}
-                  transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
-                />
-              </motion.button>
-            </motion.div>
-          </motion.div>
-      )}
-      </AnimatePresence>
+      {/* Modal pour l'ajout au panier avec compléments */}
+      <AddToCartModal
+        isOpen={!!selectedItem}
+        onClose={() => setSelectedItem(null)}
+        item={selectedItem}
+        extraLists={extraLists}
+        onSuccess={handleAddToCartSuccess}
+        showQuantitySelector={true}
+        defaultQuantity={quantity}
+      />
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-md">
         <div className="flex">

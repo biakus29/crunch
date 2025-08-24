@@ -12,6 +12,8 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { formatPrice } from "../utils/orderUtils";
+import { groupExtrasByGroupId, validateRequiredGroups } from "../shared/extras";
+
 const DEFAULT_DELIVERY_FEE = 1000;
 
 // Fonction pour normaliser les prix
@@ -427,16 +429,38 @@ const CreateOrderForm = ({
         }
       }
       if (item.quantity < 1) errors.quantity = "Quantité minimale : 1";
-      errors.extras = {};
-      extraLists.forEach((extraList) => {
-        if (
-          extraList.required &&
-          (!item.extras[extraList.id] || item.extras[extraList.id].length === 0)
-        ) {
-          errors.extras[extraList.id] = `Veuillez sélectionner ${extraList.name}`;
+      // Validation extras standardisée (groupes requis)
+      if (extraLists && extraLists.length > 0) {
+        const allExtras = [];
+        extraLists.forEach((list) => {
+          (list.extraListElements || []).forEach((el, i) => {
+            allExtras.push({
+              id: `${list.id}:${i}`,
+              name: el.name,
+              price: el.price,
+              groupId: list.id,
+              // considérer requis au niveau élément ou liste
+              required: Boolean(el.required || list.required),
+            });
+          });
+        });
+        const groups = groupExtrasByGroupId(allExtras);
+        const selectedById = {};
+        Object.entries(item.extras || {}).forEach(([gid, idxs = []]) => {
+          idxs.forEach((i) => { selectedById[`${gid}:${i}`] = true; });
+        });
+        const res = validateRequiredGroups({ groups, selectedById });
+        if (!res.valid) {
+          errors.extras = {};
+          res.errors.forEach((e) => {
+            const list = extraLists.find((l) => (l.id === e.groupId) || (e.groupId === "__ungrouped__" && l.id));
+            const name = list?.name || "Extras";
+            errors.extras[list?.id || e.groupId] = `Veuillez sélectionner ${name}`;
+          });
         }
-      });
-      if (Object.keys(errors.extras).length === 0) delete errors.extras;
+      }
+      if (errors.extras && Object.keys(errors.extras).length === 0) delete errors.extras;
+
       console.log(`Erreurs pour l'item ${index}:`, errors);
       setItemErrors((prev) => {
         const newErrors = [...prev];

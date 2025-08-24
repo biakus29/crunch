@@ -105,7 +105,7 @@ const ProgressIndicator = ({ status }) => {
                 className={`w-8 h-8 rounded-full flex items-center justify-center ${
                   isCompleted ? step.color + ' text-white' : 'bg-gray-200 text-gray-400'
                 }`}
-                animate={isCurrent ? { scale: [1, 1.2, 1] } : {}}
+                animate={isCurrent ? { scale: [1, 1.2, 1] } : "false"}
                 transition={{ duration: 0.5, repeat: isCurrent ? Infinity : 0, repeatDelay: 1 }}
                 whileHover={{ scale: 1.1 }}
               >
@@ -125,7 +125,7 @@ const ProgressIndicator = ({ status }) => {
                 className={`text-xs mt-1 text-center ${
                   isCompleted ? 'text-gray-800 font-medium' : 'text-gray-500'
                 }`}
-                animate={isCurrent ? { color: '#1f2937' } : {}}
+                animate={isCurrent ? { color: '#1f2937' } : "false"}
               >
                 {step.label}
               </motion.span>

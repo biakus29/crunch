@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+
 import { db, auth, storage } from "../firebase";
 import {
   collection,
@@ -26,7 +27,6 @@ import {
   FaShoppingBag, 
   FaPlusCircle, 
   FaCommentAlt, 
-  FaStar, 
   FaCog, 
   FaBars, 
   FaTimes,
@@ -35,9 +35,8 @@ import {
   FaUser,
   FaBell,
   FaSearch,
+  FaStar,
   FaChevronDown,
-  FaChevronRight,
-  FaChevronLeft,
   FaCalendarAlt,
   FaMoneyBillWave,
   FaShippingFast
@@ -45,987 +44,33 @@ import {
 import { HiOutlineLogout } from "react-icons/hi";
 import LoyaltyPointsManager from "./LoyaltyPoints";
 import CreateOrderForm from "./CreateOrderForm";
+import PendingOrdersModal from "../components/admin/orders/PendingOrdersModal";
+import OrderCard from "../components/admin/orders/OrderCard";
+import OrderDetailsModal from "../components/admin/orders/OrderDetailsModal";
+import Sidebar from "../components/admin/Layout/Sidebar";
+import Topbar from "../components/admin/Layout/Topbar";
+import { useOrdersAdmin } from "../features/orders/useOrdersAdmin";
+import {
+  ORDER_STATUS,
+  STATUS_LABELS,
+  STATUS_COLORS,
+  STATUS_COLUMN_COLORS,
+  DEFAULT_DELIVERY_FEE,
+  FAILURE_REASONS,
+} from "../components/admin/adminConstants";
+import {
+  formatPrice,
+  convertPrice,
+  calculateTimeDifferenceInMinutes,
+  calculateOrderTotals,
+  getWeekNumber,
+} from "../utils/adminUtils";
 
-const ORDER_STATUS = {
-  PENDING: "en_attente",
-  PREPARING: "en_preparation",
-  READY_TO_DELIVER: "pret_a_livrer",
-  DELIVERING: "en_livraison",
-  DELIVERED: "livree",
-  FAILED: "echec",
-};
-
-const STATUS_LABELS = {
-  [ORDER_STATUS.PENDING]: "En attente",
-  [ORDER_STATUS.PREPARING]: "En préparation",
-  [ORDER_STATUS.READY_TO_DELIVER]: "Prêt à livrer",
-  [ORDER_STATUS.DELIVERING]: "En livraison",
-  [ORDER_STATUS.DELIVERED]: "Livrée",
-  [ORDER_STATUS.FAILED]: "Échec",
-};
-
-const STATUS_COLORS = {
-  [ORDER_STATUS.PENDING]: "bg-yellow-500 text-white",
-  [ORDER_STATUS.PREPARING]: "bg-blue-500 text-white",
-  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-500 text-white",
-  [ORDER_STATUS.DELIVERING]: "bg-orange-500 text-white",
-  [ORDER_STATUS.DELIVERED]: "bg-green-600 text-white",
-  [ORDER_STATUS.FAILED]: "bg-red-600 text-white",
-};
-
-const STATUS_COLUMN_COLORS = {
-  [ORDER_STATUS.PENDING]: "bg-gray-100 border-gray-300",
-  [ORDER_STATUS.PREPARING]: "bg-blue-50 border-blue-200",
-  [ORDER_STATUS.READY_TO_DELIVER]: "bg-purple-50 border-purple-200",
-  [ORDER_STATUS.DELIVERING]: "bg-yellow-50 border-yellow-200",
-  [ORDER_STATUS.DELIVERED]: "bg-green-50 border-green-200",
-};
-
-const DEFAULT_DELIVERY_FEE = 1000;
-
-const FAILURE_REASONS = [
-  "Client injoignable",
-  "Adresse incorrecte",
-  "Annulation par le client",
-  "Problème de stock",
-  "Erreur de livraison",
-  "Autre",
-];
-
-const formatPrice = (number) =>
-  Number(number).toLocaleString("fr-FR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-
-const convertPrice = (price) => {
-  if (typeof price === "string") {
-    return parseFloat(price.replace(/\./g, ""));
-  }
-  return Number(price);
-};
-
-const calculateTimeDifferenceInMinutes = (start, end) => {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const diffMs = endDate - startDate;
-  return Math.floor(diffMs / (1000 * 60));
-};
-
-const calculateOrderTotals = (order, extraLists, items) => {
-  const subtotal = order.items.reduce((sum, item) => {
-    const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
-    const itemPrice = item.price !== undefined && !isNaN(convertPrice(item.price))
-      ? convertPrice(item.price)
-      : item.dishPrice !== undefined && !isNaN(convertPrice(item.dishPrice))
-      ? convertPrice(item.dishPrice)
-      : currentItem?.price
-      ? convertPrice(currentItem.price)
-      : 0;
-    const extrasTotal = item.selectedExtras
-      ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
-          const extraList = extraLists.find((el) => el.id === extraListId)?.extraListElements || [];
-          return extraSum + indexes.reduce((acc, index) => acc + Number(extraList[index]?.price || 0), 0);
-        }, 0)
-      : 0;
-    return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
-  }, 0);
-  const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-  const pointsReduction = Number(order.pointsReduction) || 0;
-  const totalWithDelivery = subtotal + deliveryFee - pointsReduction;
-  return { subtotal, totalWithDelivery, pointsReduction };
-};
-
-const getWeekNumber = (date) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  return 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-};
-
-const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) => {
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Commandes en attente</h3>
-          <button
-            className="text-gray-500 hover:text-gray-700 text-xl"
-            onClick={onClose}
-            aria-label="Fermer"
-          >
-            ×
-          </button>
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-          {orders.length === 0 ? (
-            <p className="text-gray-500 text-center">Aucune commande en attente</p>
-          ) : (
-            orders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                items={items}
-                extraLists={extraLists}
-                usersData={usersData}
-                onShowDetails={() => {}}
-                onDragStart={() => {}}
-                onDragEnd={() => {}}
-              />
-            ))
-          )}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
-            onClick={onClose}
-          >
-            Fermer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
-  const user = order.userId
-    ? usersData.byId[order.userId]
-    : order.contact?.phone && usersData.byPhone[order.contact.phone];
-  const clientInfo = user
-    ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
-    : order.contact?.name || "Client inconnu";
-  const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non spécifié";
-  const address = order.address || {};
-  const quartier = address.area || "Non spécifié";
-  const description = address.completeAddress || "Non spécifié";
-  const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-  const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
-
-  const getExtraName = (extraListId, index) => {
-    const extraList = extraLists.find((el) => el.id === extraListId);
-    const element = extraList?.extraListElements?.[index];
-    return element ? `${element.name}${element.price ? ` (+${convertPrice(element.price).toLocaleString()} FCFA)` : ""}` : "Extra inconnu";
-  };
-
-  return (
-    <div
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={() => onShowDetails(order)}
-      className="mb-3 p-3 bg-white rounded-lg shadow-md border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow w-full"
-    >
-      <div className="flex flex-col space-y-2 text-base">
-        <div className="font-medium text-gray-800 truncate" title={clientInfo}>
-          Client: {clientInfo}
-          <span className="ml-2 text-gray-600 text-sm">Tel: {phoneNumber}</span>
-        </div>
-        <div className="text-gray-600">Quartier: {quartier}</div>
-        <div className="text-gray-600">Adresse: {description}</div>
-        <div className="text-gray-600">Frais de livraison: {formatPrice(deliveryFee)} FCFA</div>
-
-        <div className="flex justify-between items-center">
-          <div className="text-gray-600">ID: #{order.id.slice(0, 6)}</div>
-          <span
-            className={`inline-block px-2 py-1 rounded text-sm font-medium ${
-              STATUS_COLORS[order.status] || "bg-gray-100 text-gray-600"
-            }`}
-          >
-            Statut: {STATUS_LABELS[order.status] || "En attente"}
-          </span>
-        </div>
-
-        <div className="border-t pt-2">
-          <h4 className="font-semibold text-sm mb-1">Articles:</h4>
-          <div className="max-h-32 overflow-y-auto text-sm">
-            {order.items.map((item, index) => {
-              const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
-              const price = item.price !== undefined && !isNaN(convertPrice(item.price))
-                ? convertPrice(item.price)
-                : item.dishPrice !== undefined && !isNaN(convertPrice(item.dishPrice))
-                ? convertPrice(item.dishPrice)
-                : currentItem?.price
-                ? convertPrice(currentItem.price)
-                : 0;
-              return (
-                <div key={`${item.dishId}-${index}`} className="mb-1">
-                  <div className="flex justify-between">
-                    <span>{currentItem?.name || item.dishName || "Plat inconnu"}</span>
-                    <span>{price.toLocaleString()} FCFA × {item.quantity}</span>
-                  </div>
-                  {item.selectedExtras && (
-                    <div className="text-gray-600 text-xs ml-2">
-                      {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
-                        <div key={extraListId}>
-                          {indexes.map((index) => getExtraName(extraListId, index)).join(", ")}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="border-t pt-2 text-sm">
-          <div className="flex justify-between">
-            <span>Sous-total:</span>
-            <span>{formatPrice(subtotal)} FCFA</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Frais:</span>
-            <span>{formatPrice(deliveryFee)} FCFA</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Prix reduit:</span>
-            <span className="text-red-600">
-              {formatPrice(Number(order.pointsReduction) || 0)} FCFA
-            </span>
-          </div>
-          <div className="flex justify-between text-green-600 font-semibold">
-            <span>Total:</span>
-            <span>{formatPrice(totalWithDelivery)} FCFA</span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className={`font-medium ${order.isPaid ? "text-green-600" : "text-red-600"}`}>
-            Payé: {order.isPaid ? "Oui" : "Non"}
-          </span>
-          <label
-            className="relative inline-flex items-center cursor-pointer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={order.isPaid || false}
-              onChange={async (e) => {
-                const newPaidStatus = e.target.checked;
-                try {
-                  const orderRef = doc(db, "orders", order.id);
-                  await updateDoc(orderRef, {
-                    isPaid: newPaidStatus,
-                    updatedAt: Timestamp.now(),
-                  });
-                } catch (error) {
-                  console.error("Erreur lors de la mise à jour du statut payé:", error);
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="sr-only peer"
-            />
-            <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-          </label>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">
-            Points utilisés: {(Number(order.pointsUsed) || 0) > 0 ? (
-              <>
-                ✅ {order.pointsUsed}{" "}
-              </>
-            ) : "-"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onClose, onUpdateFees, onDelete, onUpdateStatus }) => {
-  const user = order.userId
-    ? usersData.byId[order.userId]
-    : order.contact?.phone && usersData.byPhone[order.contact.phone];
-  const clientInfo = user
-    ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
-    : order.contact?.name || "Client inconnu";
-  const restaurantEmail = usersData.byId[order.restaurantId]?.email || "Restaurant inconnu";
-  const phoneNumber = user?.phone || order.address?.phone || order.contact?.phone || "Non spécifié";
-  const addressDescription = order.address?.completeAddress || order.destination || "Non spécifiée";
-  const additionalAddressInfo = order.address?.instructions || "";
-  const orderDate = order.timestamp ? new Date(order.timestamp.seconds * 1000).toLocaleString("fr-FR") : "Date inconnue";
-  const [newStatus, setNewStatus] = useState(order.status || ORDER_STATUS.PENDING);
-  const [failureReason, setFailureReason] = useState("");
-  const [showFailureModal, setShowFailureModal] = useState(false);
-  const [isPaid, setIsPaid] = useState(order.isPaid || false);
-  const [statusHistory, setStatusHistory] = useState([]);
-  const [isEditingItems, setIsEditingItems] = useState(false);
-  const [editedItems, setEditedItems] = useState(order.items.map(item => ({ ...item })));
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
-  const [showFeeModal, setShowFeeModal] = useState(false);
-  const [newFee, setNewFee] = useState(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE);
-  const [isSavingFees, setIsSavingFees] = useState(false);
-  const [feeError, setFeeError] = useState(null);
-  const [feeSuccessMessage, setFeeSuccessMessage] = useState(null);
-
-  const getExtraName = useCallback((extraListId, index) => {
-    const extraList = extraLists.find((el) => el.id === extraListId);
-    const element = extraList?.extraListElements?.[index];
-    return element ? `${element.name}${element.price ? ` (+${convertPrice(element.price).toLocaleString()} FCFA)` : ""}` : "Extra inconnu";
-  }, [extraLists]);
-
-  const getItemPrice = useCallback((item) => {
-    return item.price !== undefined && !isNaN(convertPrice(item.price))
-      ? convertPrice(item.price)
-      : item.dishPrice !== undefined && !isNaN(convertPrice(item.dishPrice))
-      ? convertPrice(item.dishPrice)
-      : items.find((it) => it.id === item.dishId)?.price
-      ? convertPrice(items.find((it) => it.id === item.dishId).price)
-      : 0;
-  }, [items]);
-
-  const { subtotal, totalWithDelivery } = useMemo(() => {
-    if (!editedItems || !extraLists) {
-      return { subtotal: 0, totalWithDelivery: order.deliveryFee ?? DEFAULT_DELIVERY_FEE };
-    }
-    return calculateOrderTotals({ ...order, items: editedItems }, extraLists, items);
-  }, [order, editedItems, extraLists, items]);
-
-  useEffect(() => {
-    const statusHistoryQuery = query(collection(db, "orders", order.id, "statusHistory"));
-    const unsubscribe = onSnapshot(statusHistoryQuery, (snapshot) => {
-      const history = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp.toDate(),
-      })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      setStatusHistory(history);
-      if (history.length > 0) {
-        setNewStatus(history[history.length - 1].status);
-      }
-    }, (error) => {
-      console.error("Erreur lors de la récupération de l'historique des statuts:", error);
-    });
-    return () => unsubscribe();
-  }, [order.id]);
-
-  const handleTogglePaid = async () => {
-    const newPaidStatus = !isPaid;
-    setIsPaid(newPaidStatus);
-    try {
-      const orderRef = doc(db, "orders", order.id);
-      await updateDoc(orderRef, { isPaid: newPaidStatus, updatedAt: Timestamp.now() });
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour du statut payé:", error);
-      setIsPaid(!newPaidStatus);
-      setError("Erreur lors de la mise à jour du statut payé");
-    }
-  };
-
-  const handleEditItems = () => {
-    setIsEditingItems(true);
-    setEditedItems(order.items.map(item => ({ ...item })));
-    setError(null);
-    setSuccessMessage(null);
-  };
-
-  const handleChangeItem = (index, newDishId) => {
-    const newItem = items.find(it => it.id === newDishId);
-    if (!newItem) return;
-    setEditedItems(prev => {
-      const updatedItems = [...prev];
-      updatedItems[index] = {
-        dishId: newItem.id,
-        dishName: newItem.name,
-        price: newItem.price,
-        quantity: updatedItems[index].quantity,
-        selectedExtras: {},
-        covers: newItem.covers || updatedItems[index].covers,
-      };
-      return updatedItems;
-    });
-  };
-
-  const handleQuantityChange = (index, delta) => {
-    setEditedItems(prev => {
-      const updatedItems = [...prev];
-      const currentItem = items.find(it => it.id === updatedItems[index].dishId);
-      const maxQuantity = currentItem?.quantityleft || Number.MAX_SAFE_INTEGER;
-      const newQuantity = Math.max(1, Math.min(maxQuantity, updatedItems[index].quantity + delta));
-      updatedItems[index] = { ...updatedItems[index], quantity: newQuantity };
-      return updatedItems;
-    });
-  };
-
-  const handleExtraChange = (index, extraListId, selectedIndexes) => {
-    setEditedItems(prev => {
-      const updatedItems = [...prev];
-      const extraList = extraLists.find(el => el.id === extraListId);
-      if (!extraList) return updatedItems;
-      const isRequired = extraList.extraListElements.some(el => el.required);
-      const isMultiple = extraList.extraListElements.some(el => el.multiple);
-      if (isRequired && selectedIndexes.length === 0) return updatedItems;
-      if (!isMultiple && selectedIndexes.length > 1) return updatedItems;
-      updatedItems[index] = {
-        ...updatedItems[index],
-        selectedExtras: {
-          ...updatedItems[index].selectedExtras,
-          [extraListId]: selectedIndexes,
-        },
-      };
-      return updatedItems;
-    });
-  };
-
-  const handleAddExtraList = (index, extraListId) => {
-    setEditedItems(prev => {
-      const updatedItems = [...prev];
-      updatedItems[index] = {
-        ...updatedItems[index],
-        selectedExtras: {
-          ...updatedItems[index].selectedExtras,
-          [extraListId]: [],
-        },
-      };
-      return updatedItems;
-    });
-  };
-
-  const handleRemoveExtraList = (index, extraListId) => {
-    setEditedItems(prev => {
-      const updatedItems = [...prev];
-      const { [extraListId]: _, ...rest } = updatedItems[index].selectedExtras || {};
-      updatedItems[index] = {
-        ...updatedItems[index],
-        selectedExtras: rest,
-      };
-      return updatedItems;
-    });
-  };
-
-  const handleAddItem = (dishId) => {
-    const item = items.find(it => it.id === dishId);
-    if (!item) return;
-    setEditedItems(prev => [
-      ...prev,
-      {
-        dishId,
-        dishName: item.name,
-        price: item.price,
-        quantity: 1,
-        selectedExtras: {},
-        covers: item.covers,
-      },
-    ]);
-  };
-
-  const handleDeleteItem = (index) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer cet article ?")) return;
-    setEditedItems(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const validateItems = () => {
-    for (const item of editedItems) {
-      const currentItem = items.find(it => it.id === item.dishId);
-      if (!currentItem) return "Article introuvable dans le catalogue";
-      if (item.quantity < 1) return "La quantité doit être d'au moins 1";
-      if (currentItem.quantityleft && item.quantity > currentItem.quantityleft) {
-        return `Quantité dépasse le stock disponible pour ${currentItem.name}`;
-      }
-      if (currentItem.available === false) {
-        return `L'article ${currentItem.name} n'est pas disponible`;
-      }
-      if (item.selectedExtras) {
-        for (const [extraListId, indexes] of Object.entries(item.selectedExtras)) {
-          const extraList = extraLists.find(el => el.id === extraListId);
-          if (!extraList) return "Liste d'extras introuvable";
-          const isRequired = extraList.extraListElements.some(el => el.required);
-          const isMultiple = extraList.extraListElements.some(el => el.multiple);
-          if (isRequired && (!indexes || indexes.length === 0)) {
-            return `Extras obligatoires manquants pour ${extraList.name}`;
-          }
-          if (!isMultiple && indexes.length > 1) {
-            return `Un seul extra peut être sélectionné pour ${extraList.name}`;
-          }
-        }
-      }
-    }
-    return null;
-  };
-
-  const handleSaveItems = async () => {
-    const validationError = validateItems();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-    setIsSaving(true);
-    setError(null);
-    try {
-      const orderRef = doc(db, "orders", order.id);
-      await updateDoc(orderRef, {
-        items: editedItems,
-        updatedAt: Timestamp.now(),
-      });
-      setSuccessMessage("Articles mis à jour avec succès");
-      setIsEditingItems(false);
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour des articles:", error);
-      setError("Erreur lors de la sauvegarde des articles");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditingItems(false);
-    setEditedItems(order.items.map(item => ({ ...item })));
-    setError(null);
-    setSuccessMessage(null);
-  };
-
-  const handleStatusChange = async () => {
-    if (newStatus === ORDER_STATUS.FAILED) {
-      setShowFailureModal(true);
-    } else {
-      await onUpdateStatus(order.id, newStatus, null, isPaid);
-      onClose();
-    }
-  };
-
-  const handleFailureSubmit = async () => {
-    if (failureReason) {
-      await onUpdateStatus(order.id, ORDER_STATUS.FAILED, failureReason, isPaid);
-      setShowFailureModal(false);
-      onClose();
-    }
-  };
-
-  const handleOpenFeeModal = useCallback(() => {
-    setShowFeeModal(true);
-    setNewFee(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE);
-    setFeeError(null);
-    setFeeSuccessMessage(null);
-  }, [order.deliveryFee]);
-
-  const handleFeeChange = useCallback((delta) => {
-    setNewFee(prev => Math.max(0, prev + delta));
-    setFeeError(null);
-  }, []);
-
-  const validateFee = useCallback(() => {
-    if (isNaN(newFee) || newFee < 0) return "Les frais doivent être un nombre positif";
-    if (newFee === (order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)) return "Aucune modification détectée";
-    return null;
-  }, [newFee, order.deliveryFee]);
-
-  const handleSaveFees = async () => {
-    const validationError = validateFee();
-    if (validationError) {
-      setFeeError(validationError);
-      return;
-    }
-    setIsSavingFees(true);
-    setFeeError(null);
-    try {
-      const orderRef = doc(db, "orders", order.id);
-      await updateDoc(orderRef, {
-        deliveryFee: Number(newFee),
-        updatedAt: Timestamp.now(),
-      });
-      await onUpdateFees(order.id, order.address?.area || "inconnu", Number(newFee));
-      setFeeSuccessMessage("Frais mis à jour avec succès");
-      setTimeout(() => setShowFeeModal(false), 1000);
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour des frais:", error);
-      setFeeError("Erreur lors de la sauvegarde des frais");
-    } finally {
-      setIsSavingFees(false);
-    }
-  };
-
-  const handleCancelFeeEdit = () => {
-    setShowFeeModal(false);
-    setNewFee(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE);
-    setFeeError(null);
-    setFeeSuccessMessage(null);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl">
-        <div className="sticky top-0 bg-white p-3 border-b flex justify-between items-center z-10">
-          <h3 className="text-base font-semibold">Commande #{order.id.slice(0, 6)}</h3>
-          <div className="flex items-center space-x-1">
-            <span className="text-xs font-medium">{isPaid ? "Payé" : "Non payé"}</span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" checked={isPaid} onChange={handleTogglePaid} className="sr-only peer" />
-              <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-            </label>
-          </div>
-        </div>
-        <div className="flex flex-col md:flex-row p-3 gap-3">
-          <div className="md:w-1/2 space-y-3">
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <h6 className="font-bold text-xs text-gray-800 mb-1">Client & Livraison</h6>
-              <div className="text-xs text-gray-700 space-y-0.5">
-                <p><span className="font-medium">Client :</span> {clientInfo}</p>
-                <p><span className="font-medium">Tel :</span> {phoneNumber}</p>
-                <p><span className="font-medium">Adresse :</span> {addressDescription}</p>
-                {additionalAddressInfo && <p><span className="font-medium">Instr. :</span> {additionalAddressInfo}</p>}
-                <p><span className="font-medium">Date :</span> {orderDate}</p>
-              </div>
-            </div>
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <h6 className="font-bold text-xs text-gray-800 mb-1">Paiement & Restaurant</h6>
-              <div className="text-xs text-gray-700 space-y-0.5">
-                <div className="flex items-center">
-                  <i className={`${order.paymentMethod?.icon || "fa fa-credit-card"} text-green-600 text-sm mr-1`}></i>
-                  <span>{order.paymentMethod?.name || "Non spécifié"}</span>
-                </div>
-                <p><span className="font-medium">Restaurant :</span> {restaurantEmail}</p>
-              </div>
-            </div>
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <h6 className="font-bold text-xs text-gray-800 mb-1">Historique</h6>
-              {statusHistory.length > 0 ? (
-                <div className="text-xs text-gray-700 space-y-1 max-h-40 overflow-y-auto">
-                  {statusHistory.map((entry, index) => (
-                    <div
-                      key={entry.id}
-                      className={`flex justify-between items-center p-1 border-b border-gray-200 ${
-                        index === statusHistory.length - 1 ? "bg-gray-100" : ""
-                      }`}
-                    >
-                      <span>
-                        {index + 1}.{" "}
-                        <span className={`px-1 rounded ${STATUS_COLORS[entry.status]}`}>
-                          {STATUS_LABELS[entry.status] || entry.status}
-                        </span>
-                        {entry.reason && <span className="text-red-600"> ({entry.reason})</span>}
-                        {index > 0 && (
-                          <span className="text-green-600 ml-1">
-                            (+{calculateTimeDifferenceInMinutes(statusHistory[index - 1].timestamp, entry.timestamp)} min)
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-gray-500">
-                        {entry.timestamp.toLocaleString("fr-FR")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-500">Aucun historique</p>
-              )}
-            </div>
-          </div>
-          <div className="md:w-1/2 space-y-3">
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <div className="flex justify-between items-center mb-1">
-                <h6 className="font-bold text-xs text-gray-800">Articles</h6>
-                {!isEditingItems && (
-                  <button
-                    className="text-xs text-blue-600 hover:underline"
-                    onClick={handleEditItems}
-                  >
-                    Modifier
-                  </button>
-                )}
-              </div>
-              {error && <p className="text-red-600 text-xs mb-2">{error}</p>}
-              {successMessage && <p className="text-green-600 text-xs mb-2">{successMessage}</p>}
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {editedItems.map((item, index) => {
-                  const currentItem = items.find((it) => it.id === item.dishId);
-                  const price = getItemPrice(item);
-                  return (
-                    <div key={`${item.dishId}-${index}`} className="flex items-start">
-                      <img
-                        src={currentItem?.covers?.[0] || item.covers?.[0] || "/img/default.png"}
-                        alt={item.dishName || currentItem?.name || "Plat inconnu"}
-                        className="w-10 h-10 object-cover rounded mr-2"
-                        onError={(e) => (e.target.src = "/img/default.png")}
-                      />
-                      <div className="flex-1 space-y-1">
-                        {isEditingItems ? (
-                          <>
-                            <select
-                              className="w-full border rounded text-xs p-1"
-                              value={item.dishId}
-                              onChange={(e) => handleChangeItem(index, e.target.value)}
-                            >
-                              {items.filter(it => it.available !== false).map(it => (
-                                <option key={it.id} value={it.id}>
-                                  {it.name} ({convertPrice(it.price).toLocaleString()} FCFA)
-                                </option>
-                              ))}
-                            </select>
-                            <div className="flex items-center border rounded">
-                              <button
-                                className="px-2 py-1 text-xs"
-                                onClick={() => handleQuantityChange(index, -1)}
-                                disabled={item.quantity <= 1}
-                              >
-                                -
-                              </button>
-                              <span className="px-2 text-xs">{item.quantity}</span>
-                              <button
-                                className="px-2 py-1 text-xs"
-                                onClick={() => handleQuantityChange(index, 1)}
-                                disabled={currentItem?.quantityleft && item.quantity >= currentItem.quantityleft}
-                              >
-                                +
-                              </button>
-                            </div>
-                            <div className="text-[10px] text-gray-600">
-                              {item.selectedExtras && Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
-                                <div key={extraListId} className="mb-1">
-                                  <div className="flex justify-between">
-                                    <span className="font-medium">{extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :</span>
-                                    <button
-                                      className="text-red-600 text-xs hover:text-red-800"
-                                      onClick={() => handleRemoveExtraList(index, extraListId)}
-                                    >
-                                      Supprimer
-                                    </button>
-                                  </div>
-                                  <select
-                                    multiple={extraLists.find(el => el.id === extraListId)?.extraListElements.some(el => el.multiple)}
-                                    value={indexes}
-                                    onChange={(e) => handleExtraChange(index, extraListId, Array.from(e.target.selectedOptions, option => parseInt(option.value)))}
-                                    className="w-full border rounded text-xs p-1"
-                                  >
-                                    {extraLists.find(el => el.id === extraListId)?.extraListElements.map((el, i) => (
-                                      <option key={i} value={i}>{getExtraName(extraListId, i)}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ))}
-                              <select
-                                className="w-full border rounded text-xs p-1 mt-1"
-                                onChange={(e) => handleAddExtraList(index, e.target.value)}
-                                value=""
-                              >
-                                <option value="">Ajouter une liste d'extras</option>
-                                {extraLists
-                                  .filter(el => !Object.keys(item.selectedExtras || {}).includes(el.id))
-                                  .map(el => (
-                                    <option key={el.id} value={el.id}>{el.name}</option>
-                                  ))}
-                              </select>
-                            </div>
-                            <button
-                              className="text-red-600 text-xs hover:text-red-800"
-                              onClick={() => handleDeleteItem(index)}
-                            >
-                              Supprimer l'article
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex justify-between items-start">
-                              <p className="font-semibold text-xs">{item.dishName || currentItem?.name || "Plat inconnu"}</p>
-                              <p className="text-green-600 text-xs">
-                                {price.toLocaleString()} FCFA × {item.quantity}
-                              </p>
-                            </div>
-                            {item.selectedExtras && (
-                              <div className="text-[10px] text-gray-600 mt-0.5">
-                                {Object.entries(item.selectedExtras).map(([extraListId, indexes]) => (
-                                  <p key={extraListId}>
-                                    <span className="font-medium">{extraLists.find((el) => el.id === extraListId)?.name || "Extras"} :</span>{" "}
-                                    {indexes.map((index) => getExtraName(extraListId, index)).join(", ")}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {isEditingItems && (
-                <>
-                  <div className="mt-2">
-                    <select
-                      className="w-full border rounded text-xs p-1"
-                      onChange={(e) => handleAddItem(e.target.value)}
-                      value=""
-                    >
-                      <option value="">Ajouter un article</option>
-                      {items.filter(item => item.available !== false).map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} ({convertPrice(item.price).toLocaleString()} FCFA)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      className="flex-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs disabled:bg-blue-300"
-                      onClick={handleSaveItems}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? "Enregistrement..." : "Enregistrer"}
-                    </button>
-                    <button
-                      className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs"
-                      onClick={handleCancelEdit}
-                      disabled={isSaving}
-                    >
-                      Annuler
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="bg-gray-50 p-2 rounded-lg">
-              <h6 className="font-bold text-xs text-gray-800 mb-1">Résumé</h6>
-              <div className="text-xs text-gray-700 space-y-0.5">
-                <div className="flex justify-between">
-                  <span>Sous-total :</span>
-                  <span>{formatPrice(subtotal)} FCFA</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Frais :</span>
-                  <span>{formatPrice(order.deliveryFee !== undefined ? order.deliveryFee : DEFAULT_DELIVERY_FEE)} FCFA</span>
-                </div>
-                {(Number(order.pointsReduction) || 0) > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Réduction (points) :</span>
-                    <span>-{formatPrice(Number(order.pointsReduction))} FCFA</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-sm text-green-600">
-                  <span>Total :</span>
-                  <span>{formatPrice(totalWithDelivery)} FCFA</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="block font-bold text-xs">Statut :</label>
-              <select
-                className="w-full p-1 border rounded text-xs"
-                value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value)}
-              >
-                {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
-              <button className="w-full bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs" onClick={handleStatusChange}>
-                Appliquer
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="sticky bottom-0 bg-white p-3 border-t flex gap-2">
-          <button
-            className="flex-1 bg-gray-500 text-white p-1 rounded hover:bg-gray-600 text-xs"
-            onClick={handleOpenFeeModal}
-          >
-            Modifier frais
-          </button>
-          <button
-            className="flex-1 bg-red-600 text-white p-1 rounded hover:bg-red-700 text-xs"
-            onClick={() => {
-              if (window.confirm("Supprimer cette commande ?")) {
-                onDelete(order.id);
-                onClose();
-              }
-            }}
-          >
-            Supprimer
-          </button>
-          <button className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs" onClick={onClose}>
-            Fermer
-          </button>
-        </div>
-        {showFailureModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-3 rounded-lg shadow-lg w-full max-w-xs">
-              <h4 className="text-sm font-semibold mb-2">Motif de l'échec</h4>
-              <select
-                className="w-full p-1 border rounded text-xs mb-2"
-                value={failureReason}
-                onChange={(e) => setFailureReason(e.target.value)}
-              >
-                <option value="">Sélectionner un motif</option>
-                {FAILURE_REASONS.map((reason) => (
-                  <option key={reason} value={reason}>{reason}</option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <button className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs" onClick={() => setShowFailureModal(false)}>
-                  Annuler
-                </button>
-                <button
-                  className="flex-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs"
-                  onClick={handleFailureSubmit}
-                  disabled={!failureReason}
-                >
-                  Confirmer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {showFeeModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-3 rounded-lg shadow-lg w-full max-w-xs">
-              <h4 className="text-sm font-semibold mb-2">Modifier les frais de livraison</h4>
-              {feeError && <p className="text-red-600 text-xs mb-2">{feeError}</p>}
-              {feeSuccessMessage && <p className="text-green-600 text-xs mb-2">{feeSuccessMessage}</p>}
-              <div className="flex items-center space-x-2 mb-2">
-                <button
-                  className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300 text-xs"
-                  onClick={() => handleFeeChange(-100)}
-                  disabled={newFee <= 0 || isSavingFees}
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  value={newFee}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setNewFee(value === "" ? 0 : Number(value));
-                    setFeeError(null);
-                  }}
-                  className="w-full p-1 border rounded text-xs"
-                  min="0"
-                  step="100"
-                  aria-label="Frais de livraison en FCFA"
-                  disabled={isSavingFees}
-                />
-                <button
-                  className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300 text-xs"
-                  onClick={() => handleFeeChange(100)}
-                  disabled={isSavingFees}
-                >
-                  +
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="flex-1 bg-gray-200 p-1 rounded hover:bg-gray-300 text-xs"
-                  onClick={handleCancelFeeEdit}
-                  disabled={isSavingFees}
-                >
-                  Annuler
-                </button>
-                <button
-                  className="flex-1 bg-blue-600 text-white p-1 rounded hover:bg-blue-700 text-xs disabled:bg-blue-300"
-                  onClick={handleSaveFees}
-                  disabled={isSavingFees || validateFee()}
-                >
-                  {isSavingFees ? "Enregistrement..." : "Enregistrer"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
+const PromotionManager = React.lazy(() => import("../components/admin/PromotionManager"));
+const AllPaymentsPage = React.lazy(() => import("../components/admin/AllPaymentsPage"));
+import AdminHeader from "../components/admin/AdminHeader";
+import OrdersToolbar from "../components/admin/OrdersToolbar";
+import CommentsSection from "../components/admin/CommentsSection";
 
 const RestaurantAdmin = () => {
   const [restaurant, setRestaurant] = useState(null);
@@ -1036,6 +81,7 @@ const RestaurantAdmin = () => {
     location: "",
     contact: "",
   });
+
   const [menus, setMenus] = useState([]);
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
@@ -1102,9 +148,18 @@ const menuItems = [
   { id: "menus", label: "Menus", icon: <FaListAlt /> },
   { id: "orders", label: "Commandes", icon: <FaShoppingBag /> },
   { id: "categories", label: "Catégories", icon: <FaTags /> },
+  { id: "promotions", label: "Promotions", icon: <FaTags /> },
+  { id: "payments", label: "Paiements", icon: <FaMoneyBillWave /> },
   { id: "loyalty", label: "Points Fidélité", icon: <FaStar /> },
   { id: "comments", label: "Avis Clients", icon: <FaCommentAlt /> },
 ];
+
+  // Hook de gestion des commandes (migration progressive)
+  const {
+    updateOrderStatus: hookUpdateOrderStatus,
+    updateOrderDeliveryFees: hookUpdateOrderDeliveryFees,
+    deleteOrder: hookDeleteOrder,
+  } = useOrdersAdmin({ currentRestaurantId, extraLists, items });
 
   const resetItemForm = () => {
     setItemData({
@@ -1437,7 +492,7 @@ const pendingOrders = useMemo(() => {
 
   const deleteOrder = async (orderId) => {
     try {
-      await deleteDoc(doc(db, "orders", orderId));
+      await hookDeleteOrder(orderId);
       console.log(`Commande ${orderId} supprimée avec succès`);
     } catch (error) {
       console.error("Erreur lors de la suppression de la commande:", error);
@@ -1673,22 +728,13 @@ const pendingOrders = useMemo(() => {
   };
 
   const updateOrderDeliveryFees = async (orderId, destination, newFee) => {
-    const feeNumber = Number(newFee);
-    if (isNaN(feeNumber) || feeNumber < 0) return;
-
     try {
-      const orderRef = doc(db, "orders", orderId);
-      if (deliveryFees[destination] === undefined) {
-        await setDoc(doc(db, "quartiers", destination), {
-          fee: feeNumber,
-          name: destination,
-        });
+      await hookUpdateOrderDeliveryFees(orderId, destination, newFee, deliveryFees);
+      // Sync local cache if new destination fee added
+      const feeNumber = Number(newFee);
+      if (deliveryFees[destination] === undefined && !isNaN(feeNumber)) {
         setDeliveryFees((prev) => ({ ...prev, [destination]: feeNumber }));
       }
-      await updateDoc(orderRef, {
-        deliveryFees: feeNumber,
-        updatedAt: Timestamp.now(),
-      });
     } catch (error) {
       console.error("Erreur de mise à jour des frais:", error);
       setError("Erreur lors de la mise à jour des frais");
@@ -1697,50 +743,7 @@ const pendingOrders = useMemo(() => {
 
   const updateOrderStatus = async (orderId, status, reason = null, isPaid = false) => {
     try {
-      if (!orderId || !auth.currentUser || !currentRestaurantId) {
-        throw new Error("Informations manquantes pour mettre à jour le statut.");
-      }
-  
-      const orderRef = doc(db, "orders", orderId);
-      const statusHistoryRef = collection(orderRef, "statusHistory");
-      const notificationsRef = collection(db, "notifications");
-      const statusData = {
-        status,
-        timestamp: Timestamp.now(),
-      };
-      if (reason) statusData.reason = reason;
-  
-      await addDoc(statusHistoryRef, statusData);
-      await updateDoc(orderRef, { status, isPaid, updatedAt: Timestamp.now() });
-  
-      const orderDoc = await getDoc(orderRef);
-      if (!orderDoc.exists()) {
-        throw new Error("La commande n'existe pas.");
-      }
-      const orderData = orderDoc.data();
-      const { totalWithDelivery } = calculateOrderTotals(orderData, extraLists);
-  
-      if (status === ORDER_STATUS.DELIVERED && window.fbq) {
-        window.fbq('track', 'Purchase', {
-          value: totalWithDelivery,
-          currency: 'XAF',
-          content_ids: orderData.items.map(item => item.dishId),
-          content_type: 'product',
-          order_id: orderId,
-          restaurant_id: currentRestaurantId,
-        });
-      }
-  
-      const notificationData = {
-        orderId: orderId,
-        oldStatus: orderData.status || ORDER_STATUS.PENDING,
-        newStatus: status,
-        timestamp: Timestamp.now(),
-        userId: orderData.userId || "unknown",
-        restaurantId: orderData.restaurantId || currentRestaurantId,
-        read: false,
-      };
-      await addDoc(notificationsRef, notificationData);
+      await hookUpdateOrderStatus(orderId, status, reason, isPaid);
     } catch (error) {
       console.error("Erreur lors de la mise à jour du statut ou création de la notification:", error);
       setError(`Erreur: ${error.message}`);
@@ -1893,273 +896,61 @@ const pendingOrders = useMemo(() => {
   }, [items]);
 
   return (
-<div className="flex h-screen bg-gray-50 overflow-hidden">
-  {/* Sidebar - Modern Design */}
-  <div
-    className={`bg-gradient-to-b from-green-700 to-green-800 text-white transition-all duration-300 fixed md:relative z-30 h-full 
-      ${sidebarOpen ? "w-64" : "w-20"} ${mobileMenuOpen ? "block" : "hidden md:block"}`}
-  >
-    {/* Sidebar Header */}
-    <div className="p-4 flex items-center justify-between border-b border-green-600 h-16">
-      {sidebarOpen && (
-        <div className="flex items-center">
-          <h1 className="text-xl font-bold">{restaurant?.name || "Restaurant"}</h1>
-        </div>
-      )}
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="p-1 rounded-full hover:bg-green-600 transition-colors"
-      >
-        {sidebarOpen ? <FaTimes className="w-5 h-5" /> : <FaBars className="w-5 h-5" />}
-      </button>
-    </div>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <Sidebar
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        menuItems={menuItems}
+        restaurantName={restaurant?.name}
+        onSignOut={() => auth.signOut()}
+      />
 
-    {/* User Profile Mini */}
-    {sidebarOpen && (
-      <div className="p-4 border-b border-green-600 flex items-center space-x-3">
-        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
-          <FaUser className="text-green-600" />
-        </div>
-        <div className="flex-1 truncate">
-          <p className="font-medium truncate">{restaurant?.name || "Admin"}</p>
-          <p className="text-xs text-green-200 truncate">Restaurant Manager</p>
-        </div>
-      </div>
-    )}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Topbar
+          restaurantName={restaurant?.name}
+          activeSectionLabel={menuItems.find((item) => item.id === activeSection)?.label}
+          onToggleMobile={() => setMobileMenuOpen(!mobileMenuOpen)}
+        />
 
-      {/* Navigation */}
-      <nav className="mt-4 px-2">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setActiveSection(item.id);
-              setMobileMenuOpen(false);
-            }}
-            className={`flex items-center w-full p-3 rounded-lg mb-1 text-left transition-colors ${
-              activeSection === item.id ? "bg-white text-green-700 font-medium" : "text-white hover:bg-green-600"
-            }`}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
+          <AdminHeader
+            title={menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
+            description={
+              activeSection === "orders"
+                ? "Gestion des commandes"
+                : activeSection === "menus"
+                ? "Gestion de vos menus, plats et extras"
+                : activeSection === "restaurant"
+                ? "Informations de votre établissement"
+                : activeSection === "categories"
+                ? "Gestion des catégories"
+                : activeSection === "promotions"
+                ? "Gestion des promotions et offres spéciales"
+                : activeSection === "payments"
+                ? "Visualisation et gestion des paiements"
+                : activeSection === "loyalty"
+                ? "Gestion des points de fidélité"
+                : activeSection === "comments"
+                ? "Avis et commentaires des clients"
+                : "Tableau de bord administratif"
+            }
           >
-            <span className="flex items-center">
-              <span className={`${sidebarOpen ? "mr-3" : "mx-auto"}`}>{item.icon}</span>
-              {sidebarOpen && <span>{item.label}</span>}
-            </span>
-            {sidebarOpen && activeSection === item.id && (
-              <span className="ml-auto bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                Actif
-              </span>
+            {activeSection === "orders" && (
+              <OrdersToolbar
+                dateFilterMode={dateFilterMode}
+                setDateFilterMode={setDateFilterMode}
+                selectedDate={selectedDate}
+                onPrev={handlePreviousPeriod}
+                onNext={handleNextPeriod}
+                getWeekNumber={getWeekNumber}
+              />
             )}
-          </button>
-        ))}
-      </nav>
-
-      {/* Sidebar Footer */}
-      {sidebarOpen && (
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-green-600">
-          <button
-            className="flex items-center w-full p-2 text-white hover:bg-green-600 rounded-lg transition-colors"
-            onClick={() => auth.signOut()}
-          >
-            <HiOutlineLogout className="mr-3" />
-            Déconnexion
-          </button>
-        </div>
-      )}
-    </div>
-
-    {/* Main Content Area */}
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Top Navigation Bar */}
-      <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6">
-        <div className="flex items-center">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="text-gray-600 mr-4 md:hidden"
-          >
-            <FaBars className="w-5 h-5" />
-          </button>
-          <h1 className="text-xl font-semibold text-gray-800">
-            {menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
-          </h1>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          <button className="relative p-1 text-gray-500 hover:text-gray-700">
-            <FaBell className="w-5 h-5" />
-            <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-
-          <div className="hidden md:flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-              <FaUser className="text-green-600" />
-            </div>
-            <span className="font-medium text-sm">{restaurant?.name || "Admin"}</span>
-            <FaChevronDown className="text-gray-400 text-xs" />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
-        {/* Dashboard Header Section */}
-        <div className="mb-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">
-                {menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
-              </h2>
-              <p className="text-gray-600 mt-1">
-                {activeSection === "orders"
-                  ? "Gestion des commandes"
-                  : activeSection === "menus"
-                    ? "Gestion de vos menus, plats et extras"
-                    : activeSection === "restaurant"
-                      ? "Informations de votre établissement"
-                      : activeSection === "categories"
-                        ? "Gestion des catégories"
-                        : "Tableau de bord administratif"}
-              </p>
-            </div>
-
-            {/* {activeSection === "orders" && (
-              <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
-                <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher..."
-                    className="pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                </div>
-                <button
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
-                  onClick={() => setShowPendingModal(true)}
-                >
-                  <FaShoppingBag className="mr-2" />
-                  Commandes ({pendingOrders.length})
-                </button>
-              </div>
-            )} */}
-          </div>
-
-          {activeSection === "orders" && (
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              <div className="flex items-center bg-white rounded-lg shadow-sm p-2">
-                <button
-                  className={`px-3 py-1 rounded-md ${
-                    dateFilterMode === "day" ? "bg-green-100 text-green-700" : "text-gray-600"
-                  }`}
-                  onClick={() => setDateFilterMode("day")}
-                >
-                  Jour
-                </button>
-                <button
-                  className={`px-3 py-1 rounded-md ${
-                    dateFilterMode === "week" ? "bg-green-100 text-green-700" : "text-gray-600"
-                  }`}
-                  onClick={() => setDateFilterMode("week")}
-                >
-                  Semaine
-                </button>
-                <button
-                  className={`px-3 py-1 rounded-md ${
-                    dateFilterMode === "month" ? "bg-green-100 text-green-700" : "text-gray-600"
-                  }`}
-                  onClick={() => setDateFilterMode("month")}
-                >
-                  Mois
-                </button>
-              </div>
-
-              <div className="flex items-center bg-white rounded-lg shadow-sm p-1">
-                <button
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
-                  onClick={handlePreviousPeriod}
-                >
-                  <FaChevronLeft />
-                </button>
-                <div className="px-3 py-1 text-sm font-medium">
-                  {dateFilterMode === "day"
-                    ? selectedDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
-                    : dateFilterMode === "week"
-                      ? `Semaine ${getWeekNumber(selectedDate)}`
-                      : selectedDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
-                </div>
-                <button
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
-                  onClick={handleNextPeriod}
-                >
-                  <FaChevronRight />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Stats Cards - Only for dashboard home */}
-        {/* {activeSection === "dashboard" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Commandes aujourd'hui</p>
-                  <p className="text-2xl font-bold mt-1">24</p>
-                </div>
-                <div className="p-3 bg-green-100 rounded-full">
-                  <FaShoppingBag className="text-green-600" />
-                </div>
-              </div>
-              <p className="text-xs text-green-600 mt-2 flex items-center">
-                <FaChartLine className="mr-1" /> +12% vs hier
-              </p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Revenu aujourd'hui</p>
-                  <p className="text-2xl font-bold mt-1">{formatPrice(125000)} FCFA</p>
-                </div>
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <FaMoneyBillWave className="text-blue-600" />
-                </div>
-              </div>
-              <p className="text-xs text-blue-600 mt-2 flex items-center">
-                <FaChartLine className="mr-1" /> +8% vs hier
-              </p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Livraisons en cours</p>
-                  <p className="text-2xl font-bold mt-1">5</p>
-                </div>
-                <div className="p-3 bg-purple-100 rounded-full">
-                  <FaShippingFast className="text-purple-600" />
-                </div>
-              </div>
-              <p className="text-xs text-purple-600 mt-2 flex items-center">
-                <FaChartLine className="mr-1" /> 2 livraisons terminées
-              </p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Nouveaux clients</p>
-                  <p className="text-2xl font-bold mt-1">3</p>
-                </div>
-                <div className="p-3 bg-yellow-100 rounded-full">
-                  <FaUser className="text-yellow-600" />
-                </div>
-              </div>
-              <p className="text-xs text-yellow-600 mt-2 flex items-center">
-                <FaChartLine className="mr-1" /> +50% cette semaine
-              </p>
-            </div>
-          </div>
-        )} */}
+          </AdminHeader>
+        
 
         {/* Content Sections */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -3091,6 +1882,36 @@ const pendingOrders = useMemo(() => {
             </div>
           )}
 
+          {activeSection === "promotions" && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-6">Gestion des Promotions</h2>
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <PromotionManager restaurantId={currentRestaurantId} />
+              </React.Suspense>
+            </div>
+          )}
+
+          {activeSection === "payments" && (
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold mb-6">Gestion des Paiements</h2>
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <AllPaymentsPage />
+              </React.Suspense>
+            </div>
+          )}
+
           {activeSection === "loyalty" && (
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-2xl font-bold mb-6">Gestion des Points de Fidélité</h2>
@@ -3099,35 +1920,7 @@ const pendingOrders = useMemo(() => {
           )}
 
           {activeSection === "comments" && (
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Avis Clients</h2>
-              {feedbacks.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">Aucun avis pour le moment</p>
-              ) : (
-                <div className="space-y-4">
-                  {feedbacks.map((feedback) => (
-                    <div
-                      key={feedback.id}
-                      className="p-4 border rounded-lg bg-gray-50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <FaStar className="text-yellow-400" />
-                          <span className="font-semibold">{feedback.rating.rating}/5</span>
-                        </div>
-                        <span className="text-sm text-gray-500">
-                          {feedback.timestamp ? new Date(feedback.timestamp.seconds * 1000).toLocaleString("fr-FR") : "Date inconnue"}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-2">{feedback.comment}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Par: {usersData.byId[feedback.userId]?.email || "Utilisateur inconnu"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CommentsSection feedbacks={feedbacks} usersData={usersData} />
           )}
 
           {selectedOrder && (

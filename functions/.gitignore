@@ -1,2 +1,6 @@
 node_modules/
 *.local
+*.zip
+
+build.zip
+backend/

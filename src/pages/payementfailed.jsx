@@ -116,6 +116,23 @@ const PaymentFailure = () => {
           updatedAt: Timestamp.now(),
         });
 
+        // Mettre à jour le statut du paiement dans la collection payments
+        const paymentsQuery = query(
+          collection(db, "payments"),
+          where("transactionId", "==", transactionCode),
+          where("orderId", "==", orderId)
+        );
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        
+        if (!paymentsSnapshot.empty) {
+          const paymentDoc = paymentsSnapshot.docs[0];
+          await updateDoc(paymentDoc.ref, {
+            status: "failed",
+            updatedAt: new Date(),
+            failureReason: transactionData.status
+          });
+        }
+
         // Afficher un message d'erreur basé sur le statut
         setError(`Le paiement a échoué. Statut : ${transactionData.status}`);
       } catch (err) {

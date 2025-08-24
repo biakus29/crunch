@@ -197,7 +197,7 @@ const SuperAdmin = () => {
               />
             </Form.Group>
             <Button variant="primary" type="submit" disabled={isLoading}>
-              {isLoading ? <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" /> : "Ajouter"}
+              {isLoading ? <Spinner as="span" animation="border" size="sm" role="status" aria-hidden={true} /> : "Ajouter"}
             </Button>
           </Form>
         </Tab>
@@ -235,7 +235,7 @@ const SuperAdmin = () => {
                 />
               </Form.Group>
               <Button variant="primary" type="submit" disabled={isLoading}>
-                {isLoading ? <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" /> : "Mettre à jour"}
+                {isLoading ? <Spinner as="span" animation="border" size="sm" role="status" aria-hidden={true} /> : "Mettre à jour"}
               </Button>
             </Form>
           ) : (

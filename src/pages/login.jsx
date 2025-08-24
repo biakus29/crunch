@@ -126,6 +126,10 @@ const Login = () => {
 
     try {
       const provider = new GoogleAuthProvider();
+      // Configuration pour éviter les erreurs de réseau
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
@@ -147,7 +151,17 @@ const Login = () => {
       setTimeout(() => navigate("/accueil"), 2000);
     } catch (err) {
       console.error("Google sign in error:", err);
-      setError("Erreur lors de la connexion Google");
+      
+      // Gestion spécifique des erreurs réseau
+      if (err.code === 'auth/network-request-failed') {
+        setError("Erreur de réseau. Vérifiez votre connexion internet et réessayez.");
+      } else if (err.code === 'auth/popup-blocked') {
+        setError("Popup bloqué. Autorisez les popups pour ce site.");
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError("Connexion annulée par l'utilisateur.");
+      } else {
+        setError("Erreur lors de la connexion Google: " + (err.message || err.code));
+      }
     } finally {
       setLoading(false);
     }
@@ -309,7 +323,7 @@ const Login = () => {
       </div>
 
       {/* Styles pour l'animation stylée */}
-      <style jsx global>{`
+      <style jsx={true} global>{`
         @keyframes styleFade {
           0% {
             opacity: 1;

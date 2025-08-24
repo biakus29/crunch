@@ -636,6 +636,16 @@ const handleConfirmOrder = useCallback(async () => {
       const orderRef = doc(collection(db, "orders"));
       const userRef = auth.currentUser ? doc(db, "usersrestau", uid) : null;
 
+      // TOUTES LES LECTURES DOIVENT ÊTRE FAITES EN PREMIER
+      let userDoc = null;
+      if (auth.currentUser && pointsToUse > 0 && userRef) {
+        userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) {
+          throw new Error("Utilisateur non trouvé.");
+        }
+      }
+
+      // MAINTENANT TOUTES LES ÉCRITURES
       transaction.set(orderRef, {
         userId: uid,
         items: cartItems.map((i) => ({
@@ -660,11 +670,7 @@ const handleConfirmOrder = useCallback(async () => {
         paymentRef: null, // Sera mis à jour pour paiement mobile
       });
 
-      if (auth.currentUser && pointsToUse > 0) {
-        const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) {
-          throw new Error("Utilisateur non trouvé.");
-        }
+      if (auth.currentUser && pointsToUse > 0 && userDoc) {
         transaction.update(userRef, {
           points: userDoc.data().points - pointsToUse,
         });

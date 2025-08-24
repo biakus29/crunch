@@ -478,6 +478,16 @@ const handleConfirmOrder = useCallback(async () => {
       const orderRef = doc(collection(db, "orders"));
       const userRef = auth.currentUser ? doc(db, "usersrestau", uid) : null;
 
+      // TOUTES LES LECTURES DOIVENT ÊTRE FAITES EN PREMIER
+      let userDoc = null;
+      if (auth.currentUser && pointsToUse > 0 && userRef) {
+        userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) {
+          throw new Error("Utilisateur non trouvé.");
+        }
+      }
+
+      // MAINTENANT TOUTES LES ÉCRITURES
       transaction.set(orderRef, {
         userId: uid,
         items: cartItems.map((i) => ({
@@ -502,11 +512,7 @@ const handleConfirmOrder = useCallback(async () => {
         paymentRef: null, // Sera mis à jour pour paiement mobile
       });
 
-      if (auth.currentUser && pointsToUse > 0) {
-        const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) {
-          throw new Error("Utilisateur non trouvé.");
-        }
+      if (auth.currentUser && pointsToUse > 0 && userDoc) {
         transaction.update(userRef, {
           points: userDoc.data().points - pointsToUse,
         });
@@ -558,6 +564,20 @@ const handleConfirmOrder = useCallback(async () => {
       if (!paymentResponse.success || !paymentResponse.paymentUrl) {
         throw new Error(paymentResponse.message || "Erreur lors de l'initialisation du paiement.");
       }
+
+      // Enregistrer le paiement en statut 'attente' dans Firestore
+      await addDoc(collection(db, "payments"), {
+        orderId: orderRef.id,
+        transactionId: paymentResponse.transactionId,
+        amount: finalTotal,
+        currency: "XOF",
+        method: "mobile_money",
+        status: "pending",
+        customerEmail: auth.currentUser?.email || contact?.email || "client@example.com",
+        description: `Commande : ${orderLabel}`,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
 
       // Stocker l'ID de la commande et l'ID de la transaction pour le retour
       localStorage.setItem("pendingOrder", JSON.stringify({

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { CardAnimations, FoodAnimations } from '../utils/animationSystem';
 import { 
   Star, 
@@ -21,61 +21,29 @@ import {
   ShoppingBag,
   Calendar,
   MapPin,
-  Truck
+  Truck,
+  ArrowRight,
+  Copy,
+  Check
 } from 'lucide-react';
 
 const PromotionsHero = () => {
   const [userPoints, setUserPoints] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentPromoIndex, setCurrentPromoIndex] = useState(0);
+  const [promotions, setPromotions] = useState([]);
 
-  // Promotions dynamiques
-  const promotions = [
-    {
-      id: 1,
-      title: "🎉 Offre Spéciale -50%",
-      subtitle: "Sur tous les plats populaires",
-      description: "Profitez de nos meilleurs plats à moitié prix !",
-      validUntil: "2024-12-31",
-      code: "POPULAR50",
-      color: "from-red-500 to-pink-500",
-      icon: Flame,
-      badge: "LIMITÉ"
-    },
-    {
-      id: 2,
-      title: "🚚 Livraison Gratuite",
-      subtitle: "Commande minimum 8000 FCFA",
-      description: "Plus de frais de livraison sur vos grosses commandes !",
-      validUntil: "2024-12-25",
-      code: "FREESHIP",
-      color: "from-green-500 to-emerald-500",
-      icon: Truck,
-      badge: "NOUVEAU"
-    },
-    {
-      id: 3,
-      title: "💝 Menu Famille -30%",
-      subtitle: "Parfait pour 4-6 personnes",
-      description: "Économisez sur nos menus familiaux !",
-      validUntil: "2024-12-28",
-      code: "FAMILY30",
-      color: "from-purple-500 to-indigo-500",
-      icon: Users,
-      badge: "POPULAIRE"
-    },
-    {
-      id: 4,
-      title: "⚡ Flash Sale -40%",
-      subtitle: "Seulement aujourd'hui",
-      description: "Offre éclair sur une sélection de plats !",
-      validUntil: "2024-12-20",
-      code: "FLASH40",
-      color: "from-orange-500 to-red-500",
-      icon: Zap,
-      badge: "FLASH"
-    }
-  ];
+  // Mapping des types de promotions vers les icônes et couleurs
+  const getPromotionStyle = (type) => {
+    const styles = {
+      'percentage': { color: 'from-red-500 to-pink-500', icon: Percent, badge: 'RÉDUCTION' },
+      'fixed_amount': { color: 'from-green-500 to-emerald-500', icon: Tag, badge: 'ÉCONOMIE' },
+      'free_delivery': { color: 'from-blue-500 to-cyan-500', icon: Truck, badge: 'GRATUIT' },
+      'bogo': { color: 'from-purple-500 to-indigo-500', icon: Gift, badge: 'OFFRE' },
+      'minimum_order': { color: 'from-orange-500 to-red-500', icon: Zap, badge: 'SPÉCIAL' }
+    };
+    return styles[type] || { color: 'from-gray-500 to-gray-600', icon: Tag, badge: 'PROMO' };
+  };
 
   useEffect(() => {
     const fetchUserPoints = async () => {
@@ -94,7 +62,64 @@ const PromotionsHero = () => {
       }
     };
 
+    const fetchPromotions = () => {
+       const promotionsQuery = query(
+         collection(db, 'promotions'),
+         where('isActive', '==', true)
+       );
+ 
+       const unsubscribe = onSnapshot(promotionsQuery, (snapshot) => {
+         console.log('=== PROMOTIONS HERO - DÉBUT CHARGEMENT ===');
+         console.log('Nombre de documents trouvés:', snapshot.docs.length);
+         const now = new Date();
+         const promotionsData = snapshot.docs.map(doc => {
+           const data = doc.data();
+           const startDate = data.startDate?.toDate?.() || new Date();
+           const endDate = data.endDate?.toDate?.() || new Date();
+           
+           // Vérifier si la promotion est dans la période de validité
+           const isValidPeriod = now >= startDate && now <= endDate;
+           
+           if (!isValidPeriod) return null;
+           
+           const style = getPromotionStyle(data.type);
+           return {
+             id: doc.id,
+             title: data.title,
+             subtitle: data.subtitle || data.description,
+             description: data.description,
+             validUntil: endDate.toLocaleDateString('fr-FR'),
+             code: data.code,
+             color: style.color,
+             icon: style.icon,
+             badge: style.badge
+           };
+         }).filter(Boolean); // Supprimer les promotions null (expirées)
+         
+         // Trier les promotions par date de création (plus récentes en premier)
+         promotionsData.sort((a, b) => {
+           const aDoc = snapshot.docs.find(doc => doc.id === a.id);
+           const bDoc = snapshot.docs.find(doc => doc.id === b.id);
+           const aCreatedAt = aDoc?.data()?.createdAt?.toDate?.() || new Date(0);
+           const bCreatedAt = bDoc?.data()?.createdAt?.toDate?.() || new Date(0);
+           return bCreatedAt - aCreatedAt;
+         });
+         
+         console.log('Promotions valides trouvées:', promotionsData.length);
+         console.log('Données des promotions:', promotionsData);
+         setPromotions(promotionsData);
+         console.log('=== PROMOTIONS HERO - FIN CHARGEMENT ===');
+       });
+ 
+       return unsubscribe;
+     };
+
     fetchUserPoints();
+    const unsubscribe = fetchPromotions();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // Rotation automatique des promotions
@@ -107,6 +132,11 @@ const PromotionsHero = () => {
   }, [promotions.length]);
 
   const currentPromo = promotions[currentPromoIndex];
+
+  // Ne rien afficher si aucune promotion n'est disponible
+  if (!promotions || promotions.length === 0) {
+    return null;
+  }
 
   return (
     <motion.section
@@ -319,4 +349,4 @@ const PromotionsHero = () => {
   );
 };
 
-export default PromotionsHero; 
+export default PromotionsHero;
