@@ -17,9 +17,7 @@ function ChangerId() {
                     batch.set(nouveauDocRef, ancienDocSnap.data());
                     batch.delete(ancienDocRef);
                     await batch.commit();
-                    console.log(`Document migré avec succès de ${ancienDocRef.id} à ${nouvelId}`);
                 } else {
-                    console.log('Document introuvable.');
                 }
             } catch (e) {
                 console.error('Erreur : ', e);

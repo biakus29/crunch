@@ -243,7 +243,7 @@ const OrderSummary = () => {
           const extraSnap = await getDocs(collection(db, "extraLists"));
           const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
           setExtraLists(extras);
-          console.log("extraLists rechargés après reconnexion:", extras);
+
         } catch (err) {
           console.error("Erreur lors du rechargement des extras:", err);
         }
@@ -275,8 +275,7 @@ const OrderSummary = () => {
           .map((doc) => ({ id: doc.id, ...doc.data() }))
           .filter((q) => q.name && typeof q.name === "string");
         const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        console.log("quartiers chargés:", quartiers);
-        console.log("extraLists chargés:", extras);
+
         setQuartiersList(quartiers);
         setExtraLists(extras);
         if (quartiers.length === 0) {
@@ -396,7 +395,7 @@ const OrderSummary = () => {
   // Calculate items total
   const total = useMemo(() => {
     if (!cartItems || !extraLists.length) {
-      console.log("total: cartItems ou extraLists non disponibles", { cartItems, extraLists });
+
       return 0;
     }
     return cartItems.reduce((acc, item) => {
@@ -485,8 +484,6 @@ const OrderSummary = () => {
     deliveryFee,
     pointsReduction,
   ]);
-
-
 
   // Validate order data
   const isValidOrder = useCallback(() => {
@@ -578,7 +575,7 @@ const OrderSummary = () => {
 
   useEffect(() => {
     if (dataLoading) {
-      console.log("Validation en attente, données en cours de chargement...");
+
       return;
     }
     if (
@@ -629,7 +626,6 @@ const handleConfirmOrder = useCallback(async () => {
 
   try {
     await waitForPersistence();
-    console.log("Soumission de la commande pour l'utilisateur:", uid, "avec articles:", cartItems);
 
     // Créer la commande dans Firestore pour les deux méthodes de paiement
     const orderRef = await runTransaction(db, async (transaction) => {
@@ -691,8 +687,6 @@ const handleConfirmOrder = useCallback(async () => {
 
       return orderRef;
     });
-
-    console.log("Commande créée avec succès, ID:", orderRef.id);
 
     // Si paiement mobile, initier le paiement
     if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
@@ -785,6 +779,8 @@ const handleConfirmOrder = useCallback(async () => {
       const paymentStatus = urlParams.get("payment_status");
       const transactionId = urlParams.get("transaction_id");
       const orderId = urlParams.get("order_id");
+      // Unifier les données locales: priorité à pendingOrder, fallback sur tempOrderData
+      const pendingOrder = JSON.parse(localStorage.getItem("pendingOrder"));
       let tempOrderData = JSON.parse(localStorage.getItem("tempOrderData"));
 
       // Nettoyer les données temporaires obsolètes
@@ -793,24 +789,33 @@ const handleConfirmOrder = useCallback(async () => {
         if (orderAge > TEMP_ORDER_TIMEOUT) {
           localStorage.removeItem("tempOrderData");
           tempOrderData = null;
-          console.log("Données temporaires supprimées (obsolètes)");
+
         }
       }
 
-      if (!paymentStatus && !transactionId && !orderId && tempOrderData) {
-        setErrors((prev) => ({
-          ...prev,
-          general: "Une commande temporaire est en attente. Veuillez réessayer ou nettoyer les données temporaires.",
-        }));
-        return;
+      if (!paymentStatus && !transactionId && !orderId && (pendingOrder || tempOrderData)) {
+        // Ne pas bloquer l'utilisateur: nettoyer automatiquement et continuer
+        try {
+          localStorage.removeItem("pendingOrder");
+          localStorage.removeItem("tempOrderData");
+
+        } catch (e) {
+          console.warn("Échec du nettoyage automatique des données temporaires:", e);
+        }
+        // Ne pas retourner; laisser l'utilisateur poursuivre la commande normalement
       }
 
       if (!paymentStatus || !transactionId || !orderId) return;
 
       try {
         setLoading(true);
-        if (!tempOrderData) {
-          throw new Error("Données de la commande non trouvées. Veuillez réessayer.");
+        // S'assurer que nous avons une trace locale et que les IDs concordent
+        const localOrder = pendingOrder || tempOrderData;
+        if (!localOrder) {
+          throw new Error("Données locales de commande introuvables. Veuillez réessayer.");
+        }
+        if (localOrder.orderId !== orderId || (localOrder.transactionId && localOrder.transactionId !== transactionId)) {
+          throw new Error("Incohérence entre les données locales et l'URL de retour de paiement.");
         }
 
         const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
@@ -826,47 +831,51 @@ const handleConfirmOrder = useCallback(async () => {
 
         const isPaymentSuccess = statusData.status === "success";
         const finalStatus = isPaymentSuccess ? "confirmed" : "failed";
+        // Récupérer la commande existante et la mettre à jour (pas de double création)
+        const existingOrderRef = doc(db, "orders", orderId);
+        const existingOrderSnap = await getDoc(existingOrderRef);
+        if (!existingOrderSnap.exists()) {
+          throw new Error("Commande inexistante. Impossible de mettre à jour le statut.");
+        }
 
-        const orderRef = await addDoc(collection(db, "orders"), {
-          ...tempOrderData,
+        await updateDoc(existingOrderRef, {
           status: finalStatus,
           isPaid: isPaymentSuccess,
           paymentRef: transactionId,
-          timestamp: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         });
 
-        if (auth.currentUser && tempOrderData.pointsUsed > 0) {
-          await updateDoc(doc(db, "usersrestau", tempOrderData.userId), {
-            points: userPoints - tempOrderData.pointsUsed,
-          });
-        }
-
-        if (auth.currentUser && isPaymentSuccess && tempOrderData.loyaltyPoints > 0) {
+        // Créditer la fidélité uniquement après succès du paiement
+        const orderData = existingOrderSnap.data();
+        if (auth.currentUser && isPaymentSuccess && Number(orderData?.loyaltyPoints) > 0) {
           await addDoc(collection(db, "pointsTransactions"), {
-            userId: tempOrderData.userId,
-            orderId: orderRef.id,
-            pointsAmount: tempOrderData.loyaltyPoints,
+            userId: orderData.userId,
+            orderId: orderId,
+            pointsAmount: orderData.loyaltyPoints,
             status: "pending",
             timestamp: Timestamp.now(),
-            message: `Points gagnés pour la commande #${orderRef.id.slice(0, 6)}`,
+            message: `Points gagnés pour la commande #${orderId.slice(0, 6)}`,
             type: "points_grant",
           });
         }
 
+        // Nettoyer les données locales
+        localStorage.removeItem("pendingOrder");
         localStorage.removeItem("tempOrderData");
+
         setIsSubmitted(true);
         clearCart();
         try {
           navigate("/complete_order", {
             state: {
-              orderId: orderRef.id,
-              isGuest: tempOrderData.isGuest,
+              orderId,
+              isGuest: !!orderData?.isGuest,
               paymentStatus: finalStatus,
               transactionId,
             },
             replace: true,
           });
-          console.log("Navigation vers /complete_order après retour de paiement");
+
         } catch (navError) {
           console.error("Erreur de navigation après retour de paiement:", navError);
           setErrors((prev) => ({
@@ -877,6 +886,7 @@ const handleConfirmOrder = useCallback(async () => {
         }
       } catch (err) {
         console.error("Erreur après retour de paiement:", err);
+        localStorage.removeItem("pendingOrder");
         localStorage.removeItem("tempOrderData");
         setErrors((prev) => ({
           ...prev,
@@ -937,10 +947,15 @@ const handleConfirmOrder = useCallback(async () => {
             {errors.general.includes("commande temporaire") && (
               <button
                 onClick={() => {
-                  localStorage.removeItem("tempOrderData");
+                  try {
+                    localStorage.removeItem("pendingOrder");
+                    localStorage.removeItem("tempOrderData");
+                  } catch (e) {
+                    console.error("Erreur lors du nettoyage des données locales:", e);
+                  }
                   navigate("/checkout", { replace: true });
                 }}
-                className="mt-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                className="mt-2 ml-0 sm:ml-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 inline-block"
               >
                 Nettoyer et réessayer
               </button>

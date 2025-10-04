@@ -13,7 +13,7 @@ const MenusList = ({ menus = [], loading = false, scrollAnimation, ANIMATION_VAR
         className="flex items-center mb-2"
       >
         <h6 className="m-0 font-medium">Nos Menus</h6>
-        <Link to="/menus" className="ml-auto text-green-600 hover:text-green-700 transition-colors duration-200">
+        <Link to="/menu" className="ml-auto text-green-600 hover:text-green-700 transition-colors duration-200">
           Voir plus
         </Link>
       </motion.div>
@@ -35,7 +35,7 @@ const MenusList = ({ menus = [], loading = false, scrollAnimation, ANIMATION_VAR
               className="bg-white rounded-lg shadow-sm flex overflow-hidden"
               {...(CardAnimations?.menuCardHover || {})}
             >
-              <Link to={`/menu/${menu.id}`} className="flex w-full no-underline text-gray-800">
+              <Link to={`/menus/${menu.id}`} className="flex w-full no-underline text-gray-800">
                 <div className="w-20 h-20 flex-shrink-0">
                   <motion.img
                     src={menu.covers[0] || 'https://via.placeholder.com/150?text=Aucune+image'}

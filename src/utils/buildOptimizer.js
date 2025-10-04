@@ -184,12 +184,8 @@ export const applyBuildOptimizations = () => {
   const isProduction = process.env.NODE_ENV === 'production';
   
   if (!isProduction) {
-    console.log('🔧 Mode développement - optimisations de build désactivées');
     return;
   }
-
-  console.log('🚀 Application des optimisations de build...');
-  
   // Appliquer les optimisations
   const optimizations = {
     bundle: bundleOptimization,
@@ -229,14 +225,6 @@ export const measurePerformance = () => {
     if ('performance' in window && 'getEntriesByType' in performance) {
       const navigation = performance.getEntriesByType('navigation')[0];
       if (navigation) {
-        console.log('📊 Métriques de navigation:', {
-          'DNS Lookup': navigation.domainLookupEnd - navigation.domainLookupStart,
-          'TCP Connection': navigation.connectEnd - navigation.connectStart,
-          'Request': navigation.responseStart - navigation.requestStart,
-          'Response': navigation.responseEnd - navigation.responseStart,
-          'DOM Processing': navigation.domComplete - navigation.domLoading,
-          'Load Complete': navigation.loadEventEnd - navigation.loadEventStart,
-        });
       }
     }
   };

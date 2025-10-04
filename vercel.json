@@ -1,6 +1,14 @@
 {
     "rewrites": [
       {
+        "source": "/me/:numeroTelephoneClient/track",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/track/:phone",
+        "destination": "/index.html"
+      },
+      {
         "source": "/(.*)",
         "destination": "/index.html"
       }
@@ -15,4 +23,3 @@
       }
     ]
   }
-  

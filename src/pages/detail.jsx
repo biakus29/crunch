@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { db } from "../firebase";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { Link, useParams, useNavigate } from "react-router-dom";
@@ -80,9 +80,6 @@ const ProductDetails = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [validationError, setValidationError] = useState(null);
 
-  console.log("ID extrait de l'URL :", id);
-
-
   // Récupérer les avis
   const fetchReviews = async (productId) => {
     try {
@@ -105,7 +102,7 @@ const ProductDetails = () => {
     try {
       const productRef = doc(db, "items", id);
       const productDoc = await getDoc(productRef);
-      console.log("Document Firestore :", productDoc.exists() ? productDoc.data() : "Non trouvé");
+
       if (!productDoc.exists()) {
         setError("Produit non trouvé. Il est possible que ce produit n'existe pas.");
         setLoading(false);
@@ -127,7 +124,8 @@ const ProductDetails = () => {
         covers: productData.covers || [],
         description: productData.description || "Aucune description disponible.",
         available: productData.available !== undefined ? productData.available : true,
-        assortments: productData.assortments || [],
+        // Unifier le champ des compléments: préférer extraLists, fallback vers assortments
+        extraLists: productData.extraLists || productData.assortments || [],
         discount: productData.discount || 0,
         saleMode: productData.saleMode || "unité",
       };
@@ -140,7 +138,6 @@ const ProductDetails = () => {
         return;
       }
       setProduct(finalProductData);
-      console.log("Produit chargé :", finalProductData);
 
       const extraListsSnapshot = await getDocs(collection(db, "extraLists"));
       const extraListsData = extraListsSnapshot.docs.map((doc) => ({
@@ -172,6 +169,8 @@ const ProductDetails = () => {
             priceType: data.priceType || "single",
             sizes: data.priceType === "single" ? {} : data.sizes || {},
             covers: data.covers || [],
+            // Inclure extraLists pour cohérence (fallback vers assortments)
+            extraLists: data.extraLists || data.assortments || [],
             discount: data.discount || 0,
             available: data.available !== undefined ? data.available : true,
           };
@@ -205,8 +204,6 @@ const ProductDetails = () => {
     return convertPrice(price).toLocaleString("fr-FR", { currency: "XAF" }) + " FCFA";
   };
 
-
-
   const handleQuantityChange = (delta) => {
     setQuantity((prev) => Math.max(1, prev + delta));
   };
@@ -215,16 +212,16 @@ const ProductDetails = () => {
     if (!product?.available) return;
     
     // Vérifier s'il y a des compléments à demander
-    const hasExtras = product.assortments && product.assortments.length > 0;
+    const hasExtras = product.extraLists && product.extraLists.length > 0;
     
     if (hasExtras) {
       // Ouvrir le modal pour les compléments
       setSelectedItem({
         ...product,
-        extraLists: product.assortments || [],
+        extraLists: product.extraLists || [],
         navigateToCheckout
       });
-      console.log(`Modal ouvert pour ${product.name} avec compléments:`, product.assortments);
+
     } else {
       // Ajouter directement au panier sans modal
       const cartItem = {
@@ -241,8 +238,7 @@ const ProductDetails = () => {
       addToCart(cartItem);
       setSuccessMessage(`${product.name} ajouté au panier !`);
       setTimeout(() => setSuccessMessage(""), 3000);
-      
-      console.log(`Ajout direct au panier : ${product.name}, navigation vers ${navigateToCheckout ? "/accueil" : "/cart"}`);
+
       navigate(navigateToCheckout ? "/accueil" : "/cart");
       if (navigateToCheckout) trackInitiateCheckout();
     }
@@ -253,7 +249,7 @@ const ProductDetails = () => {
     setTimeout(() => setSuccessMessage(""), 3000);
     
     const navigateToCheckout = selectedItem?.navigateToCheckout;
-    console.log(`Ajout au panier : ${selectedItem.name} (${selectedItem.id}), navigation vers ${navigateToCheckout ? "/accueil" : "/cart"}`);
+
     navigate(navigateToCheckout ? "/accueil" : "/cart");
     if (navigateToCheckout) trackInitiateCheckout();
   };
@@ -274,7 +270,6 @@ const ProductDetails = () => {
       });
     }
   };
-
 
   const trackInitiateCheckout = () => {
     if (window.fbq && selectedItem) {
@@ -642,10 +637,10 @@ const ProductDetails = () => {
                         if (!item.available) return;
                         setSelectedItem({
                           ...item,
-                          extraLists: item.assortments || [],
+                          extraLists: item.extraLists || [],
                           navigateToCheckout: false
                         });
-                        console.log(`Produit recommandé sélectionné : ${item.name} (${item.id})`);
+
                       }}
                       disabled={!item.available}
                       aria-label={`Ajouter ${item.name} au panier`}

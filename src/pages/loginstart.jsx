@@ -271,7 +271,7 @@ const Login = () => {
         </div>
       </div>
 
-      <style jsx={true} global>{`
+      <style jsx="true" global="true">{`
         @keyframes fadeIn {
           0% {
             opacity: 0;

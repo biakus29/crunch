@@ -29,7 +29,7 @@ const CategoriesGrid = ({ categories = [], loading = false, scrollAnimation, Car
               className="bg-white shadow-sm rounded text-center p-2"
               {...(CardAnimations?.categoryCardHover || {})}
             >
-              <Link to={`/category/${category.id}`}>
+              <Link to={`/categories/${category.id}`}>
                 <motion.img 
                   src={category.icon} 
                   alt={category.name} 

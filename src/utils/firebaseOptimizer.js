@@ -95,14 +95,12 @@ export const optimizedQuery = async (collectionName, options = {}) => {
   if (useCache) {
     const cachedData = firebaseCache.get(cacheKey);
     if (cachedData) {
-      console.log(`📦 Cache hit pour ${collectionName}`);
       return cachedData;
     }
   }
 
   // Vérifier si une requête identique est en cours
   if (pendingQueries.has(cacheKey)) {
-    console.log(`⏳ Requête en cours pour ${collectionName}, attente...`);
     return await pendingQueries.get(cacheKey);
   }
 
@@ -144,8 +142,6 @@ export const optimizedQuery = async (collectionName, options = {}) => {
       if (useCache) {
         firebaseCache.set(cacheKey, data, cacheTTL);
       }
-
-      console.log(`✅ Requête ${collectionName} terminée: ${data.length} documents`);
       return data;
     })
     .catch(error => {
@@ -178,7 +174,6 @@ export const optimizedGetDoc = async (collectionName, docId, options = {}) => {
   if (useCache) {
     const cachedData = firebaseCache.get(cacheKey);
     if (cachedData) {
-      console.log(`📦 Cache hit pour document ${collectionName}/${docId}`);
       return cachedData;
     }
   }
@@ -219,8 +214,6 @@ export const optimizedGetDoc = async (collectionName, docId, options = {}) => {
  * @returns {Promise<Array>} Résultats des opérations
  */
 export const batchQueries = async (operations) => {
-  console.log(`🔄 Exécution de ${operations.length} requêtes en batch`);
-  
   const results = await Promise.allSettled(
     operations.map(async (operation) => {
       const { type, collection: collectionName, docId, options } = operation;
@@ -251,8 +244,6 @@ export const batchQueries = async (operations) => {
   if (errors.length > 0) {
     console.warn(`⚠️ ${errors.length} erreurs dans le batch:`, errors);
   }
-
-  console.log(`✅ Batch terminé: ${successfulResults.length}/${operations.length} succès`);
   return successfulResults;
 };
 
@@ -263,9 +254,6 @@ export const batchQueries = async (operations) => {
  */
 export const batchWrites = async (writes) => {
   if (writes.length === 0) return;
-
-  console.log(`✍️ Écriture en batch de ${writes.length} opérations`);
-  
   const batch = writeBatch(db);
   
   writes.forEach(({ type, collection: collectionName, docId, data }) => {
@@ -288,8 +276,6 @@ export const batchWrites = async (writes) => {
 
   try {
     await batch.commit();
-    console.log(`✅ Batch d'écriture terminé avec succès`);
-    
     // Invalider le cache pour les collections affectées
     const affectedCollections = [...new Set(writes.map(w => w.collection))];
     affectedCollections.forEach(collectionName => {
@@ -333,9 +319,6 @@ export const optimizedListener = (collectionName, options, callback) => {
   if (limitClause) {
     queryRef = query(queryRef, limit(limitClause));
   }
-
-  console.log(`👂 Listener activé pour ${collectionName}`);
-
   return onSnapshot(queryRef, 
     (snapshot) => {
       const data = snapshot.docs.map(doc => ({
@@ -369,7 +352,6 @@ export const invalidateCache = (collectionName) => {
   }
   
   keysToDelete.forEach(key => firebaseCache.delete(key));
-  console.log(`🗑️ Cache invalidé pour ${collectionName}: ${keysToDelete.length} entrées supprimées`);
 };
 
 /**
@@ -388,7 +370,6 @@ export const getCacheStats = () => {
  */
 export const clearCache = () => {
   firebaseCache.clear();
-  console.log('🧹 Cache Firebase nettoyé');
 };
 
 /**
@@ -450,7 +431,6 @@ setInterval(() => {
   keysToDelete.forEach(key => firebaseCache.delete(key));
   
   if (keysToDelete.length > 0) {
-    console.log(`🧹 Nettoyage automatique: ${keysToDelete.length} entrées expirées supprimées`);
   }
 }, 10 * 60 * 1000);
 

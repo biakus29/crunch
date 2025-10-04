@@ -221,7 +221,7 @@ export const AnimatedComponents = {
         src={src}
         alt={alt}
         className={className}
-        whileHover={hoverZoom ? { scale: 1.1 } : "false"}
+        whileHover={hoverZoom ? { scale: 1.1 } : false}
         transition={{ duration: 0.3, ease: "easeOut" }}
       />
     </motion.div>
@@ -450,8 +450,7 @@ export const CardAnimations = {
     whileHover: { 
       scale: 1.03, 
       y: -8,
-      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
-      rotateY: 2
+      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)"
     },
     whileTap: { 
       scale: 0.98,
@@ -466,8 +465,7 @@ export const CardAnimations = {
   // Animation pour les images de produits
   productImageHover: {
     whileHover: { 
-      scale: 1.15,
-      filter: "brightness(1.1)"
+      scale: 1.15
     },
     transition: { 
       duration: 0.4, 

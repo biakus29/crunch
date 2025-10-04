@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { doc, getDoc, collection, getDocs, updateDoc, Timestamp, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { useAuth } from "../context/authcontext";
 import { 
   ShoppingCart, 
   Package, 
@@ -109,8 +110,11 @@ export const formatDate = (timestamp) =>
     : "Date non disponible";
 
 const OrderTracking = () => {
-  const { numeroTelephoneClient } = useParams();
-  const [phone, setPhone] = useState(numeroTelephoneClient || "");
+  const { phone: phoneParam } = useParams();
+  const { isAdmin } = useAuth();
+
+  const [phone, setPhone] = useState(phoneParam ? decodeURIComponent(phoneParam) : "");
+
   const [orders, setOrders] = useState([]);
   const [itemsData, setItemsData] = useState({});
   const [extraLists, setExtraLists] = useState({});
@@ -172,14 +176,19 @@ const OrderTracking = () => {
   };
 
   useEffect(() => {
+
+    // Charger uniquement par numéro de téléphone
     if (!phone) {
+
       setError("Veuillez entrer un numéro de téléphone.");
       setLoading(false);
       return;
     }
 
     const phoneVariations = normalizePhone(phone);
+
     if (!phoneVariations.some((v) => v.length >= 9)) {
+
       setError("Veuillez entrer un numéro de téléphone valide (minimum 9 chiffres, ex: +237123456789).");
       setLoading(false);
       return;
@@ -200,26 +209,27 @@ const OrderTracking = () => {
           q,
           (snapshot) => {
             snapshot.docs.forEach((doc) => {
-              const data = doc.data();
-              const order = {
-                id: doc.id,
-                ...data,
-                status: data.status || ORDER_STATUS.PENDING,
-              };
-              if (!order.items || !Array.isArray(order.items) || order.items.length === 0) {
-                console.warn(`Commande ${doc.id} ignorée : items invalides`, order);
-                return;
-              }
-              if (!fetchedOrders.find((o) => o.id === order.id)) {
-                fetchedOrders.push(order);
+              const orderData = { id: doc.id, ...doc.data() };
+
+              const existingIndex = fetchedOrders.findIndex((o) => o.id === orderData.id);
+              if (existingIndex >= 0) {
+                fetchedOrders[existingIndex] = orderData;
+              } else {
+                fetchedOrders.push(orderData);
               }
             });
-            fetchedOrders.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-            setOrders([...fetchedOrders]);
+
+            const sortedOrders = fetchedOrders.sort((a, b) => {
+              const aTime = a.timestamp?.seconds || a.createdAt?.seconds || 0;
+              const bTime = b.timestamp?.seconds || b.createdAt?.seconds || 0;
+              return bTime - aTime;
+            });
+
+            setOrders(sortedOrders);
             setLoading(false);
           },
           (err) => {
-            console.error(`Erreur pour phone variation "${phoneVariations[Math.floor(index / 2)]}" :`, err);
+            console.error(`❌ Error for phone variation "${phoneVariations[Math.floor(index / 2)]}" :`, err);
             setError("Aucune commande trouvée. Vérifiez votre numéro (ex: +237123456789).");
             setLoading(false);
           }
@@ -232,13 +242,9 @@ const OrderTracking = () => {
 
   const handlePhoneChange = (e) => {
     const newPhone = e.target.value;
+
     setPhone(newPhone);
-    const phoneVariations = normalizePhone(newPhone);
-    const validPhone = phoneVariations.find((v) => v.length >= 9);
-    if (validPhone) {
-      navigate(`/commande/me/${encodeURIComponent(validPhone)}`);
-      setSelectedOrderId(null);
-    }
+    // Ne pas naviguer automatiquement, laisser l'utilisateur sur la même page
   };
 
   const calculateTotal = (order) => {
@@ -277,14 +283,6 @@ const OrderTracking = () => {
         : 0;
 
       // Log pour débogage
-      console.log(`Calcul pour article ${item.dishId}:`, {
-        itemPrice,
-        isSizeBased,
-        size: item.size,
-        quantity: item.quantity,
-        extrasTotal,
-        total: (itemPrice + extrasTotal) * Number(item.quantity || 1),
-      });
 
       return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
     }, 0);
@@ -292,13 +290,6 @@ const OrderTracking = () => {
     const deliveryFee = convertPrice(order.deliveryFee) || DEFAULT_DELIVERY_FEE;
     const pointsReduction = convertPrice(order.pointsReduction) || 0;
     const total = Math.max(0, itemsTotal + deliveryFee - pointsReduction);
-
-    console.log(`Total commande ${order.id}:`, {
-      itemsTotal,
-      deliveryFee,
-      pointsReduction,
-      total,
-    });
 
     return total;
   };
@@ -327,6 +318,7 @@ const OrderTracking = () => {
   };
 
   const renderOrderDetails = (order) => {
+    const { isAdmin } = useAuth();
     const user = order.userId
       ? usersData.byId[order.userId]
       : order.contact?.phone && usersData.byPhone[order.contact?.phone];
@@ -438,13 +430,34 @@ const OrderTracking = () => {
                       </p>
                     )}
                     {step.status === ORDER_STATUS.DELIVERING && step.stepStatus === "completed" && (
-                      <button
-                        onClick={() => confirmDelivery(order.id)}
-                        className="mt-2 px-3 sm:px-4 py-1 sm:py-2 bg-green-600 text-white text-xs sm:text-sm rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                        aria-label="Confirmer la livraison"
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleShowModal}
+                        className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-lg"
                       >
-                        Confirmer la livraison
-                      </button>
+                        ✅ Confirmer la livraison
+                      </motion.button>
+                    )}
+                    {!isAdmin && order.status === ORDER_STATUS.DELIVERING && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleShowModal}
+                        className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-lg"
+                      >
+                        ✅ Confirmer la livraison
+                      </motion.button>
+                    )}
+                    {!isAdmin && order.status === ORDER_STATUS.DELIVERED && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => navigate(`/thank-you/${order.id}`)}
+                        className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-lg"
+                      >
+                        ⭐ Noter cette commande
+                      </motion.button>
                     )}
                   </div>
                 </div>

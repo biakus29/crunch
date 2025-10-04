@@ -18,7 +18,7 @@ export const createTestPayment = async () => {
     };
 
     const docRef = await addDoc(collection(db, 'payments'), testPayment);
-    console.log('Paiement de test créé avec ID:', docRef.id);
+
     return docRef.id;
   } catch (error) {
     console.error('Erreur lors de la création du paiement de test:', error);
@@ -47,9 +47,9 @@ export const createMultipleTestPayments = async () => {
       };
 
       await addDoc(collection(db, 'payments'), testPayment);
-      console.log(`Paiement de test ${i + 1} créé`);
+
     }
-    console.log('Tous les paiements de test ont été créés avec succès');
+
   } catch (error) {
     console.error('Erreur lors de la création des paiements de test:', error);
     throw error;

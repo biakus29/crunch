@@ -135,10 +135,8 @@ const Profile = () => {
       const userDocRef = doc(db, 'usersrestau', uid);
       const userDoc = await getDoc(userDocRef);
 
-      console.log('Profile: Chargement userDoc pour uid =', uid);
-
       if (!userDoc.exists()) {
-        console.log('Profile: Création nouveau document utilisateur');
+
         await setDoc(userDocRef, {
           firstName: '',
           lastName: '',
@@ -158,7 +156,7 @@ const Profile = () => {
         setIsGuest(isGuestUser);
       } else {
         const userData = userDoc.data();
-        console.log('Profile: userData =', userData);
+
         setFormData({
           firstName: userData.firstName || '',
           lastName: userData.lastName || '',
@@ -168,12 +166,11 @@ const Profile = () => {
         const points = typeof userData.points === 'number' ? userData.points : 0;
         setUserPoints(points);
         setIsGuest(!!userData.isGuest);
-        console.log('Profile: userPoints =', points);
+
       }
 
       const loadedAddresses = await firestoreActions.loadAddresses(uid);
       setAddresses(loadedAddresses);
-      console.log('Profile: Adresses chargées =', loadedAddresses);
 
       try {
         const transactionsQuery = query(
@@ -185,7 +182,7 @@ const Profile = () => {
         const transactionsSnapshot = await getDocs(transactionsQuery);
         const transactions = transactionsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         setPointsTransactions(transactions);
-        console.log('Profile: Transactions de points =', transactions);
+
       } catch (transactionError) {
         console.warn('Erreur lors de la récupération des transactions de points:', transactionError);
         setPointsTransactions([]);
@@ -194,7 +191,7 @@ const Profile = () => {
       try {
         const loadedOrders = await firestoreActions.loadOrders(uid);
         setOrders(loadedOrders);
-        console.log('Profile: Commandes chargées =', loadedOrders);
+
       } catch (orderError) {
         console.warn('Erreur lors de la récupération des commandes:', orderError);
         setOrders([]);
@@ -251,7 +248,7 @@ const Profile = () => {
 
               if (guestDoc?.exists()) {
                 const guestData = guestDoc.data();
-                console.log('Profile: Utilisateur invité trouvé =', guestData);
+
                 setUser({
                   uid: guestDoc.id,
                   email: guestData.email || '',
@@ -259,7 +256,7 @@ const Profile = () => {
                 });
                 await fetchUserData(guestDoc.id, guestData.email || '', true);
               } else {
-                console.log('Profile: Aucun utilisateur invité trouvé');
+
                 navigate('/login');
               }
             } catch (err) {

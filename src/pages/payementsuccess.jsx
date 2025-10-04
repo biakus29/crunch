@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import { useCart } from "../context/cartcontext";
 import { db } from "../firebase";
 import { doc, updateDoc, getDoc, Timestamp, collection, query, where, getDocs } from "firebase/firestore";
@@ -14,25 +15,25 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const updateOrder = async () => {
       try {
-        // Récupérer les paramètres d'URL
+        // Récupérer les paramètres d'URL (optionnels selon le PSP)
         const urlParams = new URLSearchParams(window.location.search);
-        const paymentStatus = urlParams.get("payment_status");
-        const transactionId = urlParams.get("transaction_id");
-        const orderId = urlParams.get("order_id");
+        const urlTx = urlParams.get("transaction_id") || urlParams.get("tx") || urlParams.get("transactionId");
+        const urlOrderId = urlParams.get("order_id") || urlParams.get("orderId");
 
-        if (!paymentStatus || !transactionId || !orderId) {
-          throw new Error("Paramètres de paiement manquants.");
-        }
+        // Récupérer les données locales (flow Mobile standard)
+        const pendingOrder = (() => {
+          try { return JSON.parse(localStorage.getItem("pendingOrder")); } catch { return null; }
+        })();
 
-        // Récupérer les données de la commande en attente
-        const pendingOrder = JSON.parse(localStorage.getItem("pendingOrder"));
-        if (!pendingOrder || pendingOrder.orderId !== orderId || pendingOrder.transactionId !== transactionId) {
-          throw new Error("Données de commande en attente non valides.");
+        const transactionId = urlTx || pendingOrder?.transactionId;
+        const orderId = urlOrderId || pendingOrder?.orderId;
+        if (!transactionId || !orderId) {
+          throw new Error("Impossible d'identifier la commande (transactionId/orderId manquant).");
         }
 
         // Vérifier le statut du paiement via l'API
         const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
-        const response = await fetch(`${API_URL}/api/payment/status?transaction_id=${transactionId}`);
+        const response = await fetch(`${API_URL}/api/payment/status?transaction_id=${encodeURIComponent(transactionId)}`);
         if (!response.ok) {
           throw new Error("Échec de la vérification du statut du paiement.");
         }
@@ -42,8 +43,9 @@ const PaymentSuccess = () => {
           throw new Error(statusData.message || "Échec de la vérification du paiement.");
         }
 
-        const isPaymentSuccess = statusData.status === "success";
-        const finalStatus = isPaymentSuccess ? "confirmed" : "failed";
+        const st = String(statusData.status || "").toLowerCase();
+        const isPaymentSuccess = ["success", "succeeded", "paid"].includes(st);
+        const finalStatus = isPaymentSuccess ? "livree" : "echec";
 
         // Récupérer la commande depuis Firestore
         const orderRef = doc(db, "orders", orderId);
@@ -56,10 +58,9 @@ const PaymentSuccess = () => {
 
         // Mettre à jour la commande
         await updateDoc(orderRef, {
-          status: finalStatus,
           isPaid: isPaymentSuccess,
           paymentRef: transactionId,
-          timestamp: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         });
 
         // Mettre à jour le statut du paiement dans la collection payments
@@ -69,7 +70,6 @@ const PaymentSuccess = () => {
           where("orderId", "==", orderId)
         );
         const paymentsSnapshot = await getDocs(paymentsQuery);
-        
         if (!paymentsSnapshot.empty) {
           const paymentDoc = paymentsSnapshot.docs[0];
           await updateDoc(paymentDoc.ref, {
@@ -86,18 +86,16 @@ const PaymentSuccess = () => {
         // Définir le message de succès
         setSuccessMessage("Paiement réussi ! Votre commande a été confirmée.");
 
-        // Rediriger après 3 secondes
+        // Redirection: par numéro si possible, sinon par ID
         setTimeout(() => {
-          navigate("/complete_order", {
-            state: {
-              orderId,
-              isGuest: orderData.isGuest,
-              paymentStatus: finalStatus,
-              transactionId,
-            },
-            replace: true,
-          });
-        }, 3000);
+          const phone = orderData?.contact?.phone || orderData?.address?.phone;
+          if (phone) {
+            const encodedPhone = encodeURIComponent(phone);
+            navigate(`/me/${encodedPhone}/pay`, { replace: true });
+          } else {
+            navigate(`/complete_order/${orderId}`, { replace: true });
+          }
+        }, 2000);
       } catch (err) {
         console.error("Erreur lors de la mise à jour de la commande :", err);
         setError("Une erreur s'est produite lors du traitement de votre paiement. Veuillez contacter le support.");

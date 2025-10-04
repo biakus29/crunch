@@ -20,7 +20,6 @@ const firebaseConfig = {
 let app;
 try {
   app = initializeApp(firebaseConfig);
-  console.log("Firebase initialisé avec succès");
 } catch (error) {
   console.error("Erreur lors de l'initialisation de Firebase :", error);
   throw error;
@@ -34,8 +33,6 @@ const googleProvider = new GoogleAuthProvider();
 
 // Persistance hors ligne désactivée temporairement pour éviter les erreurs d'assertion interne
 let persistenceInitialized = true;
-console.log("Persistance hors ligne désactivée pour éviter les conflits d'état.");
-
 // Optionnel: Réactiver la persistance si nécessaire
 // enableIndexedDbPersistence(db)
 //   .then(() => {
@@ -60,7 +57,6 @@ isSupported()
   .then((supported) => {
     if (supported) {
       messaging = getMessaging(app);
-      console.log("Firebase Messaging initialisé.");
     } else {
       console.warn("Firebase Messaging non supporté sur ce navigateur.");
     }

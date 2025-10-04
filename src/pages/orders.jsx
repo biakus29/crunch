@@ -80,7 +80,6 @@ const OrderSummary = () => {
           const extraSnap = await getDocs(collection(db, "extraLists"));
           const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
           setExtraLists(extras);
-          console.log("extraLists rechargés après reconnexion:", extras);
         } catch (err) {
           console.error("Erreur lors du rechargement des extras:", err);
         }
@@ -112,8 +111,6 @@ const OrderSummary = () => {
           .map((doc) => ({ id: doc.id, ...doc.data() }))
           .filter((q) => q.name && typeof q.name === "string");
         const extras = extraSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        console.log("quartiers chargés:", quartiers);
-        console.log("extraLists chargés:", extras);
         setQuartiersList(quartiers);
         setExtraLists(extras);
         if (quartiers.length === 0) {
@@ -233,7 +230,6 @@ const OrderSummary = () => {
   // Calculate items total
   const total = useMemo(() => {
     if (!cartItems || !extraLists.length) {
-      console.log("total: cartItems ou extraLists non disponibles", { cartItems, extraLists });
       return 0;
     }
     return cartItems.reduce((acc, item) => {
@@ -420,7 +416,6 @@ const OrderSummary = () => {
 
   useEffect(() => {
     if (dataLoading) {
-      console.log("Validation en attente, données en cours de chargement...");
       return;
     }
     if (
@@ -471,8 +466,6 @@ const handleConfirmOrder = useCallback(async () => {
 
   try {
     await waitForPersistence();
-    console.log("Soumission de la commande pour l'utilisateur:", uid, "avec articles:", cartItems);
-
     // Créer la commande dans Firestore pour les deux méthodes de paiement
     const orderRef = await runTransaction(db, async (transaction) => {
       const orderRef = doc(collection(db, "orders"));
@@ -533,9 +526,6 @@ const handleConfirmOrder = useCallback(async () => {
 
       return orderRef;
     });
-
-    console.log("Commande créée avec succès, ID:", orderRef.id);
-
     // Si paiement mobile, initier le paiement
     if (normalizedPayment?.id === "payment_mobile" && finalTotal > 0) {
       const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
@@ -649,7 +639,6 @@ const handleConfirmOrder = useCallback(async () => {
         if (orderAge > TEMP_ORDER_TIMEOUT) {
           localStorage.removeItem("tempOrderData");
           tempOrderData = null;
-          console.log("Données temporaires supprimées (obsolètes)");
         }
       }
 
@@ -722,7 +711,6 @@ const handleConfirmOrder = useCallback(async () => {
             },
             replace: true,
           });
-          console.log("Navigation vers /complete_order après retour de paiement");
         } catch (navError) {
           console.error("Erreur de navigation après retour de paiement:", navError);
           setErrors((prev) => ({

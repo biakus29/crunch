@@ -63,11 +63,8 @@ const QuartiersAdmin = () => {
     const syncQuartiers = async () => {
       try {
         setLoading(true);
-        console.log("Tentative de chargement des quartiers depuis Firestore...");
         const snapshot = await getDocs(collection(db, "quartiers"));
         const existingQuartiers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        console.log("Quartiers existants:", existingQuartiers);
-
         // Synchroniser les données initiales avec Firestore, en gérant les doublons
         const uniqueIds = new Set();
         for (const initialQuartier of initialQuartierData) {
@@ -75,14 +72,12 @@ const QuartiersAdmin = () => {
             uniqueIds.add(initialQuartier.id);
             const existing = existingQuartiers.find((q) => q.id === initialQuartier.id);
             if (!existing) {
-              console.log(`Ajout de ${initialQuartier.id} avec frais ${initialQuartier.fee} FCFA...`);
               await addDoc(collection(db, "quartiers"), {
                 id: initialQuartier.id,
                 name: initialQuartier.name,
                 fee: initialQuartier.fee,
               });
             } else if (existing.name !== initialQuartier.name || existing.fee !== initialQuartier.fee) {
-              console.log(`Mise à jour de ${initialQuartier.id} avec frais ${initialQuartier.fee} FCFA...`);
               await setDoc(doc(db, "quartiers", initialQuartier.id), {
                 id: initialQuartier.id,
                 name: initialQuartier.name,
@@ -106,7 +101,6 @@ const QuartiersAdmin = () => {
             // Garder le premier ID, supprimer les autres
             const keepId = ids[0];
             for (const id of ids.slice(1)) {
-              console.log(`Suppression du doublon ${id} pour ${name}...`);
               await deleteDoc(doc(db, "quartiers", id));
             }
           }
@@ -115,7 +109,6 @@ const QuartiersAdmin = () => {
         // Recharger les données après synchronisation
         const updatedSnapshot = await getDocs(collection(db, "quartiers"));
         const updatedQuartiers = updatedSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        console.log("Quartiers synchronisés sans doublons:", updatedQuartiers);
         setQuartiers(updatedQuartiers);
       } catch (error) {
         console.error("Erreur lors de la synchronisation:", error);

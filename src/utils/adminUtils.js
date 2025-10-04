@@ -38,10 +38,25 @@ export const calculateOrderTotals = (order, extraLists, items) => {
       : 0;
     return sum + (itemPrice + extrasTotal) * Number(item.quantity || 1);
   }, 0);
+  
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : 1000;
   const pointsReduction = Number(order.pointsReduction) || 0;
-  const totalWithDelivery = subtotal + deliveryFee - pointsReduction;
-  return { subtotal, totalWithDelivery, pointsReduction };
+  const promoDiscount = Number(order.promoDiscount) || 0;
+  const pointsDiscount = Number(order.pointsDiscount) || 0;
+  const totalDiscount = promoDiscount + pointsDiscount + pointsReduction;
+  
+  const totalWithDelivery = subtotal + deliveryFee - totalDiscount;
+  
+  return { 
+    subtotal, 
+    deliveryFee,
+    promoDiscount,
+    pointsDiscount,
+    pointsReduction, 
+    totalDiscount,
+    totalWithDelivery,
+    finalTotal: totalWithDelivery
+  };
 };
 
 export const getWeekNumber = (date) => {

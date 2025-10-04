@@ -10,8 +10,6 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
-        console.log('🎉 Service Worker enregistré avec succès:', registration.scope);
-        
         // Vérifier les mises à jour du Service Worker
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
@@ -19,8 +17,6 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // Nouvelle version disponible
-                console.log('🔄 Nouvelle version de l\'application disponible');
-                
                 // Optionnel: Notifier l'utilisateur de la mise à jour
                 if (window.confirm('Une nouvelle version est disponible. Voulez-vous actualiser ?')) {
                   window.location.reload();
@@ -114,7 +110,6 @@ const sendToAnalytics = ({ name, value, id }) => {
     }).catch(console.error);
   } else {
     // En développement, afficher dans la console
-    console.log(`📊 ${name}:`, value, id);
   }
 };
 
@@ -180,6 +175,4 @@ if (process.env.NODE_ENV === 'production') {
       window.gc();
     }
   }, 5 * 60 * 1000); // Toutes les 5 minutes
-}
-
-console.log('🚀 Application Crunch initialisée avec optimisations de performance');
+}

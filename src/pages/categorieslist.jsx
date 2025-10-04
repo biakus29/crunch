@@ -110,7 +110,7 @@ const ItemCard = React.memo(({ item, onAddClick }) => {
 });
 
 const CategoryListing = () => {
-  const { id: categoryId } = useParams();
+  const { category: categoryId } = useParams();
   const [items, setItems] = useState([]);
   const [extraLists, setExtraLists] = useState([]);
   const [menu, setMenu] = useState(null);

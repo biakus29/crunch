@@ -44,12 +44,9 @@ const migrateSlugs = async () => {
 
       if (!data.slug || data.slug !== slug) {
         await updateDoc(doc(db, "items", docSnap.id), { slug });
-        console.log(`Mise à jour du slug pour ${data.name}: ${slug}`);
         updatedCount++;
       }
     }
-
-    console.log(`Migration terminée : ${updatedCount} articles mis à jour.`);
   } catch (error) {
     console.error("Erreur lors de la migration des slugs :", error);
   }

@@ -5,10 +5,12 @@ const OrdersToolbar = React.memo(function OrdersToolbar({
   dateFilterMode,
   setDateFilterMode,
   selectedDate,
-  onPrev,
-  onNext,
+  setSelectedDate,
+  handlePreviousPeriod,
+  handleNextPeriod,
   getWeekNumber,
 }) {
+  const safeDate = selectedDate instanceof Date ? selectedDate : new Date();
   return (
     <div className="mt-4 flex flex-wrap gap-2">
       <div className="flex items-center bg-white rounded-lg shadow-sm p-2">
@@ -39,17 +41,17 @@ const OrdersToolbar = React.memo(function OrdersToolbar({
       </div>
 
       <div className="flex items-center bg-white rounded-lg shadow-sm p-1">
-        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md" onClick={onPrev}>
+        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md" onClick={handlePreviousPeriod}>
           <FaChevronLeft />
         </button>
         <div className="px-3 py-1 text-sm font-medium">
           {dateFilterMode === "day"
-            ? selectedDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+            ? safeDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
             : dateFilterMode === "week"
-            ? `Semaine ${getWeekNumber(selectedDate)}`
-            : selectedDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+            ? `Semaine ${getWeekNumber ? getWeekNumber(safeDate) : ""}`
+            : safeDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
         </div>
-        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md" onClick={onNext}>
+        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md" onClick={handleNextPeriod}>
           <FaChevronRight />
         </button>
       </div>
@@ -58,3 +60,4 @@ const OrdersToolbar = React.memo(function OrdersToolbar({
 });
 
 export default OrdersToolbar;
+

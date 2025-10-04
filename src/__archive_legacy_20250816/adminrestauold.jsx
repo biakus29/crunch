@@ -87,7 +87,6 @@ const calculateTimeDifferenceInMinutes = (start, end) => {
 };
 
 const calculateOrderTotals = (order, extraLists, items) => {
-  console.log("Calcul des totaux pour la commande:", order.id, { items: order.items, pointsUsed: order.pointsUsed, pointsReduction: order.pointsReduction });
   const subtotal = order.items.reduce((sum, item) => {
     const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
     const itemPrice = item.price !== undefined && !isNaN(convertPrice(item.price))
@@ -108,7 +107,6 @@ const calculateOrderTotals = (order, extraLists, items) => {
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
   const pointsReduction = Number(order.pointsReduction) || 0;
   const totalWithDelivery = subtotal + deliveryFee - pointsReduction;
-  console.log("Résultat des totaux:", { subtotal, deliveryFee, pointsReduction, totalWithDelivery });
   return { subtotal, totalWithDelivery, pointsReduction };
 };
 const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) => {
@@ -157,7 +155,6 @@ const PendingOrdersModal = ({ orders, items, extraLists, usersData, onClose }) =
 };
 
 const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
-  console.log("Rendu d'OrderCard pour la commande:", order.id, { status: order.status, items: order.items });
   const user = order.userId
     ? usersData.byId[order.userId]
     : order.contact?.phone && usersData.byPhone[order.contact.phone];
@@ -213,7 +210,6 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
           <div className="max-h-32 overflow-y-auto text-sm">
             {order.items.map((item, index) => {
               const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
-              console.log(`Article ${item.dishId}:`, { price: item.price, dishPrice: item.dishPrice, currentItemPrice: currentItem?.price });
               const price = item.price !== undefined && !isNaN(convertPrice(item.price))
                 ? convertPrice(item.price)
                 : item.dishPrice !== undefined && !isNaN(convertPrice(item.dishPrice))
@@ -1002,7 +998,6 @@ const OrderDetailsModal = React.memo(({ order, items, extraLists, usersData, onC
   );
 });
 
-
 const RestaurantAdmin = () => {
   const [restaurant, setRestaurant] = useState(null);
   const [restaurantForm, setRestaurantForm] = useState({
@@ -1241,12 +1236,6 @@ const ratedOrders = orders.filter((order) => {
   const hasRating = order.rating && typeof order.rating === "object" && order.rating.rating !== undefined;
   const matchesRestaurant = order.restaurantId === currentRestaurantId;
   if (hasRating && matchesRestaurant) {
-    console.log("Commande notée trouvée:", {
-      orderId: order.id,
-      restaurantId: order.restaurantId,
-      rating: order.rating,
-      currentRestaurantId,
-    });
   }
   return hasRating && matchesRestaurant;
 });
@@ -1324,21 +1313,16 @@ const pendingOrders = useMemo(() => {
       setError(null);
   
       // Log pour déboguer l'état
-      console.log("categoryData avant création:", categoryData);
-  
       // Gestion de l'icône
       let iconUrl = "";
       if (categoryData.iconFile) {
         const uploadedUrls = await uploadImages([categoryData.iconFile]);
-        console.log("uploadedUrls:", uploadedUrls);
         iconUrl = uploadedUrls[0] || ""; // Utiliser une chaîne vide si aucun URL n'est retourné
       } else {
         iconUrl = categoryData.icon || "";
       }
   
       // Log pour vérifier iconUrl
-      console.log("iconUrl final:", iconUrl);
-  
       const newCategory = {
         name: categoryData.name,
         description: categoryData.description || "",
@@ -1432,7 +1416,6 @@ const pendingOrders = useMemo(() => {
   const deleteOrder = async (orderId) => {
     try {
       await deleteDoc(doc(db, "orders", orderId));
-      console.log(`Commande ${orderId} supprimée avec succès`);
     } catch (error) {
       console.error("Erreur lors de la suppression de la commande:", error);
       setError("Erreur lors de la suppression de la commande");
@@ -1488,21 +1471,16 @@ const pendingOrders = useMemo(() => {
       setError(null);
   
       // Log pour déboguer
-      console.log("categoryData avant mise à jour:", categoryData);
-  
       // Gestion de l'icône
       let iconUrl = "";
       if (categoryData.iconFile) {
         const uploadedUrls = await uploadImages([categoryData.iconFile]);
-        console.log("uploadedUrls:", uploadedUrls);
         iconUrl = uploadedUrls[0] || "";
       } else {
         iconUrl = categoryData.icon || "";
       }
   
       // Log pour vérifier iconUrl
-      console.log("iconUrl final:", iconUrl);
-  
       const updatedData = {
         name: categoryData.name,
         description: categoryData.description || "",
@@ -1635,8 +1613,6 @@ const pendingOrders = useMemo(() => {
       setError("Erreur lors de la mise à jour du plat");
     }
   };
-
-
 
 const startEditing = (item) => {
   console.log("Item passé à startEditing :", item); // Pour débogage
@@ -1853,7 +1829,6 @@ const startEditing = (item) => {
         };
   
         await updateDoc(doc(db, "items", item.id), { available: true, updatedAt: Timestamp.now() });
-        console.log(`Champ 'available' ajouté au produit ${item.id}`);
       }
   
       alert(`Mise à jour terminée : ${itemsToUpdate.length} produits corrigés.`);

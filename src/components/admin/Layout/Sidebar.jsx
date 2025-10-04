@@ -11,12 +11,14 @@ const Sidebar = ({
   setActiveSection,
   menuItems,
   restaurantName,
+  userRole,
+  userRoleLabel,
   onSignOut,
 }) => {
   return (
     <div
-      className={`bg-gradient-to-b from-green-700 to-green-800 text-white transition-all duration-300 fixed md:relative z-30 h-full 
-      ${sidebarOpen ? "w-64" : "w-20"} ${mobileMenuOpen ? "block" : "hidden md:block"}`}
+      className={`bg-gradient-to-b from-green-700 to-green-800 text-white transition-all duration-300 fixed md:relative z-30 h-screen max-h-screen min-h-0 flex flex-col overflow-hidden
+      ${sidebarOpen ? "w-64" : "w-20"} ${mobileMenuOpen ? "flex" : "hidden md:flex"}`}
     >
       {/* Sidebar Header */}
       <div className="p-4 flex items-center justify-between border-b border-green-600 h-16">
@@ -41,13 +43,13 @@ const Sidebar = ({
           </div>
           <div className="flex-1 truncate">
             <p className="font-medium truncate">{restaurantName || "Admin"}</p>
-            <p className="text-xs text-green-200 truncate">Restaurant Manager</p>
+            <p className="text-xs text-green-200 truncate">{userRoleLabel || "Utilisateur"}</p>
           </div>
         </div>
       )}
 
       {/* Navigation */}
-      <nav className="mt-4 px-2">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-2 overscroll-contain">
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -55,16 +57,21 @@ const Sidebar = ({
               setActiveSection(item.id);
               setMobileMenuOpen(false);
             }}
-            className={`flex items-center w-full p-3 rounded-lg mb-1 text-left transition-colors ${
-              activeSection === item.id ? "bg-white text-green-700 font-medium" : "text-white hover:bg-green-600"
+            className={`flex items-center w-full p-2 rounded-lg mb-1 text-left transition-all duration-200 whitespace-nowrap ${
+              activeSection === item.id 
+                ? "bg-white text-green-700 font-medium shadow-md" 
+                : "text-white hover:bg-green-600"
             }`}
+            title={!sidebarOpen ? item.label : ""}
           >
-            <span className="flex items-center">
-              <span className={`${sidebarOpen ? "mr-3" : "mx-auto"}`}>{item.icon}</span>
-              {sidebarOpen && <span>{item.label}</span>}
+            <span className="flex items-center w-full">
+              <span className={`text-sm shrink-0 ${sidebarOpen ? "mr-2" : "mx-auto"}`}>
+                {item.icon || <FaUser />}
+              </span>
+              {sidebarOpen && <span className="text-sm truncate max-w-[11rem]">{item.label}</span>}
             </span>
             {sidebarOpen && activeSection === item.id && (
-              <span className="ml-auto bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Actif</span>
+              <span className="ml-auto w-2 h-2 bg-green-600 rounded-full"></span>
             )}
           </button>
         ))}
@@ -72,7 +79,7 @@ const Sidebar = ({
 
       {/* Sidebar Footer */}
       {sidebarOpen && (
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-green-600">
+        <div className="mt-auto p-4 border-t border-green-600">
           <button
             className="flex items-center w-full p-2 text-white hover:bg-green-600 rounded-lg transition-colors"
             onClick={onSignOut}

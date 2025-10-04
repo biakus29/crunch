@@ -1,5 +1,5 @@
-import React from "react";
-import { doc, updateDoc, Timestamp } from "firebase/firestore";
+import React, { useState } from "react";
+import { doc, updateDoc, Timestamp, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../firebase";
 import {
   STATUS_COLORS,
@@ -7,11 +7,16 @@ import {
   DEFAULT_DELIVERY_FEE,
 } from "../adminConstants";
 import { calculateOrderTotals, convertPrice } from "../../../utils/adminUtils";
+import { FaTruck, FaCheck } from "react-icons/fa";
 
-const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd }) => {
+const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd, deliverers = [] }) => {
+  const [isAssigning, setIsAssigning] = useState(false);
+  // Vérification de sécurité pour éviter les erreurs si usersData n'est pas encore chargé
+  const safeUsersData = usersData || { byId: {}, byPhone: {} };
+  
   const user = order.userId
-    ? usersData.byId[order.userId]
-    : order.contact?.phone && usersData.byPhone[order.contact.phone];
+    ? safeUsersData.byId?.[order.userId]
+    : order.contact?.phone && safeUsersData.byPhone?.[order.contact.phone];
   const clientInfo = user
     ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Utilisateur inconnu"
     : order.contact?.name || "Client inconnu";
@@ -27,6 +32,27 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
     const element = extraList?.extraListElements?.[index];
     return element ? `${element.name}${element.price ? ` (+${convertPrice(element.price).toLocaleString()} FCFA)` : ""}` : "Extra inconnu";
   };
+
+  const handleQuickAssign = async (e, delivererName) => {
+    e.stopPropagation();
+    if (!delivererName || delivererName === order.assignedDeliverer) return;
+    
+    setIsAssigning(true);
+    try {
+      const orderRef = doc(db, "orders", order.id);
+      await updateDoc(orderRef, {
+        assignedDeliverer: delivererName,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'assignation:", error);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  // Filtrer les livreurs actifs
+  const activeDeliverers = deliverers.filter(d => d.active);
 
   return (
     <div
@@ -148,6 +174,35 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
             ) : "-"}
           </span>
         </div>
+
+        {/* Sélecteur rapide de livreur */}
+        {activeDeliverers.length > 0 && (
+          <div className="border-t pt-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <FaTruck className="text-blue-500" />
+              <select
+                value={order.assignedDeliverer || ""}
+                onChange={(e) => handleQuickAssign(e, e.target.value)}
+                disabled={isAssigning}
+                className={`flex-1 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${
+                  order.assignedDeliverer && order.assignedDeliverer !== "Non assigné"
+                    ? "bg-green-50 border-green-500 text-green-700 font-medium"
+                    : "bg-gray-50 border-gray-300"
+                } ${isAssigning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <option value="">-- Assigner un livreur --</option>
+                {activeDeliverers.map((deliverer) => (
+                  <option key={deliverer.id} value={deliverer.name}>
+                    {deliverer.name} {deliverer.zone ? `(${deliverer.zone})` : ""}
+                  </option>
+                ))}
+              </select>
+              {order.assignedDeliverer && order.assignedDeliverer !== "Non assigné" && (
+                <FaCheck className="text-green-500" />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

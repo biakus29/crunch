@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense, lazy } from "react";
 import { db, storage } from "../firebase"; // Assure-toi d'avoir configuré Firebase Storage
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+const ManagerManager = lazy(() => import('../components/admin/ManagerManager'));
 
 const Admin = () => {
   const [products, setProducts] = useState([]);
@@ -134,6 +136,11 @@ const Admin = () => {
         <li className="nav-item">
           <button className={`nav-link ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab("orders")}>
             Gestion des Commandes
+          </button>
+        </li>
+        <li className="nav-item">
+          <button className={`nav-link ${activeTab === 'managers' ? 'active' : ''}`} onClick={() => setActiveTab("managers")}>
+            Managers
           </button>
         </li>
       </ul>
@@ -282,6 +289,14 @@ const Admin = () => {
             </tbody>
           </table>
         </>
+      )}
+
+      {activeTab === 'managers' && (
+        <div className="bg-white rounded-xl shadow p-3">
+          <Suspense fallback={<div style={{ padding: 16 }}>Chargement des managers...</div>}>
+            <ManagerManager />
+          </Suspense>
+        </div>
       )}
     </div>
   );

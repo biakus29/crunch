@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase';
@@ -18,6 +19,13 @@ const LoyaltyHero = () => {
   const [userPoints, setUserPoints] = useState(0);
   const [userLevel, setUserLevel] = useState('Bronze');
   const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(() => {
+    try {
+      return localStorage.getItem('loyaltyHeroDismissed') !== 'true';
+    } catch {
+      return true;
+    }
+  });
 
   // Calcul du niveau utilisateur
   const calculateLevel = (points) => {
@@ -56,15 +64,34 @@ const LoyaltyHero = () => {
     fetchUserPoints();
   }, []);
 
+  // Auto-hide after a short time if user is new (points === 0)
+  useEffect(() => {
+    if (!loading && visible && userPoints === 0) {
+      const t = setTimeout(() => {
+        setVisible(false);
+        try { localStorage.setItem('loyaltyHeroDismissed', 'true'); } catch {}
+      }, 8000);
+      return () => clearTimeout(t);
+    }
+  }, [loading, visible, userPoints]);
+
+  const handleClose = () => {
+    setVisible(false);
+    try { localStorage.setItem('loyaltyHeroDismissed', 'true'); } catch {}
+  };
+
   const nextLevel = getNextLevel(userPoints);
   const levelInfo = calculateLevel(userPoints);
+
+  if (!visible) return null;
 
   return (
     <motion.section
       initial={{ opacity: 0, y: 50 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.8, ease: "easeOut" }}
-      className="bg-gradient-to-br from-green-50 via-green-100 to-green-200 py-8 px-4 mb-6"
+      className="relative bg-gradient-to-br from-green-50 via-green-100 to-green-200 py-8 px-4 mb-6"
     >
       <div className="max-w-7xl mx-auto">
         {/* En-tête de la section */}
@@ -74,6 +101,15 @@ const LoyaltyHero = () => {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
+          {/* Close button */}
+          <button
+            onClick={handleClose}
+            className="absolute right-3 top-3 text-gray-500 hover:text-gray-700 bg-white/70 hover:bg-white rounded-full w-8 h-8 flex items-center justify-center shadow"
+            aria-label="Fermer"
+          >
+            ×
+          </button>
+
           <motion.div
             className="inline-flex items-center justify-center w-16 h-16 bg-green-600 rounded-full mb-4"
             {...FoodAnimations.serving}

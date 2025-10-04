@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -30,6 +30,7 @@ const ProductPoints = lazy(() => import('../components/ProductPoints'));
 const PointsBadge = lazy(() => import('../components/PointsBadge'));
 
 const MenuPage = () => {
+  const { id: routeMenuId } = useParams();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [menus, setMenus] = useState([]);
@@ -94,6 +95,13 @@ const MenuPage = () => {
     fetchData();
   }, []);
 
+  // Appliquer le filtre de menu depuis l'URL si présent
+  useEffect(() => {
+    if (routeMenuId) {
+      setSelectedMenu(routeMenuId);
+    }
+  }, [routeMenuId]);
+
   // Filtrer et trier les items
   const filteredItems = items
     .filter(item => {
@@ -139,7 +147,7 @@ const MenuPage = () => {
   }
 
   return (
-    <AnimatedComponents.AnimatedPage className="min-h-screen bg-gray-100 pb-20">
+    <AnimatedComponents.AnimatedPage className="min-h-screen bg-gray-100 pb-20 overflow-x-hidden">
       {/* Header - Mobile First */}
       <motion.header
         {...ANIMATION_VARIANTS.fadeInDown}
@@ -172,7 +180,7 @@ const MenuPage = () => {
               {cartItems.length > 0 && (
                 <motion.span 
                   {...ANIMATION_VARIANTS.scaleIn}
-                  className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium min-w-[20px]"
+                  className="absolute -top-1 -right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium min-w-[20px]"
                 >
                   {cartItems.reduce((total, item) => total + item.quantity, 0)}
                 </motion.span>
@@ -356,7 +364,7 @@ const MenuPage = () => {
             </div>
           </div>
           <div className="bg-white p-3 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow duration-200 md:p-4 lg:p-6">
-            <div className="text-xl font-bold text-blue-600 md:text-2xl lg:text-3xl">
+            <div className="text-xl font-bold text-green-600 md:text-2xl lg:text-3xl">
               {categories.length}
             </div>
             <div className="text-xs text-gray-600 mt-1 md:text-sm lg:text-base">
@@ -364,7 +372,7 @@ const MenuPage = () => {
             </div>
           </div>
           <div className="bg-white p-3 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow duration-200 md:p-4 lg:p-6">
-            <div className="text-xl font-bold text-orange-600 md:text-2xl lg:text-3xl">
+            <div className="text-xl font-bold text-green-600 md:text-2xl lg:text-3xl">
               {cartItems.length}
             </div>
             <div className="text-xs text-gray-600 mt-1 md:text-sm lg:text-base">
@@ -388,7 +396,7 @@ const MenuPage = () => {
             <motion.div
               key={item.id}
               variants={CardAnimations.cardGridStagger.item}
-              className={viewMode === 'list' ? 'bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200' : ''}
+              className={viewMode === 'list' ? 'relative overflow-hidden bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200' : ''}
             >
               <ProductCard
                 product={item}
@@ -486,7 +494,7 @@ const MenuPage = () => {
                           <div className="flex items-center space-x-2">
                             <motion.button
                               onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center font-bold md:w-10 md:h-10"
+                              className="w-8 h-8 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center font-bold md:w-10 md:h-10"
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                             >
@@ -497,7 +505,7 @@ const MenuPage = () => {
                             </span>
                             <motion.button
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold md:w-10 md:h-10"
+                              className="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold md:w-10 md:h-10"
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                             >

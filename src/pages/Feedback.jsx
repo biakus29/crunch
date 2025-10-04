@@ -47,7 +47,6 @@ const FeedbackManager = ({ restaurantId }) => {
     if (window.confirm('Voulez-vous vraiment supprimer cet avis ?')) {
       try {
         await deleteDoc(doc(db, 'feedback', feedbackId));
-        console.log(`Avis ${feedbackId} supprimé avec succès`);
       } catch (error) {
         console.error('Erreur lors de la suppression de l\'avis:', error);
         setError('Erreur lors de la suppression de l\'avis');

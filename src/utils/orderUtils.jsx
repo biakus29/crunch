@@ -60,7 +60,6 @@ export const convertPrice = (price) => {
 };
 
 export const calculateOrderTotals = (order, extraLists, items) => {
-  console.log("Calcul des totaux pour la commande:", order.id, { items: order.items, itemsProp: items });
   const subtotal = order.items.reduce((sum, item) => {
     const currentItem = Array.isArray(items) ? items.find((it) => it.id === item.dishId) : null;
     const itemPrice = item.price !== undefined && !isNaN(convertPrice(item.price))
@@ -70,7 +69,6 @@ export const calculateOrderTotals = (order, extraLists, items) => {
       : currentItem?.price
       ? convertPrice(currentItem.price)
       : 0;
-    console.log(`Article ${item.dishId}: price=${itemPrice}, dishPrice=${item.dishPrice}, currentItemPrice=${currentItem?.price}`);
     const extrasTotal = item.selectedExtras
       ? Object.entries(item.selectedExtras).reduce((extraSum, [extraListId, indexes]) => {
           const extraList = extraLists.find((el) => el.id === extraListId)?.extraListElements || [];
@@ -81,6 +79,5 @@ export const calculateOrderTotals = (order, extraLists, items) => {
   }, 0);
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
   const totalWithDelivery = subtotal + deliveryFee;
-  console.log("Résultat des totaux:", { subtotal, deliveryFee, totalWithDelivery });
   return { subtotal, totalWithDelivery };
 };

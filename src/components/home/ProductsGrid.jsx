@@ -35,11 +35,20 @@ const ProductsGrid = ({
           initial="initial"
           animate="animate"
         >
-          {items.map((item) => (
+          {items
+            .slice()
+            .sort((a, b) => {
+              const aAvail = (a?.available ?? a?.isAvailable ?? true) ? 1 : 0;
+              const bAvail = (b?.available ?? b?.isAvailable ?? true) ? 1 : 0;
+              return bAvail - aAvail; // disponibles en premier
+            })
+            .map((item) => {
+              const isAvail = item?.available ?? item?.isAvailable ?? true;
+              return (
             <motion.div
               key={item.id}
               variants={CardAnimations?.cardGridStagger?.item}
-              className="bg-white rounded shadow-sm overflow-hidden relative"
+              className={`bg-white rounded shadow-sm overflow-hidden relative ${!isAvail ? 'opacity-80' : ''}`}
               {...(CardAnimations?.productCardHover || {})}
             >
               <Link
@@ -48,6 +57,11 @@ const ProductsGrid = ({
                 onClick={() => onViewContent?.(item)}
               >
                 <div className="relative w-48 h-48 mx-auto bg-gray-100 rounded-t">
+                  {!isAvail && (
+                    <div className="absolute inset-0 bg-black/50 flex items-start justify-end p-2 z-10">
+                      <span className="bg-white/90 text-red-600 text-[11px] font-semibold px-2 py-0.5 rounded-full">Indisponible</span>
+                    </div>
+                  )}
                   {item.promo && (
                     <motion.div
                       className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold z-10"
@@ -101,15 +115,19 @@ const ProductsGrid = ({
                 </div>
               </Link>
               <motion.button
-                onClick={(e) => onAddClick?.(item, e)}
-                className="bg-green-600 text-white px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 hover:bg-green-700 transition-colors duration-200"
+                onClick={(e) => isAvail && onAddClick?.(item, e)}
+                disabled={!isAvail}
+                className={`px-2 py-1 rounded-full text-sm absolute bottom-2 right-2 transition-colors duration-200 ${
+                  isAvail ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                }`}
                 {...(CardAnimations?.addToCartButton || {})}
                 aria-label={`Ajouter ${item.name} au panier avec options`}
               >
                 +
               </motion.button>
             </motion.div>
-          ))}
+              );
+            })}
         </motion.div>
       )}
     </motion.section>

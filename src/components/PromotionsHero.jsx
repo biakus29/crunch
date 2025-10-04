@@ -69,8 +69,6 @@ const PromotionsHero = () => {
        );
  
        const unsubscribe = onSnapshot(promotionsQuery, (snapshot) => {
-         console.log('=== PROMOTIONS HERO - DÉBUT CHARGEMENT ===');
-         console.log('Nombre de documents trouvés:', snapshot.docs.length);
          const now = new Date();
          const promotionsData = snapshot.docs.map(doc => {
            const data = doc.data();
@@ -104,11 +102,7 @@ const PromotionsHero = () => {
            const bCreatedAt = bDoc?.data()?.createdAt?.toDate?.() || new Date(0);
            return bCreatedAt - aCreatedAt;
          });
-         
-         console.log('Promotions valides trouvées:', promotionsData.length);
-         console.log('Données des promotions:', promotionsData);
          setPromotions(promotionsData);
-         console.log('=== PROMOTIONS HERO - FIN CHARGEMENT ===');
        });
  
        return unsubscribe;

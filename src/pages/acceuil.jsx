@@ -157,7 +157,6 @@ const HomePage = () => {
 
   // Indexation des extraLists supprimée (non utilisée)
 
-
   // Vérification de l'utilisateur
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -203,13 +202,12 @@ const HomePage = () => {
   // Sélection d'un article
   const handleAddClick = (item, e) => {
     e.preventDefault();
-    console.log(`Ajout de ${item.id}, extraLists:`, item.extraLists);
+
     setSelectedItem({
       ...item,
       extraLists: item.extraLists || [],
     });
   };
-
 
   // Fonctions utilitaires
   const getCurrentDay = () => ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'][new Date().getDay()];
@@ -232,7 +230,6 @@ const HomePage = () => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(''), 3000);
   };
-
 
   // Filtrage des articles par jour
   const memoizedFilteredItems = useMemo(() => {
@@ -371,7 +368,7 @@ const HomePage = () => {
             )}
             <span className="block text-xs mt-1">Panier</span>
           </Link>
-          <Link to="/complete_order" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
+          <Link to="/order-status" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">
             <Package className="w-5 h-5 mx-auto" /><span className="block text-xs mt-1">Commandes</span>
           </Link>
           <Link to="/profile" className="text-gray-700 p-2 hover:text-green-600 transition-colors duration-200">

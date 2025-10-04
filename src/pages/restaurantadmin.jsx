@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { db, auth, storage } from "../firebase";
 import {
@@ -19,32 +20,37 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
-import { 
-  FaUtensils, 
-  FaListAlt, 
-  FaBox, 
-  FaTags, 
-  FaShoppingBag, 
-  FaPlusCircle, 
-  FaCommentAlt, 
-  FaCog, 
-  FaBars, 
-  FaTimes,
+import {
   FaHome,
+  FaCog,
+  FaListAlt,
+  FaTags,
+  FaShoppingBag,
+  FaPlusCircle,
+  FaCommentAlt,
+  FaCogs,
+  FaTruck,
+  FaClock,
+  FaMapMarkedAlt,
+  FaCheckCircle,
+  FaFileExport,
+  FaBox,
+  FaBoxes,
+  FaShoppingCart,
+  FaClipboardList,
   FaChartLine,
-  FaUser,
-  FaBell,
-  FaSearch,
-  FaStar,
-  FaChevronDown,
-  FaCalendarAlt,
+  FaReceipt,
   FaMoneyBillWave,
-  FaShippingFast
+  FaStar,
+  FaUsers,
+  FaUserTie,
+  FaSyncAlt
 } from "react-icons/fa";
 import { HiOutlineLogout } from "react-icons/hi";
 import LoyaltyPointsManager from "./LoyaltyPoints";
 import CreateOrderForm from "./CreateOrderForm";
 import PendingOrdersModal from "../components/admin/orders/PendingOrdersModal";
+import AdminHeader from "../components/admin/AdminHeader";
 import OrderCard from "../components/admin/orders/OrderCard";
 import OrderDetailsModal from "../components/admin/orders/OrderDetailsModal";
 import Sidebar from "../components/admin/Layout/Sidebar";
@@ -68,11 +74,38 @@ import {
 
 const PromotionManager = React.lazy(() => import("../components/admin/PromotionManager"));
 const AllPaymentsPage = React.lazy(() => import("../components/admin/AllPaymentsPage"));
-import AdminHeader from "../components/admin/AdminHeader";
+const AmbassadorManager = React.lazy(() => import("../components/admin/AmbassadorManager"));
+const SupplyManager = React.lazy(() => import("../components/admin/SupplyManager"));
+const IngredientsManager = React.lazy(() => import("../components/admin/IngredientsManager"));
+const PurchasesManager = React.lazy(() => import("../components/admin/PurchasesManager"));
+const InventoryManager = React.lazy(() => import("../components/admin/InventoryManager"));
+const ProductionManager = React.lazy(() => import("../components/admin/ProductionManager"));
+const SupplyReports = React.lazy(() => import("../components/admin/SupplyReports"));
+const DeliveryManager = React.lazy(() => import("../components/admin/DeliveryManager"));
+const DeliveryShiftManager = React.lazy(() => import("../components/admin/DeliveryShiftManager"));
+const DeliveryExpensesManager = React.lazy(() => import("../components/admin/DeliveryExpensesManager"));
+const DeliveryFinancialDashboard = React.lazy(() => import("../components/admin/DeliveryFinancialDashboard"));
+const DeliveryTracking = React.lazy(() => import("../components/admin/DeliveryTracking"));
+const ManagerDashboard = React.lazy(() => import("../components/admin/ManagerDashboard"));
+const ManagerExpenseTracker = React.lazy(() => import("../components/admin/ManagerExpenseTracker"));
+const ExpenseDeletionApproval = React.lazy(() => import("../components/admin/ExpenseDeletionApproval"));
+const TakeawayOrderForm = React.lazy(() => import("../components/admin/TakeawayOrderForm"));
+const AccountingReports = React.lazy(() => import("../components/admin/AccountingReports"));
+const UserRoleManager = React.lazy(() => import("../components/admin/UserRoleManager"));
 import OrdersToolbar from "../components/admin/OrdersToolbar";
 import CommentsSection from "../components/admin/CommentsSection";
+import ReportsDashboard from "../components/admin/ReportsDashboard";
+import FinancialOrdersView from "../components/admin/FinancialOrdersView";
+import { useRoleAuth } from "../hooks/useRoleAuth";
+import { ROLES, ROLE_LABELS, getMenuItemsForRole, hasPermission, hasViewAccess } from "../utils/rolePermissions";
+import RoleBasedUserManager from "../components/admin/RoleBasedUserManager";
+import RoleProtectedRoute, { AccessDeniedMessage } from "../components/auth/RoleProtectedRoute";
 
 const RestaurantAdmin = () => {
+  // Hook d'authentification basée sur les rôles
+  const { userRole, canAccess, getDefaultSection, isManager, restaurantId: userRestaurantId, canAccessAllRestaurants, user } = useRoleAuth();
+  const navigate = useNavigate();
+  
   const [restaurant, setRestaurant] = useState(null);
   const [restaurantForm, setRestaurantForm] = useState({
     name: "",
@@ -87,16 +120,20 @@ const RestaurantAdmin = () => {
   const [items, setItems] = useState([]);
   const [orders, setOrders] = useState([]);
   const [extraLists, setExtraLists] = useState([]);
-  const [usersData, setUsersData] = useState({});
+  const [usersData, setUsersData] = useState({ byId: {}, byPhone: {} });
   const [deliveryFees, setDeliveryFees] = useState({});
+  const [deliverers, setDeliverers] = useState([]);
   const [draggedOrder, setDraggedOrder] = useState(null);
   const [viewMode, setViewMode] = useState("kanban");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentRestaurantId, setCurrentRestaurantId] = useState(null);
+  // Utiliser le restaurant de l'utilisateur connecté
+  // Pour le comptable, on ne filtre pas par restaurant (accès à tous les restaurants)
+  const currentRestaurantId = canAccessAllRestaurants() ? null : userRestaurantId;
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dateFilterMode, setDateFilterMode] = useState('day');
+  const [refreshingOrders, setRefreshingOrders] = useState(false);
   const [editingMenu, setEditingMenu] = useState(null);
   const [feedbacks, setFeedbacks] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -138,21 +175,59 @@ const RestaurantAdmin = () => {
   const [editingExtraList, setEditingExtraList] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState("orders");
+  const [activeSection, setActiveSection] = useState(() => {
+    // Définir la section par défaut selon le rôle
+    return getDefaultSection() || "orders";
+  });
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [activeMenuSubSection, setActiveMenuSubSection] = useState("menus");
   const [activeOrderSubSection, setActiveOrderSubSection] = useState("list");
-const menuItems = [
-  // { id: "dashboard", label: "Tableau de bord", icon: <FaHome /> },
+  const [paymentNotice, setPaymentNotice] = useState("");
+  const [showTakeawayModal, setShowTakeawayModal] = useState(false);
+  const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
+
+
+// Définition complète des éléments de menu avec icônes
+const allMenuItems = [
+  { id: "dashboard", label: "Tableau de Bord", icon: <FaHome /> },
   { id: "restaurant", label: "Infos Restaurant", icon: <FaCog /> },
   { id: "menus", label: "Menus", icon: <FaListAlt /> },
-  { id: "orders", label: "Commandes", icon: <FaShoppingBag /> },
   { id: "categories", label: "Catégories", icon: <FaTags /> },
+  { id: "orders", label: "Commandes", icon: <FaShoppingBag /> },
+  { id: "createOrder", label: "Créer une commande", icon: <FaPlusCircle /> },
+  { id: "takeawayOrder", label: "Commande à Emporter", icon: <FaShoppingBag /> },
   { id: "promotions", label: "Promotions", icon: <FaTags /> },
+  { id: "supplies", label: "Approvisionnements", icon: <FaBox /> },
+  { id: "ingredients", label: "Ingrédients", icon: <FaBoxes /> },
+  { id: "purchases", label: "Achats", icon: <FaShoppingCart /> },
+  { id: "inventory", label: "Inventaires", icon: <FaClipboardList /> },
+  { id: "production", label: "Production", icon: <FaCogs /> },
+  { id: "supplyReports", label: "Rapports Appro", icon: <FaChartLine /> },
+  { id: "ambassadors", label: "Ambassadeurs", icon: <FaUserTie /> },
+  { id: "deliveryDashboard", label: "Tableau de Bord Livraison", icon: <FaChartLine /> },
+  { id: "deliveryTracking", label: "Suivi Livraisons", icon: <FaMapMarkedAlt /> },
+  { id: "deliverers", label: "Livreurs", icon: <FaTruck /> },
+  { id: "deliveryShifts", label: "Horaires Livreurs", icon: <FaClock /> },
+  { id: "deliveryExpenses", label: "Dépenses Livraison", icon: <FaReceipt /> },
   { id: "payments", label: "Paiements", icon: <FaMoneyBillWave /> },
   { id: "loyalty", label: "Points Fidélité", icon: <FaStar /> },
   { id: "comments", label: "Avis Clients", icon: <FaCommentAlt /> },
+  { id: "reports", label: "Rapports", icon: <FaChartLine /> },
+  { id: "accountingReports", label: "Rapports Comptables", icon: <FaFileExport /> },
+  { id: "managers", label: "Gestion des Utilisateurs", icon: <FaUsers /> },
+  { id: "userRoles", label: "Modifier les Rôles", icon: <FaUserTie /> },
 ];
+
+// Utiliser les éléments de menu filtrés selon le rôle depuis rolePermissions.js
+const menuItems = useMemo(() => {
+  if (!userRole) return [];
+  const roleMenuItems = getMenuItemsForRole(userRole);
+  // Mapper avec les icônes depuis allMenuItems
+  return roleMenuItems.map(roleItem => {
+    const menuItem = allMenuItems.find(item => item.id === roleItem.id);
+    return menuItem ? menuItem : { ...roleItem, icon: null };
+  }).filter(item => item !== null);
+}, [userRole]);
 
   // Hook de gestion des commandes (migration progressive)
   const {
@@ -160,6 +235,15 @@ const menuItems = [
     updateOrderDeliveryFees: hookUpdateOrderDeliveryFees,
     deleteOrder: hookDeleteOrder,
   } = useOrdersAdmin({ currentRestaurantId, extraLists, items });
+
+  // Fonction pour obtenir le numéro de semaine
+  const getWeekNumber = (date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  };
 
   const resetItemForm = () => {
     setItemData({
@@ -181,6 +265,48 @@ const menuItems = [
       menuId: "",
     });
     setEditingItem(null);
+  };
+
+  // Periodically check remote payment status for orders with a transaction ref
+  useEffect(() => {
+    let timerId;
+    const checkPendingPayments = async () => {
+      const candidates = orders.filter((o) => o && o.paymentRef && o.isPaid === false);
+      if (!candidates.length) return;
+      try {
+        for (const o of candidates) {
+          const url = `${API_URL}/api/payment/status?transaction_id=${encodeURIComponent(o.paymentRef)}`;
+          const resp = await fetch(url);
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          if (data?.success && (data.status === 'success' || data.status === 'succeeded' || data.status === 'paid')) {
+            // Mark order paid and notify UI
+            await updateOrderStatus(o.id, o.status || ORDER_STATUS.PENDING, null, true);
+            setPaymentNotice(`Paiement confirmé pour la commande #${o.id.slice(0,8)} (${formatPrice(o?.total || 0)} FCFA)`);
+            setTimeout(() => setPaymentNotice(""), 5000);
+          }
+        }
+      } catch (e) {
+        console.warn('Payment status polling error', e);
+      }
+    };
+    // poll every 30s on Orders section
+    if (activeSection === 'orders') {
+      checkPendingPayments();
+      timerId = setInterval(checkPendingPayments, 30000);
+    }
+    return () => timerId && clearInterval(timerId);
+  }, [orders, activeSection]);
+
+  // Toggle rapide de disponibilité d'un plat depuis la liste
+  const toggleItemAvailability = async (itemId, currentValue) => {
+    try {
+      await updateDoc(doc(db, "items", itemId), { available: !currentValue, updatedAt: Timestamp.now() });
+      setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, available: !currentValue } : it)));
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour de la disponibilité:", error);
+      setError("Impossible de mettre à jour la disponibilité du plat");
+    }
   };
 
   const uploadImages = useCallback(async (files) => {
@@ -216,8 +342,13 @@ const pendingOrders = useMemo(() => {
   const filterOrdersByDate = (orders, date, mode) => {
     const selected = new Date(date);
     return orders.filter((order) => {
-      if (!order.timestamp) return false;
-      const orderDate = new Date(order.timestamp.seconds * 1000);
+      // Utiliser timestamp en priorité, sinon updatedAt comme fallback
+      if (!order.timestamp && !order.updatedAt) {
+        return false;
+      }
+      const orderDate = order.timestamp 
+        ? new Date(order.timestamp.seconds * 1000)
+        : new Date(order.updatedAt.seconds * 1000);
       
       switch (mode) {
         case 'day':
@@ -238,12 +369,15 @@ const pendingOrders = useMemo(() => {
   };
 
   const filteredOrders = useMemo(() => {
-    if (!items.length) return [];
     const dateFilteredOrders = filterOrdersByDate(orders, selectedDate, dateFilterMode);
-    return dateFilteredOrders.filter((order) =>
-      order.items?.some((item) => items.some((it) => it.id === item.dishId))
-    );
-  }, [orders, items, selectedDate, dateFilterMode]);
+    return dateFilteredOrders.filter((order) => {
+      // Filtrer par restaurant si currentRestaurantId existe
+      if (currentRestaurantId && order.restaurantId !== currentRestaurantId) {
+        return false;
+      }
+      return true;
+    });
+  }, [orders, selectedDate, dateFilterMode, currentRestaurantId]);
 
   const getDeliveryFee = (destination) => {
     return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
@@ -256,13 +390,13 @@ const pendingOrders = useMemo(() => {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const q = query(collection(db, "restaurants"), where("uid", "==", user.uid));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const restaurantDoc = querySnapshot.docs[0];
-          setCurrentRestaurantId(restaurantDoc.id);
+    const loadRestaurantData = async () => {
+      if (!currentRestaurantId) return;
+      
+      try {
+        // Charger les données du restaurant de l'utilisateur connecté
+        const restaurantDoc = await getDoc(doc(db, "restaurants", currentRestaurantId));
+        if (restaurantDoc.exists()) {
           const data = restaurantDoc.data();
           setRestaurant({ id: restaurantDoc.id, ...data });
           setRestaurantForm({
@@ -273,6 +407,8 @@ const pendingOrders = useMemo(() => {
             contact: data.contact || "",
           });
         }
+        
+        // Charger les données des utilisateurs
         const usersSnap = await getDocs(collection(db, "usersrestau"));
         setUsersData({
           byId: usersSnap.docs.reduce((acc, doc) => ({ ...acc, [doc.id]: doc.data() }), {}),
@@ -281,29 +417,55 @@ const pendingOrders = useMemo(() => {
             return acc;
           }, {}),
         });
+      } catch (error) {
+        console.error("Erreur lors du chargement des données:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    };
+
+    loadRestaurantData();
+  }, [currentRestaurantId]);
 
   useEffect(() => {
-    if (!currentRestaurantId) return;
+    // Pour les utilisateurs avec accès à tous les restaurants (comptable), on ne vérifie pas currentRestaurantId
+    if (!canAccessAllRestaurants() && !currentRestaurantId) return;
 
     const fetchStaticData = async () => {
       try {
-        const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap] = await Promise.all([
-          getDocs(query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))),
-          getDocs(query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))),
+        // Pour le comptable (currentRestaurantId === null), on charge toutes les données
+        const menusQuery = currentRestaurantId 
+          ? query(collection(db, "menus"), where("restaurantId", "==", currentRestaurantId))
+          : collection(db, "menus");
+        const categoriesQuery = currentRestaurantId
+          ? query(collection(db, "categories"), where("restaurantId", "==", currentRestaurantId))
+          : collection(db, "categories");
+        const itemsQuery = currentRestaurantId
+          ? query(collection(db, "items"), where("restaurantId", "==", currentRestaurantId))
+          : collection(db, "items");
+        const extraListsQuery = currentRestaurantId
+          ? query(collection(db, "extraLists"), where("restaurantId", "==", currentRestaurantId))
+          : collection(db, "extraLists");
+
+        // Charger les livreurs
+        const deliverersQuery = currentRestaurantId
+          ? query(collection(db, "deliverers"), where("restaurantId", "==", currentRestaurantId))
+          : collection(db, "deliverers");
+
+        const [menusSnap, categoriesSnap, itemsSnap, extraListsSnap, feesSnap, deliverersSnap] = await Promise.all([
+          getDocs(menusQuery),
+          getDocs(categoriesQuery),
+          getDocs(itemsQuery),
+          getDocs(extraListsQuery),
           getDocs(collection(db, "quartiers")),
+          getDocs(deliverersQuery),
         ]);
 
         setMenus(menusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         setCategories(categoriesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         setItems(itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         setExtraLists(extraListsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setDeliverers(deliverersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
         setDeliveryFees(
           feesSnap.docs.reduce((acc, doc) => ({
             ...acc,
@@ -329,10 +491,9 @@ const pendingOrders = useMemo(() => {
       setError("Erreur dans le suivi des commandes");
     });
 
-    const feedbackQuery = query(
-      collection(db, "feedback"),
-      where("restaurantId", "==", currentRestaurantId)
-    );
+    const feedbackQuery = currentRestaurantId
+      ? query(collection(db, "feedback"), where("restaurantId", "==", currentRestaurantId))
+      : collection(db, "feedback");
     const unsubscribeFeedback = onSnapshot(feedbackQuery, (snapshot) => {
       const feedbackData = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -350,6 +511,25 @@ const pendingOrders = useMemo(() => {
       unsubscribeFeedback();
     };
   }, [currentRestaurantId]);
+
+  // Manual refresh for orders
+  const refreshOrdersNow = useCallback(async () => {
+    try {
+      setRefreshingOrders(true);
+      const snap = await getDocs(collection(db, "orders"));
+      const allOrders = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        status: doc.data().status || ORDER_STATUS.PENDING,
+      }));
+      setOrders(allOrders);
+    } catch (err) {
+      console.error("Erreur lors de l'actualisation des commandes:", err);
+      setError("Impossible d'actualiser les commandes");
+    } finally {
+      setRefreshingOrders(false);
+    }
+  }, []);
 
   const addMenu = async () => {
     if (!menuData.name) {
@@ -905,55 +1085,79 @@ const pendingOrders = useMemo(() => {
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         menuItems={menuItems}
-        restaurantName={restaurant?.name}
-        onSignOut={() => auth.signOut()}
+        restaurantName={restaurant?.name || user?.name || "Restaurant"}
+        userRole={userRole}
+        userRoleLabel={ROLE_LABELS[userRole]}
+        onSignOut={async () => {
+          console.log('Déconnexion admin - redirection vers /loginrestau');
+          await auth.signOut();
+          navigate('/loginrestau');
+        }}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar
-          restaurantName={restaurant?.name}
+          restaurantName={restaurant?.name || user?.name || "Restaurant"}
           activeSectionLabel={menuItems.find((item) => item.id === activeSection)?.label}
           onToggleMobile={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
-          <AdminHeader
-            title={menuItems.find((item) => item.id === activeSection)?.label || "Tableau de bord"}
-            description={
-              activeSection === "orders"
-                ? "Gestion des commandes"
-                : activeSection === "menus"
-                ? "Gestion de vos menus, plats et extras"
-                : activeSection === "restaurant"
-                ? "Informations de votre établissement"
-                : activeSection === "categories"
-                ? "Gestion des catégories"
-                : activeSection === "promotions"
-                ? "Gestion des promotions et offres spéciales"
-                : activeSection === "payments"
-                ? "Visualisation et gestion des paiements"
-                : activeSection === "loyalty"
-                ? "Gestion des points de fidélité"
-                : activeSection === "comments"
-                ? "Avis et commentaires des clients"
-                : "Tableau de bord administratif"
-            }
-          >
-            {activeSection === "orders" && (
-              <OrdersToolbar
-                dateFilterMode={dateFilterMode}
-                setDateFilterMode={setDateFilterMode}
-                selectedDate={selectedDate}
-                onPrev={handlePreviousPeriod}
-                onNext={handleNextPeriod}
-                getWeekNumber={getWeekNumber}
-              />
-            )}
-          </AdminHeader>
+          {activeSection === "orders" && (
+            <RoleProtectedRoute requiredSection="orders">
+              <div className="space-y-6">
+                <OrdersToolbar
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  selectedDate={selectedDate}
+                  setSelectedDate={setSelectedDate}
+                  dateFilterMode={dateFilterMode}
+                  setDateFilterMode={setDateFilterMode}
+                  handlePreviousPeriod={handlePreviousPeriod}
+                  handleNextPeriod={handleNextPeriod}
+                  getWeekNumber={getWeekNumber}
+                  refreshOrdersNow={refreshOrdersNow}
+                  refreshingOrders={refreshingOrders}
+                  pendingOrdersCount={pendingOrders.length}
+                  setShowPendingModal={setShowPendingModal}
+                  paymentNotice={paymentNotice}
+                  userRole={userRole}
+                  canViewFinances={canAccess('orders', 'viewFinances')}
+                />
+                <button
+                  type="button"
+                  onClick={refreshOrdersNow}
+                  disabled={refreshingOrders}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                    refreshingOrders
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
+                  }`}
+                  title="Actualiser la liste des commandes"
+                >
+                  <FaSyncAlt className={refreshingOrders ? 'animate-spin' : ''} />
+                  {refreshingOrders ? 'Actualisation…' : 'Actualiser'}
+                </button>
+              </div>
+            </RoleProtectedRoute>
+          )}
         
 
         {/* Content Sections */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {activeSection === "dashboard" && (
+            <RoleProtectedRoute requiredSection="dashboard">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <ManagerDashboard 
+                    orders={orders}
+                    deliverers={deliverers}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
           {activeSection === "restaurant" && (
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-6 text-gray-800">Informations du Restaurant</h3>
@@ -992,36 +1196,43 @@ const pendingOrders = useMemo(() => {
           )}
 
           {activeSection === "menus" && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h2 className="text-2xl font-bold mb-6">Gestion des Menus</h2>
-                <div className="flex flex-wrap gap-4 mb-4">
-                  <button
-                    className={`px-4 py-2 rounded-lg ${
-                      activeMenuSubSection === "menus" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
-                    } hover:bg-green-700 hover:text-white transition-colors`}
-                    onClick={() => setActiveMenuSubSection("menus")}
-                  >
-                    Menus
-                  </button>
-                  <button
-                    className={`px-4 py-2 rounded-lg ${
-                      activeMenuSubSection === "items" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
-                    } hover:bg-green-700 hover:text-white transition-colors`}
-                    onClick={() => setActiveMenuSubSection("items")}
-                  >
-                    Plats
-                  </button>
-                  <button
-                    className={`px-4 py-2 rounded-lg ${
-                      activeMenuSubSection === "extras" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
-                    } hover:bg-green-700 hover:text-white transition-colors`}
-                    onClick={() => setActiveMenuSubSection("extras")}
-                  >
-                    Extras
-                  </button>
+            <RoleProtectedRoute requiredSection="menus">
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-bold">Gestion des Menus</h2>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setActiveMenuSubSection("menus")}
+                      className={`px-4 py-2 rounded-lg ${
+                        activeMenuSubSection === "menus"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700"
+                      }`}
+                    >
+                      Menus
+                    </button>
+                    <button
+                      onClick={() => setActiveMenuSubSection("items")}
+                      className={`px-4 py-2 rounded-lg ${
+                        activeMenuSubSection === "items"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700"
+                      }`}
+                    >
+                      Plats
+                    </button>
+                    <button
+                      onClick={() => setActiveMenuSubSection("extras")}
+                      className={`px-4 py-2 rounded-lg ${
+                        activeMenuSubSection === "extras"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700"
+                      }`}
+                    >
+                      Extras
+                    </button>
+                  </div>
                 </div>
-
                 {activeMenuSubSection === "menus" && (
                   <div>
                     <div className="grid grid-cols-1 gap-4">
@@ -1357,6 +1568,26 @@ const pendingOrders = useMemo(() => {
                             </div>
                           </div>
                         )}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Disponibilité</label>
+                          <div className="flex items-center gap-2 p-2 border rounded-lg bg-gray-50">
+                            <span className="text-xs font-medium min-w-[86px] text-gray-700">
+                              {itemData.available ? "Disponible" : "Indisponible"}
+                            </span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={!!itemData.available}
+                                onChange={(e) => setItemData({ ...itemData, available: e.target.checked })}
+                              />
+                              <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                            </label>
+                            <span className="text-xs text-gray-600">
+                              {itemData.available ? "(mis en avant)" : "(affiché mais non commandable)"}
+                            </span>
+                          </div>
+                        </div>
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-2">Jours de disponibilité</label>
                           <div className="flex flex-wrap gap-2">
@@ -1434,6 +1665,13 @@ const pendingOrders = useMemo(() => {
                                   <div className="flex-1">
                                     <h4 className="font-semibold text-gray-800">{item.name}</h4>
                                     <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
+                                    <div className="mt-1">
+                                      {item.available === false ? (
+                                        <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Indisponible</span>
+                                      ) : (
+                                        <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Disponible</span>
+                                      )}
+                                    </div>
                                     {item.price ? (
                                       <p className="text-green-600 font-medium mt-1">{formatPrice(item.price)} FCFA</p>
                                     ) : (
@@ -1458,19 +1696,35 @@ const pendingOrders = useMemo(() => {
                                     )}
                                   </div>
                                 </div>
-                                <div className="mt-3 flex justify-between">
-                                  <button
-                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                                    onClick={() => startEditing(item)}
-                                  >
-                                    Modifier
-                                  </button>
-                                  <button
-                                    className="text-red-600 hover:text-red-800 text-sm font-medium"
-                                    onClick={() => deleteItem(item.id)}
-                                  >
-                                    Supprimer
-                                  </button>
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-700">
+                                      {item.available === false ? "Indisponible" : "Disponible"}
+                                    </span>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        className="sr-only peer"
+                                        checked={item.available !== false}
+                                        onChange={() => toggleItemAvailability(item.id, item.available !== false)}
+                                      />
+                                      <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <button
+                                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                      onClick={() => startEditing(item)}
+                                    >
+                                      Modifier
+                                    </button>
+                                    <button
+                                      className="text-red-600 hover:text-red-800 text-sm font-medium"
+                                      onClick={() => deleteItem(item.id)}
+                                    >
+                                      Supprimer
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -1618,37 +1872,24 @@ const pendingOrders = useMemo(() => {
                   </div>
                 )}
               </div>
-            </div>
+            </RoleProtectedRoute>
           )}
 
           {activeSection === "orders" && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h2 className="text-2xl font-bold mb-6">Gestion des Commandes</h2>
-                <div className="flex flex-wrap gap-4 mb-4">
-                 <button
-                    className={`px-4 py-2 rounded-lg ${
-                      activeOrderSubSection === "list" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
-                    } hover:bg-green-700 hover:text-white transition-colors`}
-                    onClick={() => setActiveOrderSubSection("list")}
-                  >
-                    Liste des Commandes ({filteredOrders.length})
-                  </button>
-                  <button
-                    className={`px-4 py-2 rounded-lg ${
-                      activeOrderSubSection === "create" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
-                    } hover:bg-green-700 hover:text-white transition-colors`}
-                    onClick={() => setActiveOrderSubSection("create")}
-                  >
-                    Créer une Commande
-                  </button>
-                 {/* <button
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
-                    onClick={() => setShowPendingModal(true)}
-                  >
-                    <FaShoppingBag className="mr-2" />
-                    Commandes en attente ({pendingOrders.length})
-                  </button> */}
+            <RoleProtectedRoute requiredSection="orders">
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h2 className="text-2xl font-bold mb-6">Gestion des Commandes</h2>
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <button
+                      className={`px-4 py-2 rounded-lg ${
+                        activeOrderSubSection === "list" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+                      } hover:bg-green-700 hover:text-white transition-colors`}
+                      onClick={() => setActiveOrderSubSection("list")}
+                    >
+                      Liste des Commandes ({filteredOrders.length})
+                    </button>
+                  </div>
                 </div>
                 {error && <p className="text-red-600 mb-4">{error}</p>}
                 {activeOrderSubSection === "list" && (
@@ -1693,6 +1934,7 @@ const pendingOrders = useMemo(() => {
                                       items={items}
                                       extraLists={extraLists}
                                       usersData={usersData}
+                                      deliverers={deliverers}
                                       onShowDetails={showOrderDetails}
                                       onDragStart={(e) => handleDragStart(e, order)}
                                       onDragEnd={handleDragEnd}
@@ -1712,6 +1954,7 @@ const pendingOrders = useMemo(() => {
                             items={items}
                             extraLists={extraLists}
                             usersData={usersData}
+                            deliverers={deliverers}
                             onShowDetails={showOrderDetails}
                             onDragStart={(e) => handleDragStart(e, order)}
                             onDragEnd={handleDragEnd}
@@ -1721,20 +1964,23 @@ const pendingOrders = useMemo(() => {
                     )}
                   </div>
                 )}
-                {activeOrderSubSection === "create" && (
-                  <div>
-                    <h2 className="text-2xl font-bold mb-6">Créer une nouvelle commande</h2>
-                    <CreateOrderForm
-                      items={items}
-                      extraLists={extraLists}
-                      restaurantId={currentRestaurantId}
-                      deliveryFees={deliveryFees}
-                      getDeliveryFee={getDeliveryFee}
-                    />
-                  </div>
-                )}
               </div>
-            </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "createOrder" && (
+            <RoleProtectedRoute requiredSection="createOrder">
+              <CreateOrderForm
+                items={items}
+                extraLists={extraLists}
+                restaurantId={currentRestaurantId}
+                deliveryFees={deliveryFees}
+                getDeliveryFee={getDeliveryFee}
+                showTitle={false}
+                userRole={userRole}
+                canViewFinances={canAccess('createOrder', 'viewFinances')}
+              />
+            </RoleProtectedRoute>
           )}
 
           {activeSection === "categories" && (
@@ -1883,8 +2129,19 @@ const pendingOrders = useMemo(() => {
           )}
 
           {activeSection === "promotions" && (
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Gestion des Promotions</h2>
+            <React.Suspense
+              fallback={
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              }
+            >
+              <PromotionManager restaurantId={currentRestaurantId} />
+            </React.Suspense>
+          )}
+
+          {activeSection === "supplies" && (
+            <RoleProtectedRoute requiredSection="supplies">
               <React.Suspense
                 fallback={
                   <div className="flex items-center justify-center py-8">
@@ -1892,14 +2149,99 @@ const pendingOrders = useMemo(() => {
                   </div>
                 }
               >
-                <PromotionManager restaurantId={currentRestaurantId} />
+                <SupplyManager 
+                  currentRestaurantId={currentRestaurantId} 
+                  userRole={userRole}
+                  canViewFinances={canAccess('supplies', 'viewFinances')}
+                />
               </React.Suspense>
-            </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "ingredients" && (
+            <RoleProtectedRoute requiredSection="ingredients">
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <IngredientsManager currentRestaurantId={currentRestaurantId} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "purchases" && (
+            <RoleProtectedRoute requiredSection="purchases">
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <PurchasesManager currentRestaurantId={currentRestaurantId} userRole={userRole} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "inventory" && (
+            <RoleProtectedRoute requiredSection="inventory">
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <InventoryManager currentRestaurantId={currentRestaurantId} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "production" && (
+            <RoleProtectedRoute requiredSection="production">
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <ProductionManager currentRestaurantId={currentRestaurantId} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "supplyReports" && (
+            <RoleProtectedRoute requiredSection="supplyReports">
+              <React.Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }
+              >
+                <SupplyReports currentRestaurantId={currentRestaurantId} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "ambassadors" && (
+            <React.Suspense
+              fallback={
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              }
+            >
+              <AmbassadorManager currentRestaurantId={currentRestaurantId} />
+            </React.Suspense>
           )}
 
           {activeSection === "payments" && (
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Gestion des Paiements</h2>
+            <RoleProtectedRoute requiredSection="payments">
               <React.Suspense
                 fallback={
                   <div className="flex items-center justify-center py-8">
@@ -1907,20 +2249,223 @@ const pendingOrders = useMemo(() => {
                   </div>
                 }
               >
-                <AllPaymentsPage />
+                <AllPaymentsPage currentRestaurantId={currentRestaurantId} />
               </React.Suspense>
-            </div>
+            </RoleProtectedRoute>
           )}
 
           {activeSection === "loyalty" && (
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold mb-6">Gestion des Points de Fidélité</h2>
+            <RoleProtectedRoute requiredSection="loyalty">
               <LoyaltyPointsManager restaurantId={currentRestaurantId} />
-            </div>
+            </RoleProtectedRoute>
           )}
 
           {activeSection === "comments" && (
-            <CommentsSection feedbacks={feedbacks} usersData={usersData} />
+            <CommentsSection feedbacks={feedbacks} usersData={usersData} orders={orders} />
+          )}
+
+          {activeSection === "reports" && (
+            <RoleProtectedRoute requiredSection="reports">
+              <div className="p-6">
+                <ReportsDashboard
+                  orders={filteredOrders}
+                  items={items}
+                  extraLists={extraLists}
+                  selectedDate={selectedDate}
+                  dateFilterMode={dateFilterMode}
+                  userRole={userRole}
+                  canViewFinances={canAccess('reports', 'viewFinances')}
+                />
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "managerExpenseTracker" && (
+            <RoleProtectedRoute requiredSection="managerExpenseTracker">
+              <AdminHeader
+                title="Suivi des Dépenses par Gérant"
+                subtitle="Analyse des performances financières et calcul des bénéfices par gérant"
+                icon={<FaUsers />}
+              />
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <ManagerExpenseTracker 
+                  currentRestaurantId={currentRestaurantId}
+                  userRole={userRole}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "deliveryDashboard" && (
+            <RoleProtectedRoute requiredSection="deliveryDashboard">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeliveryFinancialDashboard 
+                  currentRestaurantId={currentRestaurantId}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "deliveryTracking" && (
+            <RoleProtectedRoute requiredSection="deliveryTracking">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeliveryTracking 
+                  currentRestaurantId={currentRestaurantId}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "deliverers" && (
+            <RoleProtectedRoute requiredSection="deliverers">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeliveryManager 
+                  currentRestaurantId={currentRestaurantId} 
+                  userRole={userRole}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "deliveryShifts" && (
+            <RoleProtectedRoute requiredSection="deliveryShifts">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeliveryShiftManager 
+                  currentRestaurantId={currentRestaurantId}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "deliveryExpenses" && (
+            <RoleProtectedRoute requiredSection="deliveryExpenses">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeliveryExpensesManager 
+                  currentRestaurantId={currentRestaurantId} 
+                  userRole={userRole}
+                />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "managers" && (
+            <RoleProtectedRoute requiredSection="managers">
+              <div className="p-6">
+                <RoleBasedUserManager 
+                  currentRestaurantId={currentRestaurantId} 
+                  canAccessAllRestaurants={canAccessAllRestaurants}
+                />
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "userRoles" && (
+            <RoleProtectedRoute requiredSection="userRoles">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <UserRoleManager 
+                    currentRestaurantId={currentRestaurantId}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "expenseApprovals" && (
+            <RoleProtectedRoute requiredSection="expenseApprovals">
+              <div
+                className="p-3 sm:p-4 md:p-6"
+                style={{
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  minHeight: "100vh",
+                }}
+              >
+                <AdminHeader
+                  title="Approbations de Suppressions"
+                  subtitle="Approuvez ou rejetez les demandes de suppression de dépenses"
+                  icon={<FaCheckCircle />}
+                />
+                <div className="mt-4 sm:mt-6">
+                  <Suspense fallback={<div className="text-center py-8">Chargement...</div>}>
+                    <ExpenseDeletionApproval 
+                      currentRestaurantId={currentRestaurantId} 
+                      userRole={userRole}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "takeawayOrder" && (
+            <RoleProtectedRoute requiredSection="takeawayOrder">
+              <div className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Commandes à Emporter</h1>
+                    <p className="text-gray-600">Créer rapidement des commandes à emporter sans livraison</p>
+                  </div>
+                  <button
+                    onClick={() => setShowTakeawayModal(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
+                  >
+                    <FaPlusCircle />
+                    <span>Nouvelle Commande</span>
+                  </button>
+                </div>
+                
+                {/* Affichage des commandes à emporter récentes */}
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                  <h3 className="text-lg font-semibold mb-4">Commandes à Emporter Récentes</h3>
+                  <div className="space-y-3">
+                    {orders
+                      .filter(order => order.type === 'takeaway')
+                      .slice(0, 10)
+                      .map(order => (
+                        <div key={order.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <div className="font-medium">{order.customer?.name || 'Client'}</div>
+                            <div className="text-sm text-gray-600">
+                              {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleString('fr-FR') : ''}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-green-600">{order.total?.toLocaleString()} FCFA</div>
+                            <div className="text-sm text-gray-600">{order.items?.length || 0} articles</div>
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "accountingReports" && (
+            <RoleProtectedRoute requiredSection="accountingReports">
+              <div
+                className="p-3 sm:p-4 md:p-6"
+                style={{
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  minHeight: "100vh",
+                }}
+              >
+                <AdminHeader
+                  title="Rapports Comptables"
+                  subtitle="Analyses financières détaillées avec précisions sur les moyens de paiement"
+                  icon={<FaFileExport />}
+                />
+                <div className="mt-4 sm:mt-6">
+                  <Suspense fallback={<div className="text-center py-8">Chargement...</div>}>
+                    <AccountingReports 
+                      currentRestaurantId={currentRestaurantId} 
+                      userRole={userRole}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            </RoleProtectedRoute>
           )}
 
           {selectedOrder && (
@@ -1933,6 +2478,10 @@ const pendingOrders = useMemo(() => {
               onUpdateFees={updateOrderDeliveryFees}
               onDelete={deleteOrder}
               onUpdateStatus={updateOrderStatus}
+              onOrderUpdated={(updatedOrder) => {
+                // Mettre à jour l'ordre dans l'état local
+                setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+              }}
             />
           )}
 
@@ -1944,6 +2493,19 @@ const pendingOrders = useMemo(() => {
               usersData={usersData}
               onClose={() => setShowPendingModal(false)}
             />
+          )}
+
+          {showTakeawayModal && (
+            <Suspense fallback={<div className="text-center py-8">Chargement...</div>}>
+              <TakeawayOrderForm
+                currentRestaurantId={currentRestaurantId}
+                onClose={() => setShowTakeawayModal(false)}
+                onOrderCreated={(newOrder) => {
+                  setOrders(prev => [newOrder, ...prev]);
+                  setShowTakeawayModal(false);
+                }}
+              />
+            </Suspense>
           )}
         </div>
       </main>

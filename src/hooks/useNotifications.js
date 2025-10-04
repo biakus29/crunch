@@ -16,28 +16,24 @@ const useNotifications = (onNotificationReceived) => {
         return;
       }
 
-      console.log("Demande de permission...");
       const permission = await Notification.requestPermission();
-      console.log("Permission reçue:", permission);
-      if (permission === "granted") {
-        console.log("Avant enregistrement Service Worker");
-        const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-        console.log("Service Worker enregistré:", serviceWorkerRegistration);
 
-        console.log("Avant getToken");
+      if (permission === "granted") {
+
+        const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
         const token = await getToken(messaging, {
           vapidKey: VAPID_KEY,
           serviceWorkerRegistration,
         });
-        console.log("Après getToken:", token);
 
         if (token && auth.currentUser) {
           const userRef = doc(db, "usersrestau", auth.currentUser.uid);
           await updateDoc(userRef, { fcmToken: token });
-          console.log("Token FCM enregistré:", token);
+
         }
       } else {
-        console.log("Permission de notification refusée");
+
       }
     } catch (error) {
       console.error("Erreur lors de la demande de permission ou génération du token:", error);
@@ -57,7 +53,7 @@ const useNotifications = (onNotificationReceived) => {
         return;
       }
       const unsubscribe = onMessage(messaging, (payload) => {
-        console.log("Notification reçue:", payload);
+
         if (onNotificationReceived) {
           onNotificationReceived({
             id: payload.messageId || Date.now().toString(),
@@ -83,7 +79,6 @@ const useNotifications = (onNotificationReceived) => {
         const supported = await isSupported();
         if (!supported) return;
 
-        console.log("Vérification périodique du token...");
         const serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
         const newToken = await getToken(messaging, {
           vapidKey: VAPID_KEY,
@@ -95,7 +90,7 @@ const useNotifications = (onNotificationReceived) => {
           const currentToken = userSnapshot.data()?.fcmToken;
           if (newToken !== currentToken) {
             await updateDoc(userRef, { fcmToken: newToken });
-            console.log("Token FCM mis à jour:", newToken);
+
           }
         }
       } catch (error) {

@@ -19,19 +19,24 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
     originalPrice
   } = product;
 
+  // Support both `isAvailable` (legacy) and `available` (admin) flags
+  const availability = product?.isAvailable ?? product?.available ?? isAvailable;
+
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [selectedItem, setSelectedItem] = React.useState(null);
   const imageUrl = covers?.[0] || image || '/api/placeholder/400/400';
   const finalPrice = discount > 0 ? price * (1 - discount / 100) : price;
 
   const handleAddToCart = () => {
-    if (isAvailable) {
+    if (availability) {
       // Normaliser la liste d'IDs de compléments (supporte extraLists ou assortments)
       const extraIds = (product.extraLists && product.extraLists.length > 0)
         ? product.extraLists
         : (product.assortments || []);
-      // Si le produit a des compléments, ouvrir le modal
-      if (Array.isArray(extraIds) && extraIds.length > 0) {
+      // Ouvrir le modal si le produit a des compléments OU s'il utilise des tailles
+      const hasExtras = Array.isArray(extraIds) && extraIds.length > 0;
+      const hasSizes = product.priceType === 'sizes';
+      if (hasExtras || hasSizes) {
         setSelectedItem({
           ...product,
           extraLists: extraIds
@@ -70,12 +75,12 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
               alt={name}
               className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
             />
-            {!isAvailable && (
+            {!availability && (
               <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center rounded-2xl">
                 <span className="text-white text-sm font-bold">Indisponible</span>
               </div>
             )}
-            {isPopular && isAvailable && (
+            {isPopular && availability && (
               <div className="absolute -top-2 -left-2">
                 <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-2 rounded-full shadow-lg">
                   <Flame className="w-5 h-5" />
@@ -156,18 +161,18 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
 
               <motion.button
                 onClick={handleAddToCart}
-                disabled={!isAvailable}
+                disabled={!availability}
                 className={`px-8 py-4 rounded-2xl font-bold text-base transition-all duration-300 flex items-center space-x-3 shadow-lg md:px-10 md:py-5 md:text-lg ${
-                  isAvailable
+                  availability
                     ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white hover:shadow-2xl transform hover:-translate-y-1'
                     : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
-                whileHover={isAvailable ? { scale: 1.05 } : {}}
-                whileTap={isAvailable ? { scale: 0.95 } : {}}
+                whileHover={availability ? { scale: 1.05 } : {}}
+                whileTap={availability ? { scale: 0.95 } : {}}
               >
                 <ShoppingCart className="w-5 h-5" />
                 <span>
-                  {isAvailable ? 'Ajouter' : 'Indisponible'}
+                  {availability ? 'Ajouter' : 'Indisponible'}
                 </span>
               </motion.button>
             </div>
@@ -201,7 +206,7 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
         
         {/* Badges repositionnés et plus gros */}
         <div className="absolute top-4 left-4 flex flex-col space-y-3">
-          {isPopular && isAvailable && (
+          {isPopular && availability && (
             <motion.div
               className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2 rounded-2xl text-sm font-bold flex items-center space-x-2 shadow-xl"
               initial={{ scale: 0, rotate: -10 }}
@@ -257,7 +262,7 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
         </motion.button>
 
         {/* Unavailable overlay */}
-        {!isAvailable && (
+        {!availability && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
             <div className="bg-white/95 backdrop-blur-sm px-6 py-4 rounded-2xl shadow-xl">
               <span className="text-gray-800 font-bold text-lg">Non disponible</span>
@@ -328,17 +333,17 @@ const ProductCard = ({ product, onAddToCart, className = '', viewMode = 'grid', 
           {/* Add to Cart Button plus gros et imposant */}
           <motion.button
             onClick={handleAddToCart}
-            disabled={!isAvailable}
+            disabled={!availability}
             className={`w-full flex items-center justify-center px-8 py-5 rounded-2xl font-bold transition-all duration-400 text-lg md:text-xl md:py-6 shadow-xl ${
-              isAvailable
+              availability
                 ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white hover:shadow-2xl transform hover:-translate-y-2'
                 : 'bg-gray-200 text-gray-500 cursor-not-allowed'
             }`}
-            whileHover={isAvailable ? { scale: 1.02 } : {}}
-            whileTap={isAvailable ? { scale: 0.98 } : {}}
+            whileHover={availability ? { scale: 1.02 } : {}}
+            whileTap={availability ? { scale: 0.98 } : {}}
           >
             <ShoppingCart className="w-6 h-6 mr-3" />
-            {isAvailable ? 'Ajouter au panier' : 'Non disponible'}
+            {availability ? 'Ajouter au panier' : 'Non disponible'}
           </motion.button>
 
           {/* Modal pour l'ajout au panier avec compléments */}

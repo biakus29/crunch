@@ -1083,10 +1083,16 @@ const ThankYouPage = () => {
       return;
     }
     try {
+      // Récupérer l'ID du restaurant depuis la commande
+      const orderRef = doc(db, "orders", orderId);
+      const orderSnap = await getDoc(orderRef);
+      const restaurantId = orderSnap.exists() ? orderSnap.data().restaurantId : null;
+
       const feedbackRef = doc(collection(db, "feedback"));
       await setDoc(feedbackRef, {
         orderId,
         userId: localStorage.getItem("guestUid") || null,
+        restaurantId,
         ...feedback,
         timestamp: Timestamp.now(),
       });
