@@ -529,6 +529,13 @@ const OrderDetailsModal = React.memo(({
         status: 'paid',
         paidAt: Timestamp.now(),
       };
+      
+      console.log('💾 SAUVEGARDE PAIEMENT:', {
+        orderId: order.id,
+        paymentMethod,
+        paymentProvider,
+        paymentData
+      });
 
       if (paymentMethod === 'mobile_money') {
         paymentData.provider = paymentProvider;
@@ -561,7 +568,13 @@ const OrderDetailsModal = React.memo(({
         updatedAt: Timestamp.now(),
         ...paymentMethodUpdate // Mettre à jour l'ancien champ aussi
       });
-
+      
+      console.log('✅ PAIEMENT SAUVEGARDÉ:', {
+        orderId: order.id,
+        payment: paymentData,
+        isPaid: true
+      });
+      
       setPaymentSuccessMessage("Paiement mis à jour avec succès");
       setRefreshTrigger(prev => prev + 1); // Déclencher un rafraîchissement
       

@@ -3,6 +3,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { CartProvider } from "./context/cartcontext";
 import { AuthProvider } from "./context/authcontext";
+import ErrorBoundary, { SuspenseFallback } from "./components/common/ErrorBoundary";
 // Global styles
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -44,6 +45,9 @@ const DeliveryPersonLogin = lazy(() => import('./pages/DeliveryPersonLogin'));
 const DeliveryInfo = lazy(() => import('./pages/DeliveryInfo'));
 const ConfirmDelivery = lazy(() => import('./pages/ConfirmDelivery'));
 const DeliveryManagerMobile = lazy(() => import('./pages/DeliveryManagerMobile'));
+const CsvDemo = lazy(() => import('./pages/CsvDemo'));
+const HistoriqueCommandes = lazy(() => import('./pages/HistoriqueCommandes'));
+const SalesHistoryPage = lazy(() => import('./pages/SalesHistoryPage'));
 
 function App() {
   return (
@@ -51,9 +55,10 @@ function App() {
       <CartProvider>
         <HelmetProvider>
           <Router>
-            <Suspense fallback={<div style={{ padding: 16 }}>Chargement...</div>}>
-            <Routes>
-              <Route path="/" element={<Login />} />
+            <ErrorBoundary>
+              <Suspense fallback={<SuspenseFallback />}>
+                <Routes>
+              <Route path="/" element={<Login/>} />
               <Route path="/login" element={<Auth />} />
               <Route path="/accueil" element={<Accueil />} />
               
@@ -145,13 +150,20 @@ function App() {
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/detail/:id" element={<ProductDetails />} />
               <Route path="/cart" element={<CartPage />} />
-              <Route path="/order-details" element={
-                <ProtectedRoute>
-                  <OrderAddress />
-                </ProtectedRoute>
-              } />
+              <Route path="/order-details" element={<OrderAddress />} />
               <Route path="/categories/:category" element={<CategoryListing />} />
               <Route path="/order-status" element={<FinalOrderStatus />} />
+              <Route path="/csv-demo" element={<CsvDemo />} />
+              <Route path="/historique-commandes" element={
+                <ProtectedRoute adminOnly={true}>
+                  <HistoriqueCommandes />
+                </ProtectedRoute>
+              } />
+              <Route path="/sales-history" element={
+                <ProtectedRoute adminOnly={true}>
+                  <SalesHistoryPage />
+                </ProtectedRoute>
+              } />
               <Route path="/profile" element={
                 <ProtectedRoute>
                   <Profile />
@@ -196,7 +208,8 @@ function App() {
                 </div>
               } />
             </Routes>
-            </Suspense>
+              </Suspense>
+            </ErrorBoundary>
           </Router>
         </HelmetProvider>
       </CartProvider>

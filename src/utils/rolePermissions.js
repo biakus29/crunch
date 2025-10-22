@@ -5,7 +5,8 @@ export const ROLES = {
   KITCHEN_SUPPLY: 'kitchen_supply', // Responsable Cuisine et Approvisionnement
   ORDER_MANAGER: 'order_manager',   // Gestionnaire des Commandes
   SUPPLY_MANAGER: 'supply_manager',  // Gestionnaire des approvisionnements (existant)
-  DELIVERY_MANAGER: 'delivery_manager' // Gestionnaire de Livraison
+  DELIVERY_MANAGER: 'delivery_manager', // Gestionnaire de Livraison
+  DEVELOPER: 'developer'        // Développeur - Accès complet au système
 };
 
 export const ROLE_LABELS = {
@@ -14,7 +15,8 @@ export const ROLE_LABELS = {
   [ROLES.KITCHEN_SUPPLY]: 'Responsable Cuisine et Approvisionnement',
   [ROLES.ORDER_MANAGER]: 'Gestionnaire des Commandes',
   [ROLES.SUPPLY_MANAGER]: 'Gestionnaire des Approvisionnements',
-  [ROLES.DELIVERY_MANAGER]: 'Gestionnaire de Livraison'
+  [ROLES.DELIVERY_MANAGER]: 'Gestionnaire de Livraison',
+  [ROLES.DEVELOPER]: 'Développeur'
 };
 
 // Définition des sections accessibles par rôle
@@ -27,6 +29,7 @@ export const ROLE_PERMISSIONS = {
             'takeawayOrder',       // Commandes à emporter
             'reports',             // Rapports et statistiques
             'accountingReports',   // Rapports comptables détaillés
+            'accountingCenter',    // Centre comptable unifié
             'deliveryOptimized',   // Système de livraison optimisé
             'deliveryDashboard',   // Tableau de bord livraison
             'payments',            // Paiements
@@ -34,11 +37,15 @@ export const ROLE_PERMISSIONS = {
             'purchases',           // Achats (listes et budgets)
             'promotions',          // Promotions
             'managers',            // Gestion des utilisateurs
-            'userRoles',           // Modification des rôles
             'budgets',             // Gestion des budgets
             'expenseClassification', // Classification des sorties
             'expenseCleanup',      // Nettoyage des dépenses
-            'kitchen'              // Gestion de la cuisine
+            'kitchen',             // Gestion de la cuisine
+            'accountAdjustment',   // Ajustement des comptes
+            'salesHistory',        // Historique des ventes
+            'developer',           // Interface développeur
+            'userInterfaces',      // Interfaces utilisateurs (debug)
+            'historiqueCommandes'  // Migration historique commandes
           ],
     canCreate: true,
     canEdit: true,
@@ -51,7 +58,7 @@ export const ROLE_PERMISSIONS = {
         [ROLES.ACCOUNTANT]: {
           // Accès limité aux achats, budgets, dépenses de livraison et vue financière des commandes
           sections: [
-            'orders', 'purchases', 'deliveryDashboard', 'deliveryExpenses', 'reports', 'accountingReports', 'budgets', 'expenseClassification', 'expenseCleanup', 'kitchen' // Commandes (vue financière), achats, tableau de bord livraison, dépenses livraison, rapports, rapports comptables, budgets, classification, nettoyage, cuisine
+            'orders', 'purchases', 'deliveryDashboard', 'deliveryExpenses', 'reports', 'accountingReports', 'accountingCenter', 'budgets', 'expenseClassification', 'expenseCleanup', 'kitchen', 'accountAdjustment', 'salesHistory', 'userInterfaces' // + centre comptable unifié + debug
           ],
     canCreate: true, // Peut créer des dépenses et budgets
     canEdit: true,   // Peut modifier des dépenses et budgets
@@ -71,7 +78,7 @@ export const ROLE_PERMISSIONS = {
   [ROLES.KITCHEN_SUPPLY]: {
     // Accès aux menus, catégories, et sections d'approvisionnement éclatées
     sections: [
-      'menus', 'categories', 'ingredients', 'purchases', 'inventory', 'production', 'supplyReports'
+      'menus', 'categories', 'ingredients', 'purchases', 'supplyReports'
     ],
     canCreate: true,
     canEdit: true,
@@ -80,7 +87,7 @@ export const ROLE_PERMISSIONS = {
     canManageUsers: false,
     canAccessAllRestaurants: false, // Accès seulement à son restaurant
     restrictedViews: {
-      supplyReports: ['ingredients', 'inventory', 'production'] // Pas de rapports financiers
+      supplyReports: ['ingredients'] // Pas de rapports financiers
     }
   },
   
@@ -128,6 +135,25 @@ export const ROLE_PERMISSIONS = {
       reports: ['delivery'], // Rapports de livraison uniquement
       deliveryExpenses: ['delivery'] // Dépenses du département livraison uniquement
     }
+  },
+
+  [ROLES.DEVELOPER]: {
+    // Développeur - Accès complet au système pour les tests et le développement
+    sections: [
+      'dashboard', 'restaurant', 'menus', 'categories', 'orders', 'createOrder', 'takeawayOrder',
+      'promotions', 'ambassadors', 'supplies', 'ingredients', 'purchases', 'supplyReports',
+      'deliveryDashboard', 'deliveryTracking', 'deliverers', 'deliveryShifts', 'deliveryExpenses', 
+      'deliveryOptimized', 'payments', 'loyalty', 'comments', 'reports', 'accountingReports', 
+      'accountingCenter', 'managers', 'budgets', 'expenseClassification', 'expenseCleanup', 
+      'kitchen', 'accountAdjustment', 'salesHistory', 'developer', 'userInterfaces', 'historiqueCommandes'
+    ],
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+    canViewFinances: true,
+    canManageUsers: true,
+    canAccessAllRestaurants: true, // Accès à tous les restaurants pour les tests
+    canAccessDeveloperInterface: true // Accès spécial à l'interface développeur
   }
 };
 
@@ -185,7 +211,6 @@ export const getMenuItemsForRole = (userRole) => {
     { id: "supplies", label: "Approvisionnements", icon: "FaBox" },
     { id: "ingredients", label: "Ingrédients", icon: "FaBoxes" },
     { id: "purchases", label: "Achats", icon: "FaShoppingCart" },
-    { id: "inventory", label: "Inventaires", icon: "FaClipboardList" },
     { id: "production", label: "Production", icon: "FaCogs" },
     { id: "supplyReports", label: "Rapports Appro", icon: "FaChartLine" },
     { id: "ambassadors", label: "Ambassadeurs", icon: "FaUserTie" },
@@ -199,13 +224,14 @@ export const getMenuItemsForRole = (userRole) => {
     { id: "comments", label: "Avis Clients", icon: "FaCommentAlt" },
     { id: "reports", label: "Rapports", icon: "FaChartLine" },
     { id: "managers", label: "Gestion des Utilisateurs", icon: "FaUsers" },
-    { id: "userRoles", label: "Modifier les Rôles", icon: "FaUserTie" },
     { id: "budgets", label: "Gestion des Budgets", icon: "FaMoneyBillWave" },
         { id: "expenseClassification", label: "Classification des Sorties", icon: "FaChartPie" },
         { id: "expenseCleanup", label: "Nettoyage des Dépenses", icon: "FaBroom" },
         { id: "kitchen", label: "Cuisine", icon: "FaUtensils" },
         { id: "takeawayOrder", label: "Commande à Emporter", icon: "FaShoppingBag" },
-        { id: "accountingReports", label: "Rapports Comptables", icon: "FaFileExport" }
+        { id: "accountingReports", label: "Rapports Comptables", icon: "FaFileExport" },
+        { id: "salesHistory", label: "Historique des Ventes", icon: "FaChartLine" },
+    { id: "historiqueCommandes", label: "Historique Commandes", icon: "FaHistory" }
   ];
   
   return allMenuItems.filter(item => permissions.sections.includes(item.id));

@@ -11,6 +11,7 @@ import { hasPermission } from '../../utils/rolePermissions';
 const PurchasesManager = ({ currentRestaurantId, userRole }) => {
   const [activeTab, setActiveTab] = useState('purchases'); // 'purchases' ou 'budgets'
 
+
   return (
     <div className="p-4 sm:p-6">
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} />

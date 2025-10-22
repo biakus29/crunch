@@ -161,7 +161,8 @@ export const classifyExpense = (expense) => {
 // Fonction pour nettoyer et classifier toutes les dépenses
 export const cleanupAndClassifyAllExpenses = async () => {
   try {
-
+    console.log('🧹 Début du nettoyage et de la classification des dépenses...');
+    
     const results = {
       expenses: { processed: 0, updated: 0, errors: 0 },
       purchases: { processed: 0, updated: 0, errors: 0 },
@@ -171,7 +172,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
     };
 
     // Traiter les dépenses générales
-
+    console.log('📋 Traitement des dépenses générales...');
     const expensesQuery = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
     const expensesSnapshot = await getDocs(expensesQuery);
     
@@ -191,7 +192,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
             lastClassificationUpdate: new Date()
           });
           results.expenses.updated++;
-
+          console.log(`✅ Dépense ${docSnapshot.id} classifiée: ${department} - ${category}`);
         }
       } catch (error) {
         results.expenses.errors++;
@@ -200,7 +201,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
     }
 
     // Traiter les achats
-
+    console.log('🛒 Traitement des achats...');
     const purchasesQuery = query(collection(db, 'purchases'), orderBy('createdAt', 'desc'));
     const purchasesSnapshot = await getDocs(purchasesQuery);
     
@@ -220,7 +221,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
             lastClassificationUpdate: new Date()
           });
           results.purchases.updated++;
-
+          console.log(`✅ Achat ${docSnapshot.id} classifié: ${department} - ${category}`);
         }
       } catch (error) {
         results.purchases.errors++;
@@ -229,7 +230,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
     }
 
     // Traiter les dépenses de livraison
-
+    console.log('🚚 Traitement des dépenses de livraison...');
     const deliveryQuery = query(collection(db, 'deliveryExpenses'), orderBy('createdAt', 'desc'));
     const deliverySnapshot = await getDocs(deliveryQuery);
     
@@ -249,7 +250,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
             lastClassificationUpdate: new Date()
           });
           results.deliveryExpenses.updated++;
-
+          console.log(`✅ Dépense livraison ${docSnapshot.id} classifiée: ${department} - ${category}`);
         }
       } catch (error) {
         results.deliveryExpenses.errors++;
@@ -258,7 +259,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
     }
 
     // Traiter les listes d'achats (purchaseLists) - Achats de cuisine
-
+    console.log('🛒 Traitement des listes d\'achats de cuisine...');
     const purchaseListsQuery = query(collection(db, 'purchaseLists'), orderBy('date', 'desc'));
     const purchaseListsSnapshot = await getDocs(purchaseListsQuery);
     
@@ -282,7 +283,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
             lastClassificationUpdate: new Date()
           });
           results.purchaseLists.updated++;
-
+          console.log(`✅ Liste d'achat ${docSnapshot.id} classifiée: ${department} - ${category}`);
         }
       } catch (error) {
         results.purchaseLists.errors++;
@@ -291,7 +292,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
     }
 
     // Traiter les ingrédients (coûts unitaires)
-
+    console.log('🥬 Traitement des coûts des ingrédients...');
     const ingredientsQuery = query(collection(db, 'ingredients'), orderBy('name'));
     const ingredientsSnapshot = await getDocs(ingredientsQuery);
     
@@ -316,7 +317,7 @@ export const cleanupAndClassifyAllExpenses = async () => {
             lastClassificationUpdate: new Date()
           });
           results.ingredients.updated++;
-
+          console.log(`✅ Ingrédient ${docSnapshot.id} classifié: ${department} - ${category}`);
         }
       } catch (error) {
         results.ingredients.errors++;
@@ -324,6 +325,9 @@ export const cleanupAndClassifyAllExpenses = async () => {
       }
     }
 
+    console.log('🎉 Nettoyage terminé !');
+    console.log('📊 Résultats:', results);
+    
     return results;
   } catch (error) {
     console.error('❌ Erreur lors du nettoyage:', error);
@@ -334,7 +338,8 @@ export const cleanupAndClassifyAllExpenses = async () => {
 // Fonction pour détecter les doublons potentiels
 export const detectDuplicates = async () => {
   try {
-
+    console.log('🔍 Recherche des doublons potentiels...');
+    
     const allExpenses = [];
     
     // Collecter toutes les dépenses
@@ -401,6 +406,7 @@ export const detectDuplicates = async () => {
       }
     });
 
+    console.log(`🔍 ${duplicates.length} doublons potentiels détectés`);
     return duplicates;
   } catch (error) {
     console.error('❌ Erreur lors de la détection des doublons:', error);
@@ -411,7 +417,8 @@ export const detectDuplicates = async () => {
 // Fonction pour générer un rapport de cohérence
 export const generateConsistencyReport = async () => {
   try {
-
+    console.log('📊 Génération du rapport de cohérence...');
+    
     const report = {
       totalExpenses: 0,
       byDepartment: {},
@@ -507,6 +514,7 @@ export const generateConsistencyReport = async () => {
     const duplicates = await detectDuplicates();
     report.duplicates = duplicates.length;
 
+    console.log('📊 Rapport de cohérence généré:', report);
     return report;
   } catch (error) {
     console.error('❌ Erreur lors de la génération du rapport:', error);

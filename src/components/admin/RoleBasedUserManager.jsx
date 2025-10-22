@@ -26,7 +26,8 @@ import {
   FaEye,
   FaEyeSlash,
   FaRandom,
-  FaCopy
+  FaCopy,
+  FaCode
 } from 'react-icons/fa';
 import { ROLES, ROLE_LABELS } from '../../utils/rolePermissions';
 
@@ -54,7 +55,8 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
     [ROLES.ACCOUNTANT]: <FaCalculator className="text-green-600" />,
     [ROLES.KITCHEN_SUPPLY]: <FaUtensils className="text-orange-600" />,
     [ROLES.ORDER_MANAGER]: <FaShoppingCart className="text-blue-600" />,
-    [ROLES.SUPPLY_MANAGER]: <FaBox className="text-teal-600" />
+    [ROLES.SUPPLY_MANAGER]: <FaBox className="text-teal-600" />,
+    [ROLES.DEVELOPER]: <FaCode className="text-red-600" />
   };
 
   // Générer un mot de passe sécurisé

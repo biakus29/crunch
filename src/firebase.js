@@ -1,6 +1,7 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getMessaging, isSupported } from "firebase/messaging";
@@ -20,16 +21,42 @@ const firebaseConfig = {
 let app;
 try {
   app = initializeApp(firebaseConfig);
+  console.log("Firebase initialisé avec succès");
 } catch (error) {
   console.error("Erreur lors de l'initialisation de Firebase :", error);
-  throw error;
+  // Ne pas throw l'erreur pour éviter de casser l'app
+  // Créer une instance de fallback
+  app = null;
 }
 
-// Initialisation des services
-const db = getFirestore(app);
-const storage = getStorage(app);
-const auth = getAuth(app);
-const googleProvider = new GoogleAuthProvider();
+// Initialisation des services avec gestion d'erreurs
+let db, storage, auth, googleProvider, rtdb;
+
+if (app) {
+  try {
+    db = getFirestore(app);
+    rtdb = getDatabase(app);
+    storage = getStorage(app);
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+    console.log("Services Firebase initialisés avec succès");
+  } catch (error) {
+    console.error("Erreur lors de l'initialisation des services Firebase :", error);
+    // Créer des instances de fallback
+    db = null;
+    rtdb = null;
+    storage = null;
+    auth = null;
+    googleProvider = null;
+  }
+} else {
+  console.warn("Firebase non initialisé, services non disponibles");
+  db = null;
+  storage = null;
+  auth = null;
+  googleProvider = null;
+  rtdb = null;
+}
 
 // Persistance hors ligne désactivée temporairement pour éviter les erreurs d'assertion interne
 let persistenceInitialized = true;
@@ -72,10 +99,9 @@ const waitForPersistence = async () => {
     const checkInterval = setInterval(() => {
       if (persistenceInitialized) {
         clearInterval(checkInterval);
-        resolve();
       }
     }, 100);
   });
 };
 
-export { db, storage, auth, googleProvider, messaging, isSupported, waitForPersistence };
+export { db, rtdb, storage, auth, googleProvider, messaging, isSupported, waitForPersistence };

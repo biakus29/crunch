@@ -1,0 +1,10 @@
+id,name,price,qty,active,createdAt,category,notes,maybeEmpty
+1,Burger,9.90,2,oui,2024-12-01,Food,"Best seller", 
+2,Pizza,12,1,true,01/10/2025,Food,"Large size",
+3,Soda,1,5,false,10-02-2025,Beverage,,
+
+4,Dessert,3, ,non,2025/03/15,Food,"Tiramisu", 
+5,Fries,2,3,yes,15/04/2025,Food,,
+6,Coffee,1,2,no,2025-05-01T10:30:00Z,Beverage,"Hot", 
+7,Salad,7,1,vrai,18-05-2025,Food,,
+8,Water,0,10,faux,19/05/2025,Beverage,,

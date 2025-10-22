@@ -13,7 +13,9 @@ import {
   FaTrash,
   FaPlus,
   FaCheckCircle,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaTruck,
+  FaUtensils
 } from 'react-icons/fa';
 import { formatPrice } from '../../utils/adminUtils';
 
@@ -22,12 +24,14 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
   const [purchases, setPurchases] = useState([]);
   const [deliveryExpenses, setDeliveryExpenses] = useState([]);
   const [purchaseLists, setPurchaseLists] = useState([]);
-  const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [showClassificationModal, setShowClassificationModal] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [detailsCategory, setDetailsCategory] = useState(null);
+  const [detailsExpenses, setDetailsExpenses] = useState([]);
 
   // Système de classification cohérent
   const CLASSIFICATION_SYSTEM = {
@@ -98,6 +102,71 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
         description: 'Assurances diverses',
         departments: ['magedabord', 'crunch', 'square', 'divers']
       },
+      'maintenance': {
+        label: '🔨 Maintenance',
+        description: 'Réparations et entretien des locaux',
+        departments: ['magedabord', 'crunch', 'square']
+      },
+      'cleaning': {
+        label: '🧹 Nettoyage',
+        description: 'Produits et services de nettoyage',
+        departments: ['magedabord', 'crunch', 'square']
+      },
+      'security': {
+        label: '🔒 Sécurité',
+        description: 'Services de sécurité et surveillance',
+        departments: ['magedabord', 'crunch', 'square']
+      },
+      'banking': {
+        label: '🏦 Frais bancaires',
+        description: 'Frais de compte, virements, cartes',
+        departments: ['divers']
+      },
+      'legal': {
+        label: '⚖️ Légal',
+        description: 'Honoraires d\'avocat, frais juridiques',
+        departments: ['divers']
+      },
+      'accounting': {
+        label: '📊 Comptabilité',
+        description: 'Services comptables, logiciels',
+        departments: ['divers']
+      },
+      'technology': {
+        label: '💻 Technologie',
+        description: 'Logiciels, matériel informatique, licences',
+        departments: ['magedabord', 'crunch', 'square', 'divers']
+      },
+      'training': {
+        label: '🎓 Formation',
+        description: 'Formations du personnel, certifications',
+        departments: ['magedabord', 'crunch', 'square']
+      },
+      'supplies': {
+        label: '📦 Fournitures',
+        description: 'Fournitures de bureau, emballages',
+        departments: ['magedabord', 'crunch', 'square', 'divers']
+      },
+      'transport': {
+        label: '🚗 Transport',
+        description: 'Frais de transport, essence, parking',
+        departments: ['square', 'divers']
+      },
+      'communication': {
+        label: '📞 Communication',
+        description: 'Téléphone, internet, abonnements',
+        departments: ['magedabord', 'crunch', 'square', 'divers']
+      },
+      'waste': {
+        label: '🗑️ Gestion des déchets',
+        description: 'Collecte des déchets, recyclage',
+        departments: ['magedabord', 'crunch']
+      },
+      'permits': {
+        label: '📋 Permis et licences',
+        description: 'Licences commerciales, permis sanitaires',
+        departments: ['magedabord', 'crunch', 'divers']
+      },
       'other': {
         label: '📋 Autres',
         description: 'Dépenses diverses non classées',
@@ -106,70 +175,187 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
     }
   };
 
+  // Fonction centralisée de classification intelligente
+  const classifyExpenseByContent = (text) => {
+    const lowerText = text.toLowerCase();
+
+    // Mots-clés étendus pour Maged'Abord (plats traditionnels)
+    const magedabordKeywords = {
+      high: ['eru', 'oko', 'okok', 'koki', 'ndole', 'kati-kati', 'bassa', 'poulet braisé', 'poulet pané'],
+      medium: ['viande', 'poisson', 'poulet', 'bœuf', 'porc', 'agneau', 'légumes', 'tomate', 'oignon', 'ail', 'gingembre', 'piment', 'huile', 'sel', 'épices', 'bouillon', 'sauce', 'marinade', 'riz', 'haricot', 'pomme de terre', 'banane plantain', 'farine', 'céréales'],
+      low: ['cuisine', 'restaurant', 'traditionnel', 'africain', 'magedabord']
+    };
+
+    // Mots-clés étendus pour Crunch (snacks et boissons)
+    const crunchKeywords = {
+      high: ['sandwich', 'burger', 'frites', 'pizza', 'tacos', 'wrap', 'poulet braisé', 'poulet pané'],
+      medium: ['boisson', 'jus', 'soda', 'eau', 'café', 'thé', 'smoothie', 'snack', 'chips', 'biscuits', 'gâteau', 'dessert', 'glace', 'pain', 'baguette', 'croissant', 'viennoiserie', 'hamburger', 'hot-dog', 'nuggets'],
+      low: ['fast-food', 'snacks', 'boissons', 'crunch', 'rapide']
+    };
+
+    // Calculer les scores
+    let magedabordScore = 0;
+    let crunchScore = 0;
+
+    // Maged'Abord scoring
+    magedabordScore += magedabordKeywords.high.filter(k => lowerText.includes(k)).length * 3;
+    magedabordScore += magedabordKeywords.medium.filter(k => lowerText.includes(k)).length * 2;
+    magedabordScore += magedabordKeywords.low.filter(k => lowerText.includes(k)).length * 1;
+
+    // Crunch scoring
+    crunchScore += crunchKeywords.high.filter(k => lowerText.includes(k)).length * 3;
+    crunchScore += crunchKeywords.medium.filter(k => lowerText.includes(k)).length * 2;
+    crunchScore += crunchKeywords.low.filter(k => lowerText.includes(k)).length * 1;
+
+    // Déterminer le département avec seuil minimum
+    const threshold = 1; // Au moins un mot-clé de poids 1 ou équivalent
+    if (magedabordScore >= threshold && magedabordScore > crunchScore) {
+      return 'magedabord';
+    } else if (crunchScore >= threshold && crunchScore > magedabordScore) {
+      return 'crunch';
+    } else if (magedabordScore >= threshold && crunchScore >= threshold) {
+      // En cas d'égalité, privilégier Maged'Abord pour les achats mixtes
+      return 'magedabord';
+    }
+
+    return null; // Non classifiable automatiquement
+  };
+
   // Charger toutes les données de sorties
   useEffect(() => {
     const loadAllExpenses = async () => {
       try {
         setLoading(true);
+        console.log('🔄 Début du chargement des données de classification...');
         
-        // Charger les dépenses générales
-        const expensesQuery = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
-        const expensesSnapshot = await getDocs(expensesQuery);
+        // Charger toutes les sources de données en parallèle
+        const [
+          expensesSnapshot,
+          purchasesSnapshot,
+          deliverySnapshot,
+          purchaseListsSnapshot,
+          budgetsSnapshot,
+          ordersSnapshot
+        ] = await Promise.all([
+          // Dépenses générales
+          getDocs(query(collection(db, 'expenses'), orderBy('createdAt', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement expenses:', err);
+            return { docs: [] };
+          }),
+          // Achats
+          getDocs(query(collection(db, 'purchases'), orderBy('createdAt', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement purchases:', err);
+            return { docs: [] };
+          }),
+          // Dépenses de livraison
+          getDocs(query(collection(db, 'deliveryExpenses'), orderBy('createdAt', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement deliveryExpenses:', err);
+            return { docs: [] };
+          }),
+          // Listes d'achats de cuisine
+          getDocs(query(collection(db, 'purchaseLists'), orderBy('date', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement purchaseLists:', err);
+            return { docs: [] };
+          }),
+          // Budgets (considérés comme des sorties)
+          getDocs(query(collection(db, 'budgets'), orderBy('createdAt', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement budgets:', err);
+            return { docs: [] };
+          }),
+          // Commandes (pour calculer les coûts de livraison)
+          getDocs(query(collection(db, 'orders'), where('isPaid', '==', true), orderBy('timestamp', 'desc'))).catch(err => {
+            console.warn('⚠️ Erreur chargement orders:', err);
+            return { docs: [] };
+          })
+        ]);
+
+        // Traiter les dépenses générales
         const expensesData = expensesSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           type: 'expense',
           createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
         }));
-        setExpenses(expensesData);
+        console.log('📊 Dépenses générales chargées:', expensesData.length);
 
-        // Charger les achats
-        const purchasesQuery = query(collection(db, 'purchases'), orderBy('createdAt', 'desc'));
-        const purchasesSnapshot = await getDocs(purchasesQuery);
+        // Traiter les achats
         const purchasesData = purchasesSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           type: 'purchase',
           createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
         }));
-        setPurchases(purchasesData);
+        console.log('🛒 Achats chargés:', purchasesData.length);
 
-        // Charger les dépenses de livraison
-        const deliveryQuery = query(collection(db, 'deliveryExpenses'), orderBy('createdAt', 'desc'));
-        const deliverySnapshot = await getDocs(deliveryQuery);
+        // Traiter les dépenses de livraison
         const deliveryData = deliverySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           type: 'delivery',
           createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
         }));
-        setDeliveryExpenses(deliveryData);
+        console.log('🚚 Dépenses de livraison chargées:', deliveryData.length);
 
-        // Charger les listes d'achats de cuisine
-        const purchaseListsQuery = query(collection(db, 'purchaseLists'), orderBy('date', 'desc'));
-        const purchaseListsSnapshot = await getDocs(purchaseListsQuery);
+        // Traiter les listes d'achats de cuisine
         const purchaseListsData = purchaseListsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
           type: 'purchaseList',
-          description: `Liste d'achat cuisine - ${doc.data().brands?.join(', ') || 'Divers'}`,
-          amount: doc.data().total || 0,
-          createdAt: doc.data().date ? new Date(doc.data().date) : new Date()
+          createdAt: doc.data().date?.toDate?.() || new Date(doc.data().date)
         }));
-        setPurchaseLists(purchaseListsData);
+        console.log('🛍️ Listes d\'achats chargées:', purchaseListsData.length);
 
-        // Charger les coûts des ingrédients
-        const ingredientsQuery = query(collection(db, 'ingredients'), orderBy('name'));
-        const ingredientsSnapshot = await getDocs(ingredientsQuery);
-        const ingredientsData = ingredientsSnapshot.docs.map(doc => ({
+        // Traiter les budgets comme des sorties
+        const budgetsData = budgetsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          type: 'ingredient',
-          description: `Ingrédient: ${doc.data().name}`,
-          amount: doc.data().unitPrice || 0,
-          createdAt: doc.data().createdAt?.toDate?.() || new Date()
+          type: 'budget',
+          createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
         }));
-        setIngredients(ingredientsData);
+        console.log('💰 Budgets chargés:', budgetsData.length);
+
+        // Traiter les commandes pour extraire les frais de livraison (éviter les doublons)
+        const ordersData = ordersSnapshot.docs
+          .filter(doc => {
+            const data = doc.data();
+            // Éviter les doublons avec les dépenses de livraison existantes
+            return data.deliveryFee > 0 && !deliveryData.some(d => d.orderId === doc.id);
+          })
+          .map(doc => ({
+            id: doc.id,
+            description: `Frais de livraison commande #${doc.id.slice(-6)}`,
+            amount: doc.data().deliveryFee,
+            type: 'deliveryFee',
+            createdAt: doc.data().timestamp?.toDate?.() || new Date(doc.data().timestamp),
+            orderId: doc.id // Pour éviter les doublons
+          }));
+        console.log('📦 Frais de livraison des commandes:', ordersData.length);
+
+        // Combiner toutes les données (sans les ingrédients individuels)
+        const allExpenses = [
+          ...expensesData,
+          ...purchasesData,
+          ...deliveryData,
+          ...purchaseListsData,
+          ...budgetsData,
+          ...ordersData
+        ];
+
+        console.log('📈 Total des dépenses combinées:', allExpenses.length);
+        console.log('🔍 Détail par type:', {
+          expenses: expensesData.length,
+          purchases: purchasesData.length,
+          delivery: deliveryData.length,
+          purchaseLists: purchaseListsData.length,
+          budgets: budgetsData.length,
+          deliveryFees: ordersData.length
+        });
+
+        // Mettre à jour les états
+        setExpenses(allExpenses);
+        setPurchases(purchasesData);
+        setDeliveryExpenses(deliveryData);
+        setPurchaseLists(purchaseListsData);
 
       } catch (error) {
         console.error('Erreur lors du chargement des données:', error);
@@ -183,33 +369,64 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
 
   // Classifier automatiquement les dépenses
   const classifiedExpenses = useMemo(() => {
-    const allExpenses = [...expenses, ...purchases, ...deliveryExpenses, ...purchaseLists, ...ingredients];
+    const allExpenses = expenses; // déjà combinées en amont
     
-    return allExpenses.map(expense => {
+    console.log('🔄 Classification des dépenses:', {
+      total: allExpenses.length
+    });
+    
+    const classified = allExpenses.map(expense => {
       // Classification automatique basée sur les données existantes
       let department = 'divers';
       let category = 'other';
       
       // Classification par type de dépense
-      if (expense.type === 'delivery') {
+      if (expense.type === 'delivery' || expense.type === 'deliveryFee') {
         department = 'square';
         category = 'delivery';
       } else if (expense.type === 'purchase') {
-        // Analyser la description pour déterminer le département
+        // Classification intelligente des achats
         const description = (expense.description || '').toLowerCase();
-        if (description.includes('ingrédient') || description.includes('aliment') || description.includes('viande') || description.includes('poisson')) {
-          department = 'magedabord';
-          category = 'ingredients';
-        } else if (description.includes('snack') || description.includes('boisson') || description.includes('jus')) {
-          department = 'crunch';
-          category = 'ingredients';
-        } else if (description.includes('équipement') || description.includes('machine') || description.includes('cuisine')) {
+        const title = (expense.title || '').toLowerCase();
+        const combinedText = `${description} ${title}`;
+
+        // D'abord vérifier les équipements et autres catégories spécifiques
+        if (combinedText.toLowerCase().includes('équipement') || combinedText.toLowerCase().includes('machine') || combinedText.toLowerCase().includes('cuisine')) {
           department = 'magedabord';
           category = 'equipment';
         } else {
-          department = 'divers';
-          category = 'other';
+          // Utiliser la classification intelligente pour les ingrédients
+          const classifiedDept = classifyExpenseByContent(combinedText);
+          if (classifiedDept) {
+            department = classifiedDept;
+            category = 'ingredients';
+          } else {
+            // Classification manuelle requise - mettre dans "divers" pour révision
+            department = 'divers';
+            category = 'other';
+          }
         }
+      } else if (expense.type === 'purchaseList') {
+        // Classification intelligente des listes d'achats
+        const description = (expense.description || '').toLowerCase();
+        const brands = (expense.brands || []).join(' ').toLowerCase();
+        const combinedText = `${description} ${brands}`;
+
+        // Utiliser la classification intelligente
+        const classifiedDept = classifyExpenseByContent(combinedText);
+        if (classifiedDept) {
+          department = classifiedDept;
+          category = 'ingredients';
+        } else {
+          // Pour les listes d'achats non classables, privilégier Maged'Abord
+          // car la plupart des achats de cuisine sont pour le restaurant principal
+          department = 'magedabord';
+          category = 'ingredients';
+        }
+      } else if (expense.type === 'budget') {
+        // Les budgets sont classés selon leur département assigné
+        department = expense.department || 'divers';
+        category = 'other'; // Les budgets sont des sorties mais pas dans une catégorie spécifique
       } else if (expense.type === 'expense') {
         // Utiliser le département existant ou classifier automatiquement
         const existingDept = expense.department?.toLowerCase();
@@ -244,11 +461,27 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
         needsReview: !expense.classifiedDepartment || !expense.classifiedCategory
       };
     });
-  }, [expenses, purchases, deliveryExpenses]);
+    
+    console.log('✅ Dépenses classifiées:', classified.length);
+    console.log('📊 Répartition par département:', 
+      classified.reduce((acc, exp) => {
+        acc[exp.classifiedDepartment] = (acc[exp.classifiedDepartment] || 0) + 1;
+        return acc;
+      }, {})
+    );
+    
+    return classified;
+  }, [expenses]);
 
   // Filtrer les dépenses selon la période et le département
   const filteredExpenses = useMemo(() => {
     let filtered = classifiedExpenses;
+
+    console.log('🔍 Filtrage des dépenses:', {
+      total: classifiedExpenses.length,
+      selectedPeriod,
+      selectedDepartment
+    });
 
     // Filtre par période
     if (selectedPeriod !== 'all') {
@@ -291,6 +524,8 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
       filtered = filtered.filter(expense => expense.classifiedDepartment === selectedDepartment);
     }
 
+    console.log('✅ Dépenses filtrées:', filtered.length);
+    
     return filtered;
   }, [classifiedExpenses, selectedPeriod, selectedDepartment]);
 
@@ -330,6 +565,13 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
     return stats;
   }, [filteredExpenses]);
 
+  // Ouvrir les détails d'une catégorie
+  const openCategoryDetails = (category, expenses) => {
+    setDetailsCategory(category);
+    setDetailsExpenses(expenses);
+    setShowDetailsModal(true);
+  };
+
   // Mettre à jour la classification d'une dépense
   const updateExpenseClassification = async (expenseId, department, category) => {
     try {
@@ -340,8 +582,7 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
       let collectionName = 'expenses';
       if (expense.type === 'delivery') collectionName = 'deliveryExpenses';
       else if (expense.type === 'purchase') collectionName = 'purchases';
-      else if (expense.type === 'purchaseList') collectionName = 'purchaseLists';
-      else if (expense.type === 'ingredient') collectionName = 'ingredients';
+        else if (expense.type === 'purchaseList') collectionName = 'purchaseLists';
       
       const expenseRef = doc(db, collectionName, expenseId);
       await updateDoc(expenseRef, {
@@ -376,6 +617,48 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Message si aucune donnée
+  if (classifiedExpenses.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">📊 Classification des Sorties</h1>
+          <p className="text-blue-100">Gestion et classification des dépenses par département</p>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+          <div className="text-6xl mb-4">📭</div>
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">Aucune donnée trouvée</h3>
+          <p className="text-gray-600 mb-4">
+            Aucune dépense n'a été trouvée dans les collections suivantes :
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-gray-700">Collections vérifiées :</h4>
+              <ul className="text-sm text-gray-600 mt-2 space-y-1">
+                <li>• expenses (dépenses générales)</li>
+                <li>• purchases (achats)</li>
+                <li>• deliveryExpenses (dépenses livraison)</li>
+                <li>• purchaseLists (listes d'achats)</li>
+                <li>• budgets (budgets)</li>
+                <li>• orders (commandes avec frais livraison)</li>
+              </ul>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-700">Solutions :</h4>
+              <ul className="text-sm text-blue-600 mt-2 space-y-1">
+                <li>• Vérifiez les permissions Firebase</li>
+                <li>• Créez des dépenses de test</li>
+                <li>• Vérifiez la configuration</li>
+                <li>• Consultez la console pour les erreurs</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -472,6 +755,122 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
         })}
       </div>
 
+      {/* Section Sorties Principales */}
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <h3 className="text-lg font-semibold mb-4">📊 Sorties Principales</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          {/* Dépenses des livreurs */}
+          <div
+            className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => {
+              const deliveryExpenses = filteredExpenses.filter(expense =>
+                expense.type === 'delivery' || expense.type === 'deliveryFee' ||
+                (expense.classifiedDepartment === 'square' && expense.classifiedCategory === 'delivery')
+              );
+              openCategoryDetails('Dépenses Livreurs', deliveryExpenses);
+            }}
+          >
+            <div className="flex items-center space-x-3 mb-3">
+              <FaTruck className="text-blue-600 text-xl" />
+              <div>
+                <h4 className="font-semibold text-blue-800">Dépenses Livreurs</h4>
+                <p className="text-xs text-blue-600">Livraison & transport</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(() => {
+                const deliveryExpenses = filteredExpenses.filter(expense =>
+                  expense.type === 'delivery' || expense.type === 'deliveryFee' ||
+                  (expense.classifiedDepartment === 'square' && expense.classifiedCategory === 'delivery')
+                );
+                const total = deliveryExpenses.reduce((sum, exp) => sum + (exp.amount || exp.total || 0), 0);
+                return (
+                  <>
+                    <p className="text-2xl font-bold text-blue-800">{formatPrice(total)} FCFA</p>
+                    <p className="text-sm text-blue-600">{deliveryExpenses.length} dépenses</p>
+                    <p className="text-xs text-blue-500 mt-1">👆 Cliquez pour voir le détail</p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Achats en cuisine */}
+          <div
+            className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4 border border-green-200 cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => {
+              const kitchenExpenses = filteredExpenses.filter(expense =>
+                expense.type === 'purchase' || expense.type === 'purchaseList' ||
+                (expense.classifiedCategory === 'ingredients' || expense.classifiedCategory === 'equipment')
+              );
+              openCategoryDetails('Achats Cuisine', kitchenExpenses);
+            }}
+          >
+            <div className="flex items-center space-x-3 mb-3">
+              <FaUtensils className="text-green-600 text-xl" />
+              <div>
+                <h4 className="font-semibold text-green-800">Achats Cuisine</h4>
+                <p className="text-xs text-green-600">Ingrédients & équipements</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(() => {
+                const kitchenExpenses = filteredExpenses.filter(expense =>
+                  expense.type === 'purchase' || expense.type === 'purchaseList' ||
+                  (expense.classifiedCategory === 'ingredients' || expense.classifiedCategory === 'equipment')
+                );
+                const total = kitchenExpenses.reduce((sum, exp) => sum + (exp.amount || exp.total || 0), 0);
+                return (
+                  <>
+                    <p className="text-2xl font-bold text-green-800">{formatPrice(total)} FCFA</p>
+                    <p className="text-sm text-green-600">{kitchenExpenses.length} achats</p>
+                    <p className="text-xs text-green-500 mt-1">👆 Cliquez pour voir le détail</p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Dépenses de la compta */}
+          <div
+            className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200 cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => {
+              const accountingExpenses = filteredExpenses.filter(expense =>
+                expense.type === 'expense' || expense.type === 'budget' ||
+                expense.classifiedDepartment === 'divers'
+              );
+              openCategoryDetails('Dépenses Comptabilité', accountingExpenses);
+            }}
+          >
+            <div className="flex items-center space-x-3 mb-3">
+              <FaReceipt className="text-purple-600 text-xl" />
+              <div>
+                <h4 className="font-semibold text-purple-800">Dépenses Comptabilité</h4>
+                <p className="text-xs text-purple-600">Administration & gestion</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(() => {
+                const accountingExpenses = filteredExpenses.filter(expense =>
+                  expense.type === 'expense' || expense.type === 'budget' ||
+                  expense.classifiedDepartment === 'divers'
+                );
+                const total = accountingExpenses.reduce((sum, exp) => sum + (exp.amount || exp.total || 0), 0);
+                return (
+                  <>
+                    <p className="text-2xl font-bold text-purple-800">{formatPrice(total)} FCFA</p>
+                    <p className="text-sm text-purple-600">{accountingExpenses.length} dépenses</p>
+                    <p className="text-xs text-purple-500 mt-1">👆 Cliquez pour voir le détail</p>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       {/* Détail des dépenses */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="p-6 border-b">
@@ -495,14 +894,45 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-2">
                       <span className="text-lg">
-                        {expense.type === 'delivery' ? '🚚' : 
-                         expense.type === 'purchase' ? '🛒' : 
-                         expense.type === 'purchaseList' ? '🛍️' :
-                         expense.type === 'ingredient' ? '🥬' : '🧾'}
+                          {expense.type === 'delivery' ? '🚚' : 
+                           expense.type === 'purchase' ? '🛒' : 
+                          expense.type === 'purchaseList' ? '🛍️' : '🧾'}
                       </span>
                       <div>
-                        <div className="font-medium text-gray-900">{expense.description}</div>
-                        <div className="text-sm text-gray-500">{expense.supplier || expense.supplierName || 'N/A'}</div>
+                        <div className="font-medium text-gray-900">{
+                          (() => {
+                            // Pour les dépenses de livraison, créer une description plus intelligente
+                            if (expense.type === 'delivery' || expense.type === 'deliveryFee') {
+                              if (expense.description && expense.description !== 'X' && expense.description.trim()) {
+                                return expense.description;
+                              }
+                              // Utiliser la catégorie et le livreur pour créer une description
+                              const category = expense.category || 'dépense';
+                              const deliverer = expense.delivererName || expense.deliverer || '';
+                              const categoryLabel = category === 'fuel' ? 'Carburant' : 
+                                                  category === 'maintenance' ? 'Entretien' :
+                                                  category === 'repair' ? 'Réparation' : 'Dépense';
+                              return deliverer ? `${categoryLabel} - ${deliverer}` : categoryLabel;
+                            }
+                            // Pour les autres types, utiliser la logique existante
+                            return expense.description || expense.title || (
+                              expense.type === 'purchase'
+                                ? 'Achat cuisine'
+                                : expense.type === 'purchaseList'
+                                  ? 'Liste d\'achats cuisine'
+                                  : 'Dépense'
+                            );
+                          })()
+                        }</div>
+                        <div className="text-sm text-gray-500">{
+                          expense.supplier || expense.supplierName || (
+                            expense.type === 'delivery' || expense.type === 'deliveryFee'
+                              ? (expense.delivererName || expense.deliverer || 'Frais de course')
+                              : expense.type === 'purchase' || expense.type === 'purchaseList'
+                                ? 'Cuisine'
+                                : '-'
+                          )
+                        }</div>
                       </div>
                     </div>
                   </td>
@@ -564,6 +994,18 @@ const ExpenseClassificationSystem = ({ currentRestaurantId, userRole }) => {
           }}
         />
       )}
+
+      {/* Modale de détails des catégories */}
+      <CategoryDetailsModal
+        isOpen={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setDetailsCategory(null);
+          setDetailsExpenses([]);
+        }}
+        category={detailsCategory}
+        expenses={detailsExpenses}
+      />
     </div>
   );
 };
@@ -641,6 +1083,80 @@ const generateCSV = (expenses) => {
   return csvContent;
 };
 
+// Modale de détails des catégories
+const CategoryDetailsModal = ({ isOpen, onClose, category, expenses }) => {
+  if (!isOpen) return null;
+
+  const total = expenses.reduce((sum, exp) => sum + (exp.amount || exp.total || 0), 0);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden"
+      >
+        <div className="p-6 border-b">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-semibold">{category}</h2>
+              <p className="text-sm text-gray-600">
+                {expenses.length} dépenses • Total: {formatPrice(total)} FCFA
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[70vh]">
+          <div className="space-y-4">
+            {expenses.map((expense) => (
+              <div key={expense.id} className="border rounded-lg p-4 bg-gray-50">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-lg">
+                      {expense.type === 'delivery' ? '🚚' :
+                       expense.type === 'purchase' ? '🛒' :
+                       expense.type === 'purchaseList' ? '🛍️' :
+                       expense.type === 'deliveryFee' ? '🚚' : '🧾'}
+                    </span>
+                    <div>
+                      <div className="font-medium text-gray-900">
+                        {expense.description || expense.title}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {expense.supplier || expense.supplierName || 'N/A'} •
+                        {new Date(expense.createdAt).toLocaleDateString('fr-FR')}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-lg">
+                      {formatPrice(expense.amount || expense.total || 0)} FCFA
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {expense.classifiedDepartment && expense.classifiedCategory ?
+                        `${CLASSIFICATION_SYSTEM.DEPARTMENTS[expense.classifiedDepartment]?.label} - ${CLASSIFICATION_SYSTEM.CATEGORIES[expense.classifiedCategory]?.label}` :
+                        'Non classifié'
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// Fonction d'export CSV
 const downloadCSV = (content, filename) => {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');

@@ -64,6 +64,9 @@ export const useRoleAuth = () => {
       } catch (err) {
         console.error('Erreur authentification:', err);
         setError('Erreur lors de la vérification des permissions');
+        // En cas d'erreur, permettre l'accès avec un rôle par défaut
+        setUser({ id: authUser.uid, email: authUser.email, role: 'guest' });
+        setUserRole('guest');
       } finally {
         setLoading(false);
       }

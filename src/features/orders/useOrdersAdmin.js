@@ -42,11 +42,17 @@ export function useOrdersAdmin({ currentRestaurantId, extraLists = [], items = [
     const unsubscribe = onSnapshot(
       ordersQuery,
       (snapshot) => {
-        const allOrders = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-          status: d.data().status || ORDER_STATUS.PENDING,
-        }));
+        const allOrders = snapshot.docs.map((d) => {
+          const data = d.data() || {};
+          // Normalize status for takeaway/admin-created orders using 'confirmed'
+          let normalizedStatus = data.status || ORDER_STATUS.PENDING;
+          if (normalizedStatus === 'confirmed') normalizedStatus = ORDER_STATUS.PREPARING;
+          return {
+            id: d.id,
+            ...data,
+            status: normalizedStatus,
+          };
+        });
         setOrders(allOrders);
         setLoadingOrders(false);
       },
@@ -59,13 +65,28 @@ export function useOrdersAdmin({ currentRestaurantId, extraLists = [], items = [
     return () => unsubscribe();
   }, []);
 
-  const formatDateForComparison = (date) => date.toISOString().split("T")[0];
+  // Compare by local calendar day (avoids UTC shift hiding same-day orders)
+  const formatDateForComparison = (date) => {
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
 
   const filterOrdersByDate = useCallback((ordersList, date, mode) => {
     const selected = new Date(date);
     return ordersList.filter((order) => {
-      if (!order.timestamp) return false;
-      const orderDate = new Date(order.timestamp.seconds * 1000);
+      // Use timestamp first, then createdAt, then updatedAt
+      const dateField = order.timestamp || order.createdAt || order.updatedAt;
+      if (!dateField) return false;
+      
+      const orderDate = dateField.seconds 
+        ? new Date(dateField.seconds * 1000)
+        : dateField.toDate 
+        ? dateField.toDate()
+        : new Date(dateField);
+        
       switch (mode) {
         case "day":
           return formatDateForComparison(orderDate) === formatDateForComparison(selected);
@@ -92,8 +113,10 @@ export function useOrdersAdmin({ currentRestaurantId, extraLists = [], items = [
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
-    if (!items.length) return [];
     const dateFiltered = filterOrdersByDate(orders, selectedDate, dateFilterMode);
+    // Si pas d'items chargés, retourner toutes les commandes filtrées par date
+    if (!items.length) return dateFiltered;
+    // Sinon, filtrer aussi par items du restaurant
     return dateFiltered.filter((order) =>
       order.items?.some((item) => items.some((it) => it.id === item.dishId))
     );

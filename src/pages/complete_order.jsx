@@ -184,6 +184,7 @@ const CompleteOrderPage = () => {
     try {
       setRedirecting(true);
       const API_URL = process.env.REACT_APP_API_URL || "https://crunchpay.seed-apps.com";
+      const PUBLIC_BASE = process.env.REACT_APP_PUBLIC_BASE_URL || "https://mangedabord.com";
       const response = await fetch(`${API_URL}/api/payment/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,8 +194,8 @@ const CompleteOrderPage = () => {
           order_id: order.id,
           customer_email: order.contact?.email || "client@example.com",
           description: `Commande : ${order.label || order.items?.map(i => i.dishName).join(", ") || order.id}`,
-          success_url: `${window.location.origin}/payment/success`,
-          failure_url: `${window.location.origin}/payment/failure`,
+          success_url: `${PUBLIC_BASE}/payment/success`,
+          failure_url: `${PUBLIC_BASE}/payment/failure`,
         }),
       });
       if (!response.ok) throw new Error("Échec de l'initialisation du paiement");

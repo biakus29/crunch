@@ -364,6 +364,7 @@ const SimpleKitchenManager = ({ currentRestaurantId }) => {
     );
   }
 
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header avec boutons d'action */}
@@ -542,6 +543,7 @@ const SimpleKitchenManager = ({ currentRestaurantId }) => {
                   );
                 })}
               </div>
+
 
               {/* Information pour les productions */}
               {bulkForm.type === 'production' && (
@@ -923,6 +925,7 @@ const SimpleKitchenManager = ({ currentRestaurantId }) => {
                       </div>
                     )}
 
+
                     {/* Date */}
                     <div>
                       <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">Date *</label>
@@ -1008,6 +1011,7 @@ const SimpleKitchenManager = ({ currentRestaurantId }) => {
                         required
                       />
                     </div>
+
 
                     {/* Date */}
                     <div>

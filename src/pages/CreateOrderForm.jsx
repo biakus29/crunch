@@ -6,10 +6,9 @@ import { collection, addDoc, Timestamp, getDocs, query, where, doc, setDoc, getD
 import { formatPrice } from "../utils/orderUtils";
 
 // Base URL for public links
-// Prefer current origin when running in browser (works locally and online),
-// fallback to env, then default production domain
-const BASE_URL = (typeof window !== 'undefined' && window.location?.origin)
-  || process.env.REACT_APP_PUBLIC_BASE_URL
+// Prefer configured public domain first, then current origin (for local dev), then default
+const BASE_URL = process.env.REACT_APP_PUBLIC_BASE_URL
+  || (typeof window !== 'undefined' && window.location?.origin)
   || "https://mangedabord.com";
 
 const DEFAULT_DELIVERY_FEE = 1000;
@@ -722,8 +721,8 @@ const CreateOrderForm = ({ restaurantId, items: propItems = [], menus: propMenus
             order_id: `temp-${Date.now()}`,
             customer_email: "client@example.com",
             description: `Commande : ${orderLabel}`,
-            success_url: `${window.location.origin}/payment/success?flow=mobile`,
-            failure_url: `${window.location.origin}/payment/failure?flow=mobile`,
+            success_url: `${BASE_URL}/payment/success?flow=mobile`,
+            failure_url: `${BASE_URL}/payment/failure?flow=mobile`,
           }),
         });
         const paymentResponse = await response.json();
@@ -1304,7 +1303,13 @@ const CreateOrderForm = ({ restaurantId, items: propItems = [], menus: propMenus
             <button
               type="button"
               className="w-full bg-green-600 text-white py-2 rounded-md text-sm hover:bg-green-700"
-              onClick={() => window.open(whatsappUrl, "_blank")}
+              onClick={() => {
+                try {
+                  window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+                } catch (e) {
+                  window.location.href = whatsappUrl;
+                }
+              }}
             >
               Envoyer via WhatsApp
             </button>

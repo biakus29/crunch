@@ -201,6 +201,7 @@ const ReportsDashboard = ({
   // État pour forcer le rafraîchissement
   const [forceRefresh, setForceRefresh] = useState(0);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  
   // State management for filters
   const [filterDeliverer, setFilterDeliverer] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -224,6 +225,7 @@ const ReportsDashboard = ({
       setForceRefresh(prev => prev + 1);
     }
   }, [orders, lastUpdate]);
+
 
   // Enhanced order enrichment with better error handling
   const enrichedOrders = useMemo(() => {
@@ -770,10 +772,19 @@ if (filteredOrders.length > 0) {
     <div className="space-y-6">
       {/* Filtres de période */}
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4 flex items-center">
-          <span className="text-xl mr-2">📅</span>
-          Filtres de Période
-        </h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold flex items-center">
+            <span className="text-xl mr-2">📅</span>
+            Filtres de Période
+          </h3>
+          <button
+            onClick={() => setForceRefresh(prev => prev + 1)}
+            className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+          >
+            <span className="mr-2">🔄</span>
+            Actualiser
+          </button>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Mode de filtrage */}
@@ -871,6 +882,39 @@ if (filteredOrders.length > 0) {
             </span>
           </p>
           
+          {/* Indicateur des filtres actifs */}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {filterDeliverer && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                🚚 {filterDeliverer}
+              </span>
+            )}
+            {filterStatus && (
+              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                📋 {filterStatus}
+              </span>
+            )}
+            {filterPaymentMethod && (
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                💳 {filterPaymentMethod}
+              </span>
+            )}
+            {filterDestination && (
+              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                📍 {filterDestination}
+              </span>
+            )}
+            {filterPaymentStatus && (
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">
+                💰 {filterPaymentStatus === 'paid' ? 'Payé' : 'Non payé'}
+              </span>
+            )}
+            {filterMinRating && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">
+                ⭐ {filterMinRating}+
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1085,53 +1129,83 @@ if (filteredOrders.length > 0) {
           filteredOrders.forEach(order => {
             // NE COMPTER QUE LES COMMANDES PAYÉES
             if (!order.isPaid) return;
-
+            
+            // DEBUG: Afficher les données de chaque commande payée
+            console.log('🔍 COMMANDE PAYÉE:', {
+              id: order.id,
+              isPaid: order.isPaid,
+              payment: order.payment,
+              paymentMethod: order.paymentMethod,
+              total: order.total
+            });
+            
             // Utiliser les données de paiement sauvegardées (order.payment) en priorité
             const paymentMethod = order.payment?.method;
             const paymentProvider = order.payment?.provider;
-
+            
+            // Log détaillé pour debug
+            console.log('🔍 COMMANDE PAYÉE DÉTAILLÉE:', {
+              id: order.id,
+              isPaid: order.isPaid,
+              payment: order.payment,
+              paymentMethod: order.paymentMethod,
+              paymentMethod_new: paymentMethod,
+              paymentProvider_new: paymentProvider,
+              total: order.total,
+              hasPaymentData: !!(order.payment && Object.keys(order.payment).length > 0)
+            });
+            
             // Vérifier d'abord si on a des données payment valides
             if (order.payment && typeof order.payment === 'object' && Object.keys(order.payment).length > 0) {
-
-            if (paymentMethod === 'mobile_money') {
+              console.log('📱 DÉTECTION PAIEMENT MOBILE:', {
+                id: order.id,
+                payment: order.payment,
+                method: paymentMethod,
+                provider: paymentProvider,
+                oldPaymentMethod: order.paymentMethod
+              });
+              
+              if (paymentMethod === 'mobile_money') {
                 if (paymentProvider === 'OM' || paymentProvider === 'Orange Money') {
                   accountBalances['Orange Money'] = (accountBalances['Orange Money'] || 0) + order.total;
-
+                  console.log('✅ Ajouté à Orange Money:', order.total);
                 } else if (paymentProvider === 'MOMO' || paymentProvider === 'MTN') {
                   accountBalances['MTN Mobile Money'] = (accountBalances['MTN Mobile Money'] || 0) + order.total;
-
-              } else {
-                // Si pas de provider spécifique, utiliser fallback
+                  console.log('✅ Ajouté à MTN Mobile Money:', order.total);
+                } else {
+                  // Si pas de provider spécifique, utiliser fallback
                   accountBalances['Orange Money'] = (accountBalances['Orange Money'] || 0) + order.total;
-
-              }
-            } else if (paymentMethod === 'cash') {
-              accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
-            } else if (paymentMethod === 'bank_transfer') {
-              accountBalances.bank = (accountBalances.bank || 0) + order.total;
-
-            } else if (paymentMethod === 'mixed') {
-              // Pour les paiements mixtes, répartir selon les montants
-              accountBalances.cash = (accountBalances.cash || 0) + (order.payment?.cashAmount || 0);
+                  console.log('⚠️ Provider non spécifié, ajouté à Orange Money par défaut:', order.total);
+                }
+              } else if (paymentMethod === 'cash') {
+                accountBalances.cash = (accountBalances.cash || 0) + order.total;
+                console.log('✅ Ajouté à Cash:', order.total);
+              } else if (paymentMethod === 'bank_transfer') {
+                accountBalances.bank = (accountBalances.bank || 0) + order.total;
+                console.log('✅ Ajouté à Bank:', order.total);
+              } else if (paymentMethod === 'mixed') {
+                // Pour les paiements mixtes, répartir selon les montants
+                accountBalances.cash = (accountBalances.cash || 0) + (order.payment?.cashAmount || 0);
                 if (paymentProvider === 'OM' || paymentProvider === 'Orange Money') {
                   accountBalances['Orange Money'] = (accountBalances['Orange Money'] || 0) + (order.payment?.mobileAmount || 0);
-
+                  console.log('✅ Paiement mixte - Cash:', order.payment?.cashAmount, 'Orange Money:', order.payment?.mobileAmount);
                 } else if (paymentProvider === 'MOMO' || paymentProvider === 'MTN') {
                   accountBalances['MTN Mobile Money'] = (accountBalances['MTN Mobile Money'] || 0) + (order.payment?.mobileAmount || 0);
-
-              }
-            } else {
+                  console.log('✅ Paiement mixte - Cash:', order.payment?.cashAmount, 'MTN Mobile Money:', order.payment?.mobileAmount);
+                }
+              } else {
                 // Si méthode inconnue mais on a des données payment, essayer de deviner
-
+                console.log('❓ Méthode de paiement inconnue:', paymentMethod, 'Provider:', paymentProvider);
                 accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                console.log('⚠️ Méthode inconnue, ajouté à Cash par défaut:', order.total);
               }
             } else {
-
+              console.log('❌ AUCUNE DONNÉE PAYMENT POUR:', order.id, 'Payment:', order.payment);
+              
               // Si pas de données payment, utiliser le fallback avec l'ancien format
               const oldPaymentMethod = order.paymentMethod;
-
+              console.log('🔄 Fallback - paymentMethod (ancien format):', oldPaymentMethod);
+              
               if (oldPaymentMethod && typeof oldPaymentMethod === 'object') {
                 // Ancien format: { id: "mobile_money_om", name: "Orange Money" }
                 const methodId = oldPaymentMethod.id || '';
@@ -1139,48 +1213,50 @@ if (filteredOrders.length > 0) {
                 
                 if (methodId.includes('om') || methodName.includes('Orange')) {
                   accountBalances['Orange Money'] = (accountBalances['Orange Money'] || 0) + order.total;
-
+                  console.log('✅ Fallback (ancien format) - Ajouté à Orange Money:', order.total);
                 } else if (methodId.includes('momo') || methodId.includes('mtn') || methodName.includes('MTN')) {
                   accountBalances['MTN Mobile Money'] = (accountBalances['MTN Mobile Money'] || 0) + order.total;
-
+                  console.log('✅ Fallback (ancien format) - Ajouté à MTN Mobile Money:', order.total);
                 } else if (methodId.includes('cash') || methodName.includes('Cash')) {
-                accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                  accountBalances.cash = (accountBalances.cash || 0) + order.total;
+                  console.log('✅ Fallback (ancien format) - Ajouté à Cash:', order.total);
                 } else if (methodId.includes('bank') || methodName.includes('Bank')) {
-                accountBalances.bank = (accountBalances.bank || 0) + order.total;
-
-              } else {
-                // Par défaut, si on ne sait pas, mettre en cash
-                accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                  accountBalances.bank = (accountBalances.bank || 0) + order.total;
+                  console.log('✅ Fallback (ancien format) - Ajouté à Bank:', order.total);
+                } else {
+                  // Par défaut, si on ne sait pas, mettre en cash
+                  accountBalances.cash = (accountBalances.cash || 0) + order.total;
+                  console.log('⚠️ Méthode inconnue (ancien format), ajouté à Cash par défaut:', order.total);
                 }
               } else if (typeof oldPaymentMethod === 'string') {
                 // Ancien format: string simple
                 if (oldPaymentMethod.includes('Mobile') || oldPaymentMethod.includes('Orange')) {
                   accountBalances['Orange Money'] = (accountBalances['Orange Money'] || 0) + order.total;
-
+                  console.log('✅ Fallback (string) - Ajouté à Orange Money:', order.total);
                 } else if (oldPaymentMethod.includes('MTN')) {
                   accountBalances['MTN Mobile Money'] = (accountBalances['MTN Mobile Money'] || 0) + order.total;
-
+                  console.log('✅ Fallback (string) - Ajouté à MTN Mobile Money:', order.total);
                 } else if (oldPaymentMethod.includes('Cash') || oldPaymentMethod.includes('Espèces')) {
                   accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                  console.log('✅ Fallback (string) - Ajouté à Cash:', order.total);
                 } else if (oldPaymentMethod.includes('Bank')) {
                   accountBalances.bank = (accountBalances.bank || 0) + order.total;
-
+                  console.log('✅ Fallback (string) - Ajouté à Bank:', order.total);
                 } else {
                   // Par défaut, si on ne sait pas, mettre en cash
                   accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                  console.log('⚠️ Méthode inconnue (string), ajouté à Cash par défaut:', order.total);
                 }
               } else {
                 // Par défaut, si on ne sait pas, mettre en cash
                 accountBalances.cash = (accountBalances.cash || 0) + order.total;
-
+                console.log('⚠️ Aucune méthode de paiement détectée, ajouté à Cash par défaut:', order.total);
               }
             }
           });
-
+          
+          console.log('📊 SOLDES FINAUX CALCULÉS:', accountBalances);
+          
           // Les soldes représentent l'argent disponible dans chaque compte
           // Pas de déduction automatique des dépenses opérationnelles ici
           
@@ -1207,7 +1283,7 @@ if (filteredOrders.length > 0) {
                         {hasPayment && (
                           <div className="text-green-700 font-medium">
                             → {paymentMethod} ({paymentProvider})
-                    </div>
+                          </div>
                         )}
                       </div>
                     );
@@ -1222,7 +1298,7 @@ if (filteredOrders.length > 0) {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {Object.entries(accountBalances).map(([account, balance]) => {
+                {Object.entries(accountBalances).map(([account, balance]) => {
                 const getAccountLabel = (acc, bal) => {
                   const formattedBalance = Math.abs(bal).toLocaleString();
                   const sign = bal >= 0 ? '+' : '-';
@@ -1271,7 +1347,7 @@ if (filteredOrders.length > 0) {
                             {account === 'Orange Money' && 'Paiements Orange Money'}
                             {account === 'MTN Mobile Money' && 'Paiements MTN Mobile Money'}
                             {account === 'bank' && 'Virements bancaires'}
-                    </div>
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">
@@ -1279,23 +1355,23 @@ if (filteredOrders.length > 0) {
                           {balance >= 0 ? '+' : ''}{balance.toLocaleString()} FCFA
                         </div>
                         <div className="text-xs text-gray-500">
-                      {balance >= 0 ? 'Solde positif' : 'Solde négatif'}
+                          {balance >= 0 ? 'Solde positif' : 'Solde négatif'}
                         </div>
                       </div>
                     </div>
                   </div>
                 );
-              })}
-              
-              {/* Si aucun compte n'a de solde, afficher un message */}
-              {Object.keys(accountBalances).length === 0 && (
-                <div className="col-span-full bg-red-50 p-4 rounded-lg border border-red-200">
-                  <div className="text-red-800 font-medium">❌ Aucun solde détecté</div>
-                  <div className="text-red-600 text-sm mt-1">
-                    Vérifiez que des commandes sont marquées comme payées et ont une méthode de paiement.
+                })}
+                
+                {/* Si aucun compte n'a de solde, afficher un message */}
+                {Object.keys(accountBalances).length === 0 && (
+                  <div className="col-span-full bg-red-50 p-4 rounded-lg border border-red-200">
+                    <div className="text-red-800 font-medium">❌ Aucun solde détecté</div>
+                    <div className="text-red-600 text-sm mt-1">
+                      Vérifiez que des commandes sont marquées comme payées et ont une méthode de paiement.
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
               </div>
             </div>
           );

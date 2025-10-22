@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../../firebase';
-import InventoryManager from './InventoryManager';
 import ProductionManager from './ProductionManager';
 import SupplyReports from './SupplyReports';
 import PurchaseListCreator from './PurchaseListCreator';
@@ -79,7 +78,6 @@ const SupplyManager = ({ currentRestaurantId, userRole }) => {
   const menuSections = [
     { id: 'ingredients', label: 'Ingrédients', icon: <FaBoxes /> },
     { id: 'purchases', label: 'Approvisionnement', icon: <FaShoppingCart /> },
-    { id: 'inventory', label: 'Inventaires & Stocks', icon: <FaClipboardList /> },
     { id: 'production', label: 'Production', icon: <FaCogs /> },
     { id: 'reports', label: 'Rapports', icon: <FaChartLine /> },
   ];
@@ -794,7 +792,6 @@ const SupplyManager = ({ currentRestaurantId, userRole }) => {
       <div>
         {activeSection === 'ingredients' && renderIngredientsSection()}
         {activeSection === 'purchases' && renderPurchasesSection()}
-        {activeSection === 'inventory' && <InventoryManager currentRestaurantId={currentRestaurantId} />}
         {activeSection === 'production' && <ProductionManager currentRestaurantId={currentRestaurantId} />}
         {activeSection === 'reports' && <SupplyReports currentRestaurantId={currentRestaurantId} />}
       </div>

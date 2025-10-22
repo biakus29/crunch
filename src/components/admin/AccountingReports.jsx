@@ -26,6 +26,14 @@ import { toast } from 'react-toastify';
 import { formatPrice, calculateOrderTotals } from '../../utils/adminUtils';
 
 const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole }) => {
+  // Debug des props reçues
+  console.log('🔍 AccountingReports - Props reçues:', {
+    orders: orders?.length || 0,
+    items: items?.length || 0,
+    extraLists: extraLists?.length || 0,
+    userRole: userRole
+  });
+
   // Vérification de sécurité pour les props
   const safeOrders = Array.isArray(orders) ? orders : [];
   const safeItems = Array.isArray(items) ? items : [];
@@ -43,6 +51,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
   const [destinationFilter, setDestinationFilter] = useState('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
   const [minRating, setMinRating] = useState(0);
+
 
   // Données supplémentaires
   const [expenses, setExpenses] = useState([]);
@@ -103,8 +112,15 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
         time: new Date(order.timestamp).toLocaleTimeString('fr-FR')
       }));
       
+      console.log('🔍 AccountingReports - Données reçues:', {
+        orders: safeOrders?.length || 0,
+        items: safeItems?.length || 0,
+        extraLists: safeExtraLists?.length || 0,
+        sampleDates: dates
+      });
     }
   }, [safeOrders, safeItems, safeExtraLists]);
+
 
   // Fonction getPeriodRange copiée de ReportsDashboard
   const getPeriodRange = (date, mode) => {
@@ -167,7 +183,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
           // Vérifier que order.items existe avant de calculer les totaux
           if (!order.items || !Array.isArray(order.items)) {
             console.warn(`Order ${order.id} has no items or invalid items array`);
-        return {
+    return { 
               id: order.id || `order_${Date.now()}`,
               date: orderDate,
               status: order.status || "Inconnu",
@@ -194,7 +210,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
             console.warn(`Invalid date for order ${order.id}`);
           }
           
-        return {
+          return {
             id: order.id || `order_${Date.now()}`,
             date: orderDate,
             status: order.status || "Inconnu",
@@ -491,6 +507,26 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     );
   }
 
+  // Vérifier si les données sont disponibles
+  if (!safeOrders || safeOrders.length === 0) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex items-center">
+          <div className="text-red-600 text-2xl mr-3">⚠️</div>
+          <div>
+            <h3 className="text-lg font-semibold text-red-800">Données manquantes</h3>
+            <p className="text-red-600 mt-1">
+              Aucune commande disponible pour générer le rapport comptable.
+            </p>
+            <p className="text-sm text-red-500 mt-2">
+              Vérifiez que les données sont correctement chargées dans le système.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -500,14 +536,29 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
           <p className="text-gray-600">Analyse financière complète avec filtres avancés</p>
           <div className="text-sm text-gray-500 mt-1">
             Données: {safeOrders.length} commandes, {filteredOrders.length} filtrées
+            <span className="ml-2 text-xs text-green-600">
+              🔄 Mise à jour automatique
+            </span>
           </div>
         </div>
           <div className="flex space-x-3">
             <button
             onClick={() => setReportType('all')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-            >
+          >
             📊 Voir toutes les commandes
+          </button>
+          <button
+            onClick={() => {
+              console.log('🔍 DEBUG COMPLET:', {
+                safeOrders: safeOrders,
+                filteredOrders: filteredOrders,
+                financialStats: financialStats
+              });
+            }}
+            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex items-center"
+          >
+            🔍 Debug
             </button>
             <button
               onClick={exportToCSV}
@@ -583,7 +634,16 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
 
       {/* Filtres avancés */}
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">🔍 Filtres avancés</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">🔍 Filtres avancés</h3>
+          <button
+            onClick={() => window.location.reload()}
+            className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+          >
+            <span className="mr-2">🔄</span>
+            Actualiser
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Livreur</label>
@@ -667,6 +727,45 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
                   </div>
                 </div>
               </div>
+
+        {/* Indicateur des filtres actifs */}
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <div className="flex flex-wrap gap-2">
+            {delivererFilter !== 'all' && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                🚚 {delivererFilter}
+              </span>
+            )}
+            {statusFilter !== 'all' && (
+              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                📋 {statusFilter}
+              </span>
+            )}
+            {paymentMethodFilter !== 'all' && (
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                💳 {paymentMethodFilter}
+              </span>
+            )}
+            {destinationFilter !== 'all' && (
+              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                📍 {destinationFilter}
+              </span>
+            )}
+            {paymentStatusFilter !== 'all' && (
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">
+                💰 {paymentStatusFilter === 'paid' ? 'Payé' : 'Non payé'}
+              </span>
+            )}
+            {minRating > 0 && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">
+                ⭐ {minRating}+
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mt-2">
+            <strong>Résultats :</strong> {filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''} trouvée{filteredOrders.length > 1 ? 's' : ''}
+          </p>
+        </div>
 
       {/* Statistiques principales */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

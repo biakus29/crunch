@@ -21,10 +21,18 @@ import {
   CreditCard,
   Truck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2,
+  Database
 } from 'lucide-react';
 import { collection, query, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { 
+  fetchPayments, 
+  deleteTestPaymentsAndOrders, 
+  syncPaymentsWithOrders,
+  backfillAllPayments 
+} from '../../services/paymentsService';
 
 // Statuts des commandes
 const ORDER_STATUS = {
@@ -298,6 +306,64 @@ function AllPaymentsPage() {
               >
                 <Download className="h-4 w-4" />
                 Exporter CSV
+              </button>
+              
+              <button
+                onClick={async () => {
+                  try {
+                    const step1 = window.confirm('Voulez-vous supprimer DÉFINITIVEMENT les données de test (paiements et commandes liées) ?');
+                    if (!step1) return;
+                    const step2 = window.confirm('Action IRRÉVERSIBLE. Confirmez encore pour procéder.');
+                    if (!step2) return;
+                    toast.info('Suppression des données de test en cours...');
+                    const res = await deleteTestPaymentsAndOrders();
+                    toast.success(`Supprimé: ${res.paymentsDeleted} paiements, ${res.ordersDeleted} commandes`);
+                    loadOrders();
+                  } catch (e) {
+                    console.error(e);
+                    toast.error('Erreur lors de la suppression des données de test');
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                Nettoyer Tests
+              </button>
+              
+              <button
+                onClick={async () => {
+                  try {
+                    toast.info('Synchronisation des paiements en cours...');
+                    await syncPaymentsWithOrders();
+                    toast.success('Synchronisation terminée');
+                    loadOrders();
+                  } catch (e) {
+                    console.error(e);
+                    toast.error('Erreur lors de la synchronisation');
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Synchroniser
+              </button>
+              
+              <button
+                onClick={async () => {
+                  try {
+                    toast.info('Backfill des paiements en cours...');
+                    await backfillAllPayments();
+                    toast.success('Backfill terminé');
+                    loadOrders();
+                  } catch (e) {
+                    console.error(e);
+                    toast.error('Erreur lors du backfill');
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+              >
+                <Database className="h-4 w-4" />
+                Backfill
               </button>
             </div>
           </div>

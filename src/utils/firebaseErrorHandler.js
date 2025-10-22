@@ -150,3 +150,4 @@ export const getErrorSuggestions = (error) => {
   return suggestions[error.code] || ['Contactez le support technique'];
 };
 
+

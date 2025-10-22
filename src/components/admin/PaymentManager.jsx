@@ -19,10 +19,18 @@ import {
   MapPin,
   Package,
   CreditCard,
-  Truck
+  Truck,
+  Trash2,
+  Database
 } from 'lucide-react';
 import { collection, query, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../firebase';
+import { 
+  fetchPayments, 
+  deleteTestPaymentsAndOrders, 
+  syncPaymentsWithOrders,
+  backfillAllPayments 
+} from '../../services/paymentsService';
 
 // Statuts des commandes
 const ORDER_STATUS = {

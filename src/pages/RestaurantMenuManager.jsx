@@ -15,7 +15,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { useRestaurantContext } from "./restaurantcontext";
 import { db, storage } from "../firebase";
-import { formatPrice, convertPrice } from "./restaurantadmin";
+import { formatPrice, convertPrice } from "../utils/orderUtils";
 
 const RestaurantMenuManager = ({ activeSubSection }) => {
   const { currentRestaurantId, items, setItems, extraLists, setExtraLists, error, setError, loading, setLoading } =

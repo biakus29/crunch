@@ -20,36 +20,12 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { onAuthStateChanged } from "firebase/auth";
 import { Timestamp } from "firebase/firestore";
-import {
-  FaHome,
-  FaCog,
-  FaListAlt,
-  FaTags,
-  FaShoppingBag,
-  FaPlusCircle,
-  FaCommentAlt,
-  FaCogs,
-  FaTruck,
-  FaClock,
-  FaMapMarkedAlt,
-  FaCheckCircle,
-  FaFileExport,
-  FaBox,
-  FaBoxes,
-  FaShoppingCart,
-  FaClipboardList,
-  FaChartLine,
-  FaReceipt,
-  FaMoneyBillWave,
-  FaStar,
-  FaUsers,
-  FaUserTie,
-  FaSyncAlt
-} from "react-icons/fa";
+import { FaHome, FaCog, FaListAlt, FaTags, FaShoppingBag, FaPlusCircle, FaBox, FaBoxes, FaShoppingCart, FaChartLine, FaUserTie, FaMapMarkedAlt, FaTruck, FaClock, FaReceipt, FaMoneyBillWave, FaStar, FaCommentAlt, FaFileExport, FaUsers, FaChartPie, FaBroom, FaUtensils, FaWallet, FaCode, FaHistory, FaCogs } from 'react-icons/fa';
 import { HiOutlineLogout } from "react-icons/hi";
 import LoyaltyPointsManager from "./LoyaltyPoints";
 import CreateOrderForm from "./CreateOrderForm";
 import PendingOrdersModal from "../components/admin/orders/PendingOrdersModal";
+import SalesHistory from "../components/SalesHistory";
 import AdminHeader from "../components/admin/AdminHeader";
 import OrderCard from "../components/admin/orders/OrderCard";
 import OrderDetailsModal from "../components/admin/orders/OrderDetailsModal";
@@ -78,8 +54,6 @@ const AmbassadorManager = React.lazy(() => import("../components/admin/Ambassado
 const SupplyManager = React.lazy(() => import("../components/admin/SupplyManager"));
 const IngredientsManager = React.lazy(() => import("../components/admin/IngredientsManager"));
 const PurchasesManager = React.lazy(() => import("../components/admin/PurchasesManager"));
-const InventoryManager = React.lazy(() => import("../components/admin/InventoryManager"));
-const ProductionManager = React.lazy(() => import("../components/admin/ProductionManager"));
 const SupplyReports = React.lazy(() => import("../components/admin/SupplyReports"));
 const DeliveryManager = React.lazy(() => import("../components/admin/DeliveryManager"));
 const DeliveryShiftManager = React.lazy(() => import("../components/admin/DeliveryShiftManager"));
@@ -90,8 +64,15 @@ const ManagerDashboard = React.lazy(() => import("../components/admin/ManagerDas
 const ManagerExpenseTracker = React.lazy(() => import("../components/admin/ManagerExpenseTracker"));
 const ExpenseDeletionApproval = React.lazy(() => import("../components/admin/ExpenseDeletionApproval"));
 const TakeawayOrderForm = React.lazy(() => import("../components/admin/TakeawayOrderForm"));
-const AccountingReports = React.lazy(() => import("../components/admin/AccountingReports"));
-const UserRoleManager = React.lazy(() => import("../components/admin/UserRoleManager"));
+const BudgetManager = React.lazy(() => import("../components/admin/BudgetManager"));
+const NewAccountingInterface = React.lazy(() => import("../components/admin/NewAccountingInterface"));
+const ExpenseClassificationSystem = React.lazy(() => import("../components/admin/ExpenseClassificationSystem"));
+const ExpenseCleanupManager = React.lazy(() => import("../components/admin/ExpenseCleanupManager"));
+const SimpleKitchenManager = React.lazy(() => import("../components/admin/SimpleKitchenManager"));
+const DeveloperInterface = React.lazy(() => import("../components/admin/DeveloperInterface"));
+import UserInterfacesViewer from "../components/admin/UserInterfacesViewer";
+const HistoriqueCommandes = React.lazy(() => import("./HistoriqueCommandes"));
+const AccountAdjustmentManager = React.lazy(() => import("../components/admin/AccountAdjustmentManager"));
 import OrdersToolbar from "../components/admin/OrdersToolbar";
 import CommentsSection from "../components/admin/CommentsSection";
 import ReportsDashboard from "../components/admin/ReportsDashboard";
@@ -100,6 +81,7 @@ import { useRoleAuth } from "../hooks/useRoleAuth";
 import { ROLES, ROLE_LABELS, getMenuItemsForRole, hasPermission, hasViewAccess } from "../utils/rolePermissions";
 import RoleBasedUserManager from "../components/admin/RoleBasedUserManager";
 import RoleProtectedRoute, { AccessDeniedMessage } from "../components/auth/RoleProtectedRoute";
+import RolePriorityIndicator from "../components/admin/RolePriorityIndicator";
 
 const RestaurantAdmin = () => {
   // Hook d'authentification basée sur les rôles
@@ -118,7 +100,7 @@ const RestaurantAdmin = () => {
   const [menus, setMenus] = useState([]);
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
-  const [orders, setOrders] = useState([]);
+  // Les commandes sont maintenant gérées par useOrdersAdmin
   const [extraLists, setExtraLists] = useState([]);
   const [usersData, setUsersData] = useState({ byId: {}, byPhone: {} });
   const [deliveryFees, setDeliveryFees] = useState({});
@@ -133,7 +115,6 @@ const RestaurantAdmin = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [dateFilterMode, setDateFilterMode] = useState('day');
-  const [refreshingOrders, setRefreshingOrders] = useState(false);
   const [editingMenu, setEditingMenu] = useState(null);
   const [feedbacks, setFeedbacks] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -200,8 +181,6 @@ const allMenuItems = [
   { id: "supplies", label: "Approvisionnements", icon: <FaBox /> },
   { id: "ingredients", label: "Ingrédients", icon: <FaBoxes /> },
   { id: "purchases", label: "Achats", icon: <FaShoppingCart /> },
-  { id: "inventory", label: "Inventaires", icon: <FaClipboardList /> },
-  { id: "production", label: "Production", icon: <FaCogs /> },
   { id: "supplyReports", label: "Rapports Appro", icon: <FaChartLine /> },
   { id: "ambassadors", label: "Ambassadeurs", icon: <FaUserTie /> },
   { id: "deliveryDashboard", label: "Tableau de Bord Livraison", icon: <FaChartLine /> },
@@ -214,23 +193,119 @@ const allMenuItems = [
   { id: "comments", label: "Avis Clients", icon: <FaCommentAlt /> },
   { id: "reports", label: "Rapports", icon: <FaChartLine /> },
   { id: "accountingReports", label: "Rapports Comptables", icon: <FaFileExport /> },
+  { id: "accountingCenter", label: "Centre Comptable", icon: <FaMoneyBillWave /> },
   { id: "managers", label: "Gestion des Utilisateurs", icon: <FaUsers /> },
-  { id: "userRoles", label: "Modifier les Rôles", icon: <FaUserTie /> },
+  { id: "budgets", label: "Gestion des Budgets", icon: <FaMoneyBillWave /> },
+  { id: "expenseClassification", label: "Classification des Sorties", icon: <FaChartPie /> },
+  { id: "expenseCleanup", label: "Nettoyage des Dépenses", icon: <FaBroom /> },
+  { id: "kitchen", label: "Cuisine", icon: <FaUtensils /> },
+  { id: "accountAdjustment", label: "Ajustement des Comptes", icon: <FaWallet /> },
+  { id: "developer", label: "Interface Développeur", icon: <FaCode /> },
+  { id: "historiqueCommandes", label: "Historique Commandes", icon: <FaHistory /> },
 ];
 
-// Utiliser les éléments de menu filtrés selon le rôle depuis rolePermissions.js
+// Structure universelle de la sidebar organisée en 6 sections pour tous les utilisateurs
+const universalMenuSections = [
+  {
+    title: "📋 Gestion des Commandes",
+    items: [
+      { id: "dashboard", label: "Tableau de Bord", icon: <FaHome /> },
+      { id: "orders", label: "Commandes", icon: <FaShoppingBag /> },
+      { id: "createOrder", label: "Créer une commande", icon: <FaPlusCircle /> },
+      { id: "takeawayOrder", label: "Commande à Emporter", icon: <FaShoppingBag /> },
+      { id: "historiqueCommandes", label: "Historique Commandes", icon: <FaHistory /> },
+      { id: "menus", label: "Menus", icon: <FaListAlt /> },
+      { id: "categories", label: "Catégories", icon: <FaTags /> },
+      { id: "kitchen", label: "Cuisine", icon: <FaUtensils /> }
+    ]
+  },
+  {
+    title: "💰 Caisses",
+    items: [
+      { id: "payments", label: "Paiements", icon: <FaMoneyBillWave /> },
+      { id: "accountingCenter", label: "Centre Comptable", icon: <FaMoneyBillWave /> },
+      { id: "salesHistory", label: "Historique des Ventes", icon: <FaChartLine /> },
+      { id: "loyalty", label: "Points Fidélité", icon: <FaStar /> },
+      { id: "promotions", label: "Promotions", icon: <FaTags /> },
+      { id: "accountAdjustment", label: "Ajustement des Comptes", icon: <FaWallet /> }
+    ]
+  },
+  {
+    title: "💸 Dépenses",
+    items: [
+      { id: "budgets", label: "Gestion des Budgets", icon: <FaMoneyBillWave /> },
+      { id: "expenseClassification", label: "Classification des Sorties", icon: <FaChartPie /> },
+      { id: "expenseCleanup", label: "Nettoyage des Dépenses", icon: <FaBroom /> },
+      { id: "deliveryExpenses", label: "Dépenses Livraison", icon: <FaReceipt /> }
+    ]
+  },
+  {
+    title: "🚚 Livraisons",
+    items: [
+      { id: "deliveryDashboard", label: "Tableau de Bord Livraison", icon: <FaChartLine /> },
+      { id: "deliveryTracking", label: "Suivi Livraisons", icon: <FaMapMarkedAlt /> },
+      { id: "deliverers", label: "Livreurs", icon: <FaTruck /> },
+      { id: "deliveryShifts", label: "Horaires Livreurs", icon: <FaClock /> },
+      { id: "ambassadors", label: "Ambassadeurs", icon: <FaUserTie /> }
+    ]
+  },
+  {
+    title: "📦 Stock/Achat",
+    items: [
+      { id: "supplies", label: "Approvisionnements", icon: <FaBox /> },
+      { id: "ingredients", label: "Ingrédients", icon: <FaBoxes /> },
+      { id: "purchases", label: "Achats", icon: <FaShoppingCart /> },
+      { id: "supplyReports", label: "Rapports Appro", icon: <FaChartLine /> }
+    ]
+  },
+  {
+    title: "📊 Rapports",
+    items: [
+      { id: "reports", label: "Rapports", icon: <FaChartLine /> },
+      { id: "accountingReports", label: "Rapports Comptables", icon: <FaFileExport /> },
+      { id: "comments", label: "Avis Clients", icon: <FaCommentAlt /> },
+      { id: "managers", label: "Gestion des Utilisateurs", icon: <FaUsers /> },
+      { id: "restaurant", label: "Infos Restaurant", icon: <FaCog /> },
+      { id: "developer", label: "Interface Développeur", icon: <FaCode /> },
+      { id: "userInterfaces", label: "Toutes les Interfaces", icon: <FaUsers /> }
+    ]
+  }
+];
+
+// Utiliser la structure universelle organisée en 6 sections pour tous les utilisateurs
 const menuItems = useMemo(() => {
   if (!userRole) return [];
-  const roleMenuItems = getMenuItemsForRole(userRole);
-  // Mapper avec les icônes depuis allMenuItems
-  return roleMenuItems.map(roleItem => {
-    const menuItem = allMenuItems.find(item => item.id === roleItem.id);
-    return menuItem ? menuItem : { ...roleItem, icon: null };
-  }).filter(item => item !== null);
+  
+  // Debug: Afficher le rôle actuel
+  console.log('Rôle utilisateur actuel:', userRole);
+  
+  // Utiliser la structure universelle pour tous les utilisateurs
+  // Filtrer les éléments selon les permissions du rôle
+  const filteredSections = universalMenuSections.map(section => {
+    const filteredItems = section.items.filter(item => {
+      // Vérifier si l'utilisateur a accès à cet élément
+      try {
+        return hasViewAccess(userRole, item.id);
+      } catch (error) {
+        // En cas d'erreur, permettre l'accès par défaut
+        console.warn(`Erreur lors de la vérification des permissions pour ${item.id}:`, error);
+        return true;
+      }
+    });
+    
+    // Retourner la section seulement si elle contient des éléments accessibles
+    return filteredItems.length > 0 ? { ...section, items: filteredItems } : null;
+  }).filter(section => section !== null);
+  
+  console.log('Sections filtrées pour le rôle:', userRole, filteredSections);
+  return filteredSections;
 }, [userRole]);
 
   // Hook de gestion des commandes (migration progressive)
   const {
+    orders: hookOrders,
+    loadingOrders,
+    ordersError,
     updateOrderStatus: hookUpdateOrderStatus,
     updateOrderDeliveryFees: hookUpdateOrderDeliveryFees,
     deleteOrder: hookDeleteOrder,
@@ -271,7 +346,7 @@ const menuItems = useMemo(() => {
   useEffect(() => {
     let timerId;
     const checkPendingPayments = async () => {
-      const candidates = orders.filter((o) => o && o.paymentRef && o.isPaid === false);
+      const candidates = hookOrders.filter((o) => o && o.paymentRef && o.isPaid === false);
       if (!candidates.length) return;
       try {
         for (const o of candidates) {
@@ -296,7 +371,7 @@ const menuItems = useMemo(() => {
       timerId = setInterval(checkPendingPayments, 30000);
     }
     return () => timerId && clearInterval(timerId);
-  }, [orders, activeSection]);
+  }, [hookOrders, activeSection]);
 
   // Toggle rapide de disponibilité d'un plat depuis la liste
   const toggleItemAvailability = async (itemId, currentValue) => {
@@ -331,34 +406,37 @@ const menuItems = useMemo(() => {
   }, []);
 
 const pendingOrders = useMemo(() => {
-  return orders.filter((order) => 
+  return hookOrders.filter((order) => 
     order && order.id && order.status === ORDER_STATUS.PENDING
   );
-}, [orders]);
+}, [hookOrders]);
   const formatDateForComparison = (date) => {
-    return date.toISOString().split('T')[0];
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
   };
 
   const filterOrdersByDate = (orders, date, mode) => {
     const selected = new Date(date);
     return orders.filter((order) => {
-      // Utiliser timestamp en priorité, sinon updatedAt comme fallback
-      if (!order.timestamp && !order.updatedAt) {
-        return false;
-      }
-      const orderDate = order.timestamp 
-        ? new Date(order.timestamp.seconds * 1000)
-        : new Date(order.updatedAt.seconds * 1000);
-      
+      // Utiliser timestamp en priorité, sinon createdAt, sinon updatedAt
+      const dateField = order.timestamp || order.createdAt || order.updatedAt;
+      if (!dateField) return false;
+      const orderDate = dateField?.toDate
+        ? dateField.toDate()
+        : (dateField?.seconds ? new Date(dateField.seconds * 1000) : new Date(dateField));
       switch (mode) {
         case 'day':
           return formatDateForComparison(orderDate) === formatDateForComparison(selected);
-        case 'week':
+        case 'week': {
           const startOfWeek = new Date(selected);
           startOfWeek.setDate(selected.getDate() - selected.getDay());
           const endOfWeek = new Date(startOfWeek);
           endOfWeek.setDate(startOfWeek.getDate() + 6);
           return orderDate >= startOfWeek && orderDate <= endOfWeek;
+        }
         case 'month':
           return orderDate.getMonth() === selected.getMonth() && 
                  orderDate.getFullYear() === selected.getFullYear();
@@ -369,21 +447,21 @@ const pendingOrders = useMemo(() => {
   };
 
   const filteredOrders = useMemo(() => {
-    const dateFilteredOrders = filterOrdersByDate(orders, selectedDate, dateFilterMode);
+    const dateFilteredOrders = filterOrdersByDate(hookOrders, selectedDate, dateFilterMode);
     return dateFilteredOrders.filter((order) => {
       // Filtrer par restaurant si currentRestaurantId existe
-      if (currentRestaurantId && order.restaurantId !== currentRestaurantId) {
+      if (currentRestaurantId && order.restaurantId && order.restaurantId !== currentRestaurantId) {
         return false;
       }
       return true;
     });
-  }, [orders, selectedDate, dateFilterMode, currentRestaurantId]);
+  }, [hookOrders, selectedDate, dateFilterMode, currentRestaurantId]);
 
   const getDeliveryFee = (destination) => {
     return deliveryFees[destination] ?? DEFAULT_DELIVERY_FEE;
   };
 
-  const ratedOrders = orders.filter((order) => {
+  const ratedOrders = hookOrders.filter((order) => {
     const hasRating = order.rating && typeof order.rating === "object" && order.rating.rating !== undefined;
     const matchesRestaurant = order.restaurantId === currentRestaurantId;
     return hasRating && matchesRestaurant;
@@ -478,18 +556,7 @@ const pendingOrders = useMemo(() => {
       }
     };
 
-    const ordersQuery = query(collection(db, "orders"));
-    const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
-      const allOrders = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        status: doc.data().status || ORDER_STATUS.PENDING,
-      }));
-      setOrders(allOrders);
-    }, (err) => {
-      console.error("Erreur dans l'écoute des commandes:", err);
-      setError("Erreur dans le suivi des commandes");
-    });
+    // Les commandes sont maintenant gérées par le hook useOrdersAdmin
 
     const feedbackQuery = currentRestaurantId
       ? query(collection(db, "feedback"), where("restaurantId", "==", currentRestaurantId))
@@ -507,29 +574,11 @@ const pendingOrders = useMemo(() => {
 
     fetchStaticData();
     return () => {
-      unsubscribeOrders();
       unsubscribeFeedback();
     };
   }, [currentRestaurantId]);
 
-  // Manual refresh for orders
-  const refreshOrdersNow = useCallback(async () => {
-    try {
-      setRefreshingOrders(true);
-      const snap = await getDocs(collection(db, "orders"));
-      const allOrders = snap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        status: doc.data().status || ORDER_STATUS.PENDING,
-      }));
-      setOrders(allOrders);
-    } catch (err) {
-      console.error("Erreur lors de l'actualisation des commandes:", err);
-      setError("Impossible d'actualiser les commandes");
-    } finally {
-      setRefreshingOrders(false);
-    }
-  }, []);
+  // Les commandes sont maintenant rafraîchies automatiquement par useOrdersAdmin
 
   const addMenu = async () => {
     if (!menuData.name) {
@@ -1103,6 +1152,12 @@ const pendingOrders = useMemo(() => {
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
+          {/* Indicateur de rôle prioritaire */}
+          <RolePriorityIndicator 
+            userRole={userRole} 
+            activeSection={activeSection} 
+          />
+          
           {activeSection === "orders" && (
             <RoleProtectedRoute requiredSection="orders">
               <div className="space-y-6">
@@ -1116,28 +1171,12 @@ const pendingOrders = useMemo(() => {
                   handlePreviousPeriod={handlePreviousPeriod}
                   handleNextPeriod={handleNextPeriod}
                   getWeekNumber={getWeekNumber}
-                  refreshOrdersNow={refreshOrdersNow}
-                  refreshingOrders={refreshingOrders}
                   pendingOrdersCount={pendingOrders.length}
                   setShowPendingModal={setShowPendingModal}
                   paymentNotice={paymentNotice}
                   userRole={userRole}
                   canViewFinances={canAccess('orders', 'viewFinances')}
                 />
-                <button
-                  type="button"
-                  onClick={refreshOrdersNow}
-                  disabled={refreshingOrders}
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
-                    refreshingOrders
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
-                  }`}
-                  title="Actualiser la liste des commandes"
-                >
-                  <FaSyncAlt className={refreshingOrders ? 'animate-spin' : ''} />
-                  {refreshingOrders ? 'Actualisation…' : 'Actualiser'}
-                </button>
               </div>
             </RoleProtectedRoute>
           )}
@@ -1150,7 +1189,7 @@ const pendingOrders = useMemo(() => {
               <div className="p-6">
                 <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
                   <ManagerDashboard 
-                    orders={orders}
+                    orders={hookOrders}
                     deliverers={deliverers}
                   />
                 </React.Suspense>
@@ -2186,33 +2225,7 @@ const pendingOrders = useMemo(() => {
             </RoleProtectedRoute>
           )}
 
-          {activeSection === "inventory" && (
-            <RoleProtectedRoute requiredSection="inventory">
-              <React.Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                }
-              >
-                <InventoryManager currentRestaurantId={currentRestaurantId} />
-              </React.Suspense>
-            </RoleProtectedRoute>
-          )}
 
-          {activeSection === "production" && (
-            <RoleProtectedRoute requiredSection="production">
-              <React.Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  </div>
-                }
-              >
-                <ProductionManager currentRestaurantId={currentRestaurantId} />
-              </React.Suspense>
-            </RoleProtectedRoute>
-          )}
 
           {activeSection === "supplyReports" && (
             <RoleProtectedRoute requiredSection="supplyReports">
@@ -2260,8 +2273,16 @@ const pendingOrders = useMemo(() => {
             </RoleProtectedRoute>
           )}
 
+          {activeSection === "salesHistory" && (
+            <RoleProtectedRoute requiredSection="salesHistory">
+              <div className="p-6">
+                <SalesHistory />
+              </div>
+            </RoleProtectedRoute>
+          )}
+
           {activeSection === "comments" && (
-            <CommentsSection feedbacks={feedbacks} usersData={usersData} orders={orders} />
+            <CommentsSection feedbacks={feedbacks} usersData={usersData} orders={hookOrders} />
           )}
 
           {activeSection === "reports" && (
@@ -2359,18 +2380,6 @@ const pendingOrders = useMemo(() => {
             </RoleProtectedRoute>
           )}
 
-          {activeSection === "userRoles" && (
-            <RoleProtectedRoute requiredSection="userRoles">
-              <div className="p-6">
-                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
-                  <UserRoleManager 
-                    currentRestaurantId={currentRestaurantId}
-                  />
-                </React.Suspense>
-              </div>
-            </RoleProtectedRoute>
-          )}
-
           {activeSection === "expenseApprovals" && (
             <RoleProtectedRoute requiredSection="expenseApprovals">
               <div
@@ -2397,6 +2406,91 @@ const pendingOrders = useMemo(() => {
             </RoleProtectedRoute>
           )}
 
+          {activeSection === "budgets" && (
+            <RoleProtectedRoute requiredSection="budgets">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <BudgetManager 
+                    orders={hookOrders}
+                    userRole={userRole}
+                    menus={menus}
+                    categories={categories}
+                    items={items}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "expenseClassification" && (
+            <RoleProtectedRoute requiredSection="expenseClassification">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <ExpenseClassificationSystem 
+                    currentRestaurantId={currentRestaurantId}
+                    userRole={userRole}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "expenseCleanup" && (
+            <RoleProtectedRoute requiredSection="expenseCleanup">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <ExpenseCleanupManager 
+                    currentRestaurantId={currentRestaurantId}
+                    userRole={userRole}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "kitchen" && (
+            <RoleProtectedRoute requiredSection="kitchen">
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                  <SimpleKitchenManager 
+                    currentRestaurantId={currentRestaurantId}
+                    userRole={userRole}
+                  />
+                </React.Suspense>
+              </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "accountAdjustment" && (
+            <RoleProtectedRoute requiredSection="accountAdjustment">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <AccountAdjustmentManager userRole={userRole} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "developer" && (
+            <RoleProtectedRoute requiredSection="developer">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <DeveloperInterface userRole={userRole} />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "userInterfaces" && (
+            <RoleProtectedRoute requiredSection="userInterfaces">
+              <UserInterfacesViewer userRole={userRole} />
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "historiqueCommandes" && (
+            <RoleProtectedRoute requiredSection="historiqueCommandes">
+              <React.Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <HistoriqueCommandes />
+              </React.Suspense>
+            </RoleProtectedRoute>
+          )}
+
           {activeSection === "takeawayOrder" && (
             <RoleProtectedRoute requiredSection="takeawayOrder">
               <div className="p-6">
@@ -2418,7 +2512,7 @@ const pendingOrders = useMemo(() => {
                 <div className="bg-white rounded-lg shadow-sm p-6">
                   <h3 className="text-lg font-semibold mb-4">Commandes à Emporter Récentes</h3>
                   <div className="space-y-3">
-                    {orders
+                    {hookOrders
                       .filter(order => order.type === 'takeaway')
                       .slice(0, 10)
                       .map(order => (
@@ -2459,12 +2553,28 @@ const pendingOrders = useMemo(() => {
                 <div className="mt-4 sm:mt-6">
                   <Suspense fallback={<div className="text-center py-8">Chargement...</div>}>
                     <AccountingReports 
-                      currentRestaurantId={currentRestaurantId} 
+                      orders={hookOrders}
+                      items={items}
+                      extraLists={extraLists}
                       userRole={userRole}
                     />
                   </Suspense>
                 </div>
               </div>
+            </RoleProtectedRoute>
+          )}
+
+          {activeSection === "accountingCenter" && (
+            <RoleProtectedRoute requiredSection="accountingCenter">
+              <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+                <NewAccountingInterface
+                  orders={orders}
+                  items={items}
+                  extraLists={extraLists}
+                  userRole={userRole}
+                  currentRestaurantId={currentRestaurantId}
+                />
+              </Suspense>
             </RoleProtectedRoute>
           )}
 

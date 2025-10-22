@@ -180,6 +180,8 @@ const FIRST_RATE = 0.10;
 const NORMAL_RATE = 0.05;
 const CREDIT_PER_POINT = 100;
 const TEMP_ORDER_TIMEOUT = 2 * 60 * 60 * 1000; // 2 heures
+// Domaine public pour redirection client
+const PUBLIC_BASE = process.env.REACT_APP_PUBLIC_BASE_URL || "https://mangedabord.com";
 
 // Format price for display
 export const formatPrice = (number) =>
@@ -702,8 +704,8 @@ const handleConfirmOrder = useCallback(async () => {
           order_id: orderRef.id, // Utiliser l'ID de la commande Firestore
           customer_email: auth.currentUser?.email || contact?.email || "client@example.com",
           description: `Commande : ${orderLabel}`,
-          success_url: `${window.location.origin}/payment/success`,
-          failure_url: `${window.location.origin}/payment/failure`,
+          success_url: `${PUBLIC_BASE}/payment/success`,
+          failure_url: `${PUBLIC_BASE}/payment/failure`,
         }),
       });
 

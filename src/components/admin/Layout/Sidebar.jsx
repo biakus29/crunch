@@ -1,5 +1,5 @@
-import React from "react";
-import { FaBars, FaTimes, FaUser } from "react-icons/fa";
+import React, { useState } from "react";
+import { FaBars, FaTimes, FaUser, FaChevronDown, FaChevronRight } from "react-icons/fa";
 import { HiOutlineLogout } from "react-icons/hi";
 
 const Sidebar = ({
@@ -15,6 +15,16 @@ const Sidebar = ({
   userRoleLabel,
   onSignOut,
 }) => {
+  // État pour gérer les sections collapsées/expandées
+  const [expandedSections, setExpandedSections] = useState({});
+
+  // Fonction pour basculer l'état d'une section
+  const toggleSection = (sectionTitle) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionTitle]: !prev[sectionTitle]
+    }));
+  };
   return (
     <div
       className={`bg-gradient-to-b from-green-700 to-green-800 text-white transition-all duration-300 fixed md:relative z-30 h-screen max-h-screen min-h-0 flex flex-col overflow-hidden
@@ -50,31 +60,101 @@ const Sidebar = ({
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-2 overscroll-contain">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setActiveSection(item.id);
-              setMobileMenuOpen(false);
-            }}
-            className={`flex items-center w-full p-2 rounded-lg mb-1 text-left transition-all duration-200 whitespace-nowrap ${
-              activeSection === item.id 
-                ? "bg-white text-green-700 font-medium shadow-md" 
-                : "text-white hover:bg-green-600"
-            }`}
-            title={!sidebarOpen ? item.label : ""}
-          >
-            <span className="flex items-center w-full">
-              <span className={`text-sm shrink-0 ${sidebarOpen ? "mr-2" : "mx-auto"}`}>
-                {item.icon || <FaUser />}
+        {/* Vérifier si c'est la structure avec sections */}
+        {menuItems.length > 0 && menuItems[0].title ? (
+          // Structure organisée avec sections collapsibles
+          menuItems.map((section) => {
+            const isExpanded = expandedSections[section.title];
+            return (
+              <div key={section.title} className="mb-2">
+                {/* En-tête de section cliquable */}
+                <button
+                  onClick={() => sidebarOpen && toggleSection(section.title)}
+                  className={`flex items-center w-full p-2 rounded-lg text-left transition-all duration-200 whitespace-nowrap ${
+                    sidebarOpen 
+                      ? "text-green-200 hover:bg-green-600 hover:text-white" 
+                      : "text-green-200"
+                  }`}
+                  disabled={!sidebarOpen}
+                >
+                  {sidebarOpen && (
+                    <>
+                      <span className="text-xs font-semibold uppercase tracking-wider flex-1">
+                        {section.title}
+                      </span>
+                      <span className="ml-2">
+                        {isExpanded ? <FaChevronDown className="w-3 h-3" /> : <FaChevronRight className="w-3 h-3" />}
+                      </span>
+                    </>
+                  )}
+                  {!sidebarOpen && (
+                    <span className="mx-auto text-lg">
+                      {section.title.split(' ')[0]} {/* Affiche juste l'emoji quand fermé */}
+                    </span>
+                  )}
+                </button>
+                
+                {/* Éléments de la section (collapsibles) */}
+                {(isExpanded || !sidebarOpen) && (
+                  <div className={`space-y-1 ${sidebarOpen ? 'ml-2 mt-1' : ''}`}>
+                    {section.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveSection(item.id);
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`flex items-center w-full p-2 rounded-lg mb-1 text-left transition-all duration-200 whitespace-nowrap ${
+                          activeSection === item.id 
+                            ? "bg-white text-green-700 font-medium shadow-md" 
+                            : "text-white hover:bg-green-600"
+                        }`}
+                        title={!sidebarOpen ? item.label : ""}
+                      >
+                        <span className="flex items-center w-full">
+                          <span className={`text-sm shrink-0 ${sidebarOpen ? "mr-2" : "mx-auto"}`}>
+                            {React.isValidElement(item.icon) ? item.icon : (typeof item.icon === 'string' ? <span>{item.icon}</span> : <FaUser />)}
+                          </span>
+                          {sidebarOpen && <span className="text-sm truncate max-w-[9rem]">{item.label}</span>}
+                        </span>
+                        {sidebarOpen && activeSection === item.id && (
+                          <span className="ml-auto w-2 h-2 bg-green-600 rounded-full"></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          // Structure normale pour les autres rôles
+          menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveSection(item.id);
+                setMobileMenuOpen(false);
+              }}
+              className={`flex items-center w-full p-2 rounded-lg mb-1 text-left transition-all duration-200 whitespace-nowrap ${
+                activeSection === item.id 
+                  ? "bg-white text-green-700 font-medium shadow-md" 
+                  : "text-white hover:bg-green-600"
+              }`}
+              title={!sidebarOpen ? item.label : ""}
+            >
+              <span className="flex items-center w-full">
+                <span className={`text-sm shrink-0 ${sidebarOpen ? "mr-2" : "mx-auto"}`}>
+                  {React.isValidElement(item.icon) ? item.icon : (typeof item.icon === 'string' ? <span>{item.icon}</span> : <FaUser />)}
+                </span>
+                {sidebarOpen && <span className="text-sm truncate max-w-[11rem]">{item.label}</span>}
               </span>
-              {sidebarOpen && <span className="text-sm truncate max-w-[11rem]">{item.label}</span>}
-            </span>
-            {sidebarOpen && activeSection === item.id && (
-              <span className="ml-auto w-2 h-2 bg-green-600 rounded-full"></span>
-            )}
-          </button>
-        ))}
+              {sidebarOpen && activeSection === item.id && (
+                <span className="ml-auto w-2 h-2 bg-green-600 rounded-full"></span>
+              )}
+            </button>
+          ))
+        )}
       </nav>
 
       {/* Sidebar Footer */}

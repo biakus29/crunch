@@ -52,6 +52,15 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
   // États pour la visualisation
   const [selectedPurchase, setSelectedPurchase] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  
+  // États pour la modale d'édition des ingrédients
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingIngredient, setEditingIngredient] = useState(null);
+  const [editForm, setEditForm] = useState({
+    quantity: 1,
+    selectedUnit: 'kg',
+    unitPrice: 0
+  });
   const [editingPurchase, setEditingPurchase] = useState(null);
 
   // Marques disponibles
@@ -76,7 +85,15 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
     
     const monthName = new Date(lastMonthYear, lastMonthNumber - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     const monthId = `${lastMonthYear}-${String(lastMonthNumber).padStart(2, '0')}`;
-
+    
+    console.log('Mois précédent calculé:', {
+      today: today,
+      lastMonthYear: lastMonthYear,
+      lastMonthNumber: lastMonthNumber,
+      monthName: monthName,
+      monthId: monthId
+    });
+    
     months.push({
       id: monthId,
       label: monthName,
@@ -169,6 +186,9 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
           // Forcer la date au 1er du mois
           newDate.setHours(0, 0, 0, 0);
           
+          console.log('Mois sélectionné:', monthOption);
+          console.log('Date créée:', newDate);
+          console.log('Date string:', newDate.toISOString().split('T')[0]);
         } else {
           return;
         }
@@ -176,6 +196,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
     }
 
     const dateString = newDate.toISOString().split('T')[0];
+    console.log('Date finale:', dateString);
 
     setPurchaseInfo(prev => ({
       ...prev,
@@ -190,20 +211,76 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
 
   // Gestion de la sélection d'ingrédients
   const toggleIngredient = (ingredient) => {
-    setSelectedIngredients(prev => {
-      const exists = prev.find(item => item.id === ingredient.id);
-      if (exists) {
-        return prev.filter(item => item.id !== ingredient.id);
-      } else {
-        return [...prev, {
-          ...ingredient,
-          quantity: 1,
-          selectedUnit: ingredient.unit || 'kg',
-          unitPrice: ingredient.unitPrice || 0,
-          total: (ingredient.unitPrice || 0) * 1
-        }];
-      }
+    const exists = selectedIngredients.find(item => item.id === ingredient.id);
+    if (exists) {
+      // Si l'ingrédient existe déjà, ouvrir la modale d'édition
+      openEditModal(exists);
+    } else {
+      // Si c'est un nouvel ingrédient, l'ajouter avec des valeurs par défaut
+      const newIngredient = {
+        ...ingredient,
+        quantity: 1,
+        selectedUnit: ingredient.unit || 'kg',
+        unitPrice: ingredient.unitPrice || 0,
+        total: (ingredient.unitPrice || 0) * 1
+      };
+      setSelectedIngredients(prev => [...prev, newIngredient]);
+      openEditModal(newIngredient);
+    }
+  };
+
+  // Ouvrir la modale d'édition
+  const openEditModal = (ingredient) => {
+    setEditingIngredient(ingredient);
+    setEditForm({
+      quantity: ingredient.quantity || 1,
+      selectedUnit: ingredient.selectedUnit || 'kg',
+      unitPrice: ingredient.unitPrice || 0
     });
+    setShowEditModal(true);
+  };
+
+  // Fermer la modale d'édition
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setEditingIngredient(null);
+    setEditForm({
+      quantity: 1,
+      selectedUnit: 'kg',
+      unitPrice: 0
+    });
+  };
+
+  // Sauvegarder les modifications de l'ingrédient
+  const saveIngredientEdit = () => {
+    if (!editingIngredient) return;
+
+    const updatedIngredient = {
+      ...editingIngredient,
+      quantity: editForm.quantity,
+      selectedUnit: editForm.selectedUnit,
+      unitPrice: editForm.unitPrice,
+      total: editForm.quantity * editForm.unitPrice
+    };
+
+    setSelectedIngredients(prev => 
+      prev.map(item => 
+        item.id === editingIngredient.id ? updatedIngredient : item
+      )
+    );
+
+    closeEditModal();
+  };
+
+  // Retirer un ingrédient
+  const removeIngredient = () => {
+    if (!editingIngredient) return;
+    
+    setSelectedIngredients(prev => 
+      prev.filter(item => item.id !== editingIngredient.id)
+    );
+    
+    closeEditModal();
   };
 
   // Mise à jour d'un ingrédient sélectionné
@@ -379,7 +456,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
         <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-center sm:text-left">
             <h3 className="text-xl sm:text-2xl font-semibold text-gray-800">Gestion des Achats d'Ingrédients</h3>
-            <p className="text-sm sm:text-base text-gray-600 mt-1">Créez et gérez vos listes d'achats simplement</p>
+            <p className="text-base sm:text-lg text-gray-600 mt-1">Créez et gérez vos listes d'achats simplement</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
@@ -415,7 +492,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800 text-base sm:text-lg truncate">{list.date}</p>
-                    <p className="text-sm sm:text-base text-gray-600 truncate">
+                    <p className="text-base sm:text-lg text-gray-600 truncate">
                       {list.brands?.join(', ') || 'Sans marque'} • {list.items?.length || 0} articles
                     </p>
                   </div>
@@ -532,7 +609,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                       <div className="mb-3 sm:mb-4 p-3 bg-white rounded-lg border-2 border-blue-200">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="flex-1">
-                            <p className="text-sm sm:text-base text-gray-600">Date sélectionnée :</p>
+                            <p className="text-base sm:text-lg text-gray-600">Date sélectionnée :</p>
                             <p className="text-base sm:text-xl font-bold text-blue-600">
                               {new Date(purchaseInfo.date).toLocaleDateString('fr-FR', {
                                 weekday: 'long',
@@ -553,16 +630,16 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
 
                       {/* Actions rapides - Mobile First */}
                       <div>
-                        <p className="text-sm sm:text-base font-medium text-gray-700 mb-2 sm:mb-3">Sélection rapide :</p>
+                        <p className="text-base sm:text-lg font-medium text-gray-700 mb-2 sm:mb-3">Sélection rapide :</p>
                         <div className="space-y-2 sm:space-y-3">
                           <div>
-                            <p className="text-sm font-medium text-gray-500 mb-2">Dates récentes :</p>
+                            <p className="text-base font-medium text-gray-500 mb-2">Dates récentes :</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2">
                               {quickActions.map((action) => (
                                 <button
                                   key={action.id}
                                   onClick={() => handleQuickDate(action.id)}
-                                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 py-2 text-sm sm:text-base bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 group"
+                                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 py-2 text-base sm:text-lg bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 group"
                                   title={action.label}
                                 >
                                   <span className="text-sm sm:text-lg">{action.icon}</span>
@@ -582,7 +659,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                                 <button
                                   key={month.id}
                                   onClick={() => handleQuickDate(month.id)}
-                                  className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 text-sm sm:text-base bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 hover:border-orange-300 transition-all duration-200 group"
+                                  className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 text-base sm:text-lg bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 hover:border-orange-300 transition-all duration-200 group"
                                   title={month.label}
                                 >
                                   <span className="text-sm sm:text-lg">{month.icon}</span>
@@ -599,13 +676,13 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
 
                     {/* Sélection des marques - Mobile First */}
                     <div>
-                      <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">Marques *</label>
+                      <label className="block text-base sm:text-lg font-medium text-gray-700 mb-2">Marques *</label>
                       <div className="flex flex-wrap gap-1 sm:gap-2">
                         {brands.map((brand) => (
                           <button
                             key={brand}
                             onClick={() => toggleBrand(brand)}
-                            className={`px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 text-sm sm:text-base ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 text-base sm:text-lg ${
                               purchaseInfo.brands.includes(brand)
                                 ? 'bg-blue-600 text-white border-blue-600'
                                 : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
@@ -619,7 +696,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
 
                     {/* Notes - Mobile First */}
                     <div>
-                      <label className="block text-sm sm:text-base font-medium text-gray-700 mb-2">Notes (optionnel)</label>
+                      <label className="block text-base sm:text-lg font-medium text-gray-700 mb-2">Notes (optionnel)</label>
                       <textarea
                         value={purchaseInfo.notes}
                         onChange={(e) => setPurchaseInfo({ ...purchaseInfo, notes: e.target.value })}
@@ -634,7 +711,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                 {/* Étape 2: Sélection des ingrédients - Mobile First */}
                 {currentStep === 2 && (
                   <div className="space-y-4 sm:space-y-6">
-                    <h4 className="text-lg sm:text-xl font-semibold text-gray-800">🥬 Sélection des ingrédients</h4>
+                    <h4 className="text-xl sm:text-2xl font-semibold text-gray-800">🥬 Sélection des ingrédients</h4>
                     
                     {/* Recherche et filtres - Mobile First */}
                     <div className="flex flex-col gap-3 sm:gap-4">
@@ -667,7 +744,7 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                     <div className="max-h-80 sm:max-h-96 overflow-y-auto">
                       {Object.entries(groupedIngredients).map(([letter, items]) => (
                         <div key={letter} className="mb-4 sm:mb-6">
-                          <h5 className="text-xs sm:text-sm font-semibold text-gray-500 mb-2 sticky top-0 bg-white py-1">
+                          <h5 className="text-sm sm:text-base font-semibold text-gray-500 mb-2 sticky top-0 bg-white py-1">
                             {letter}
                           </h5>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2">
@@ -677,21 +754,37 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                                 <button
                                   key={ingredient.id}
                                   onClick={() => toggleIngredient(ingredient)}
-                                  className={`p-2 sm:p-3 rounded-lg border text-left transition-all duration-200 ${
+                                  className={`p-3 sm:p-4 rounded-lg border text-left transition-all duration-200 ${
                                     isSelected
-                                      ? 'bg-blue-50 border-blue-300 text-blue-800'
+                                      ? 'bg-blue-50 border-blue-300 text-blue-800 shadow-md'
                                       : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-sm sm:text-base truncate">{ingredient.name}</p>
-                                      <p className="text-xs sm:text-sm text-gray-500 truncate">
-                                        {ingredient.unitPrice ? `${ingredient.unitPrice.toLocaleString()} FCFA/${ingredient.unit || 'kg'}` : 'Prix non défini'}
-                                      </p>
+                                  <div className="space-y-2">
+                                    {/* Nom de l'ingrédient */}
+                                    <div className="flex items-center justify-between">
+                                      <p className="font-medium text-base sm:text-lg truncate">{ingredient.name}</p>
+                                      {isSelected && (
+                                        <FaCheck className="text-blue-600 text-base sm:text-lg flex-shrink-0 ml-2" />
+                                      )}
                                     </div>
+                                    
+                                    
+                                    {/* Informations détaillées si sélectionné */}
                                     {isSelected && (
-                                      <FaCheck className="text-blue-600 text-sm sm:text-base flex-shrink-0 ml-2" />
+                                      <div className="bg-white rounded-lg p-2 border border-blue-200">
+                                        <div className="flex justify-between items-center text-sm sm:text-base">
+                                          <span className="text-gray-600">
+                                            Quantité: <span className="font-semibold text-blue-800">{isSelected.quantity} {isSelected.selectedUnit}</span>
+                                          </span>
+                                          <span className="font-bold text-green-600">
+                                            Total: {isSelected.total.toLocaleString()} FCFA
+                                          </span>
+                                        </div>
+                                        <div className="text-sm text-blue-600 mt-1 text-center">
+                                          Cliquer pour modifier
+                                        </div>
+                                      </div>
                                     )}
                                   </div>
                                 </button>
@@ -702,58 +795,6 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
                       ))}
                     </div>
 
-                    {/* Ingrédients sélectionnés - Mobile First */}
-                    {selectedIngredients.length > 0 && (
-                      <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
-                        <h5 className="font-semibold text-blue-800 mb-2 text-sm sm:text-base">
-                          Ingrédients sélectionnés ({selectedIngredients.length})
-                        </h5>
-                        <div className="space-y-2">
-                          {selectedIngredients.map((item) => (
-                            <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2 rounded gap-2">
-                              <span className="font-medium text-sm sm:text-base truncate">{item.name}</span>
-                              <div className="flex items-center space-x-1 sm:space-x-2">
-                                <input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) => updateSelectedIngredient(item.id, 'quantity', Number(e.target.value))}
-                                  className="w-12 sm:w-16 px-1 sm:px-2 py-1 border rounded text-xs sm:text-sm"
-                                  min="0.1"
-                                  step="0.1"
-                                />
-                                <select
-                                  value={item.selectedUnit}
-                                  onChange={(e) => updateSelectedIngredient(item.id, 'selectedUnit', e.target.value)}
-                                  className="px-1 sm:px-2 py-1 border rounded text-xs sm:text-sm"
-                                >
-                                  <option value="kg">kg</option>
-                                  <option value="g">g</option>
-                                  <option value="L">L</option>
-                                  <option value="ml">ml</option>
-                                  <option value="pièce">pièce</option>
-                                </select>
-                                <input
-                                  type="number"
-                                  value={item.unitPrice}
-                                  onChange={(e) => updateSelectedIngredient(item.id, 'unitPrice', Number(e.target.value))}
-                                  className="w-16 sm:w-20 px-1 sm:px-2 py-1 border rounded text-xs sm:text-sm"
-                                  min="0"
-                                />
-                                <span className="font-bold text-green-600 w-16 sm:w-20 text-right text-xs sm:text-sm">
-                                  {item.total.toLocaleString()} FCFA
-                                </span>
-                                <button
-                                  onClick={() => removeSelectedIngredient(item.id)}
-                                  className="text-red-500 hover:text-red-700 p-1"
-                                >
-                                  <FaTimes className="text-xs sm:text-sm" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -980,6 +1021,127 @@ const SimplePurchaseManager = ({ currentRestaurantId, userRole }) => {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Modale d'édition des ingrédients */}
+      {showEditModal && editingIngredient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Modifier l'ingrédient
+                </h3>
+                <button
+                  onClick={closeEditModal}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Nom de l'ingrédient */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Ingrédient
+                  </label>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <span className="font-medium text-gray-800">{editingIngredient.name}</span>
+                  </div>
+                </div>
+
+                {/* Quantité */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantité
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm(prev => ({
+                      ...prev,
+                      quantity: Number(e.target.value) || 0
+                    }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="Entrez la quantité"
+                  />
+                </div>
+
+                {/* Unité */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unité
+                  </label>
+                  <select
+                    value={editForm.selectedUnit}
+                    onChange={(e) => setEditForm(prev => ({
+                      ...prev,
+                      selectedUnit: e.target.value
+                    }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="kg">kg</option>
+                    <option value="g">g</option>
+                    <option value="L">L</option>
+                    <option value="ml">ml</option>
+                    <option value="pièce">pièce</option>
+                    <option value="boîte">boîte</option>
+                    <option value="sachet">sachet</option>
+                    <option value="bouteille">bouteille</option>
+                  </select>
+                </div>
+
+                {/* Prix unitaire */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prix unitaire (FCFA)
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.unitPrice}
+                    onChange={(e) => setEditForm(prev => ({
+                      ...prev,
+                      unitPrice: Number(e.target.value) || 0
+                    }))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    placeholder="Entrez le prix unitaire"
+                  />
+                </div>
+
+                {/* Prix total */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-700">Prix total :</span>
+                    <span className="font-bold text-green-600 text-lg">
+                      {(editForm.quantity * editForm.unitPrice).toLocaleString()} FCFA
+                    </span>
+                  </div>
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={removeIngredient}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center"
+                  >
+                    <FaTimes className="mr-2" />
+                    Retirer
+                  </button>
+                  <button
+                    onClick={saveIngredientEdit}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center"
+                  >
+                    <FaCheck className="mr-2" />
+                    Sauvegarder
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
