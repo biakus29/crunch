@@ -165,12 +165,17 @@ export const ROLE_PERMISSIONS = {
 
 // Vérification des permissions
 export const hasPermission = (userRole, section, action = 'view') => {
+  // Support multi-rôles: si tableau, autoriser si AU MOINS un rôle donne l'accès
+  if (Array.isArray(userRole)) {
+    return userRole.some((r) => hasPermission(r, section, action));
+  }
+
   const permissions = ROLE_PERMISSIONS[userRole];
   if (!permissions) return false;
-  
+
   // Vérifier l'accès à la section
   if (!permissions.sections.includes(section)) return false;
-  
+
   // Vérifier l'action spécifique
   switch (action) {
     case 'create':

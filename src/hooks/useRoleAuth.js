@@ -6,6 +6,7 @@ import { ROLES, hasPermission, getDefaultSectionForRole } from '../utils/rolePer
 
 export const useRoleAuth = () => {
   const [user, setUser] = useState(null);
+  // userRole devient un tableau de rôles pour supporter le multi-rôles
   const [userRole, setUserRole] = useState(null);
   const [restaurantId, setRestaurantId] = useState(null);
   const [isRestaurantOwner, setIsRestaurantOwner] = useState(false);
@@ -33,7 +34,11 @@ export const useRoleAuth = () => {
         if (userDoc.exists()) {
           const userData = userDoc.data();
           setUser({ id: authUser.uid, ...userData });
-          setUserRole(userData.role);
+          // Normaliser en tableau: privilégier userData.roles sinon basculer role -> [role]
+          const rolesArray = Array.isArray(userData.roles)
+            ? userData.roles
+            : (userData.role ? [userData.role] : []);
+          setUserRole(rolesArray);
           setRestaurantId(userData.restaurantId);
           setIsRestaurantOwner(false); // Utilisateur employé
         } else {
@@ -54,7 +59,8 @@ export const useRoleAuth = () => {
               name: restaurantData.name,
               role: ROLES.MANAGER
             });
-            setUserRole(ROLES.MANAGER);
+            // Propriétaire: rôle manager en tableau
+            setUserRole([ROLES.MANAGER]);
             setRestaurantId(restaurantDoc.id);
             setIsRestaurantOwner(true); // Propriétaire du restaurant
           } else {
@@ -66,7 +72,7 @@ export const useRoleAuth = () => {
         setError('Erreur lors de la vérification des permissions');
         // En cas d'erreur, permettre l'accès avec un rôle par défaut
         setUser({ id: authUser.uid, email: authUser.email, role: 'guest' });
-        setUserRole('guest');
+        setUserRole(['guest']);
       } finally {
         setLoading(false);
       }
@@ -78,6 +84,7 @@ export const useRoleAuth = () => {
   // Vérifier si l'utilisateur a accès à une section
   const canAccess = (section, action = 'view') => {
     if (!userRole) return false;
+    // hasPermission supporte maintenant un tableau de rôles
     return hasPermission(userRole, section, action);
   };
 
@@ -90,24 +97,34 @@ export const useRoleAuth = () => {
   // Obtenir la section par défaut pour redirection
   const getDefaultSection = () => {
     if (!userRole) return null;
+    // Si plusieurs rôles, retourner la première section par défaut trouvée
+    if (Array.isArray(userRole)) {
+      for (const r of userRole) {
+        const s = getDefaultSectionForRole(r);
+        if (s) return s;
+      }
+      return null;
+    }
     return getDefaultSectionForRole(userRole);
   };
 
   // Vérifier si l'utilisateur est authentifié et autorisé
   const isAuthenticated = () => {
-    return !!user && !!userRole;
+    return !!user && Array.isArray(userRole) ? userRole.length > 0 : !!userRole;
   };
 
   // Vérifier si l'utilisateur est un gérant (accès complet)
   const isManager = () => {
-    return userRole === ROLES.MANAGER;
+    return Array.isArray(userRole)
+      ? userRole.includes(ROLES.MANAGER)
+      : userRole === ROLES.MANAGER;
   };
 
   // Obtenir les informations de l'utilisateur connecté
   const getCurrentUser = () => {
     return {
       user,
-      role: userRole,
+      role: userRole, // peut être un tableau
       restaurantId,
       isManager: isManager(),
       isRestaurantOwner,
