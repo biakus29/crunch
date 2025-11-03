@@ -12,7 +12,7 @@ import {
   FaClock,
   FaTimes,
 } from 'react-icons/fa';
-import { calculateOrderTotals } from '../../utils/adminUtils';
+import { calculateOrderTotals, getDisplayTotal } from '../../utils/adminUtils';
 
 const FinancialOrdersView = ({ 
   orders = [], 
@@ -86,28 +86,29 @@ const FinancialOrdersView = ({
     };
 
     filteredOrders.forEach(order => {
-      const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
+      const totals = calculateOrderTotals(order, extraLists, items);
+      const displayTotal = getDisplayTotal(order, totals);
       const deliveryFee = order.deliveryFee || 0;
 
-      stats.totalRevenue += totalWithDelivery;
-      stats.subtotalRevenue += subtotal;
+      stats.totalRevenue += displayTotal;
+      stats.subtotalRevenue += totals.subtotal;
       stats.deliveryFees += deliveryFee;
 
       if (order.isPaid) {
         stats.paidOrders++;
-        stats.paidRevenue += totalWithDelivery;
+        stats.paidRevenue += displayTotal;
       } else {
         stats.unpaidOrders++;
-        stats.unpaidRevenue += totalWithDelivery;
+        stats.unpaidRevenue += displayTotal;
       }
 
       // Breakdown par statut
-      const status = order.status || ORDER_STATUS.PENDING;
+      const status = order.status || 'unknown';
       if (!stats.statusBreakdown[status]) {
         stats.statusBreakdown[status] = { count: 0, revenue: 0 };
       }
       stats.statusBreakdown[status].count++;
-      stats.statusBreakdown[status].revenue += totalWithDelivery;
+      stats.statusBreakdown[status].revenue += displayTotal;
     });
 
     stats.averageOrderValue = stats.totalOrders > 0 ? stats.totalRevenue / stats.totalOrders : 0;
@@ -130,19 +131,20 @@ const FinancialOrdersView = ({
     ];
 
     const csvData = filteredOrders.map(order => {
-      const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
+      const totals = calculateOrderTotals(order, extraLists, items);
+      const displayTotal = getDisplayTotal(order, totals);
       const deliveryFee = order.deliveryFee || 0;
 
       return [
         order.id,
-        order.timestamp ? new Date(order.timestamp.seconds * 1000).toLocaleDateString('fr-FR') : '',
-        order.contact?.name || 'Client inconnu',
-        order.contact?.phone || '',
-        STATUS_LABELS[order.status] || 'Inconnu',
+        new Date(order.timestamp?.seconds * 1000).toLocaleDateString('fr-FR'),
+        order.contact?.name || 'N/A',
+        order.contact?.phone || 'N/A',
+        STATUS_LABELS[order.status] || order.status,
         order.isPaid ? 'Oui' : 'Non',
-        subtotal,
+        totals.subtotal,
         deliveryFee,
-        totalWithDelivery,
+        displayTotal,
         order.paymentMethod || 'Non spécifié'
       ];
     });
@@ -311,7 +313,8 @@ const FinancialOrdersView = ({
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredOrders.map((order) => {
-                  const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
+                  const totals = calculateOrderTotals(order, extraLists, items);
+                  const displayTotal = getDisplayTotal(order, totals);
                   const deliveryFee = order.deliveryFee || 0;
 
                   return (
@@ -348,14 +351,14 @@ const FinancialOrdersView = ({
                           <p className="text-xs text-gray-500">{order.paymentMethod}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                        {subtotal.toLocaleString()} FCFA
+                      <td className="px-4 py-3 text-sm">
+                        {totals.subtotal.toLocaleString()} FCFA
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-4 py-3 text-sm">
                         {deliveryFee.toLocaleString()} FCFA
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-green-600">
-                        {totalWithDelivery.toLocaleString()} FCFA
+                        {displayTotal.toLocaleString()} FCFA
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -418,14 +421,15 @@ const FinancialOrdersView = ({
               <div className="bg-blue-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-800 mb-3">Détail financier</h4>
                 {(() => {
-                  const { subtotal, totalWithDelivery } = calculateOrderTotals(selectedOrder, extraLists, items);
+                  const totals = calculateOrderTotals(selectedOrder, extraLists, items);
+                  const displayTotal = getDisplayTotal(selectedOrder, totals);
                   const deliveryFee = selectedOrder.deliveryFee || 0;
                   
                   return (
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Sous-total articles:</span>
-                        <span className="font-medium">{subtotal.toLocaleString()} FCFA</span>
+                        <span className="text-gray-600">Sous-total:</span>
+                        <span className="font-medium">{totals.subtotal.toLocaleString()} FCFA</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Frais de livraison:</span>
@@ -433,7 +437,7 @@ const FinancialOrdersView = ({
                       </div>
                       <div className="border-t pt-2 flex justify-between">
                         <span className="font-semibold text-gray-800">Total:</span>
-                        <span className="font-bold text-green-600">{totalWithDelivery.toLocaleString()} FCFA</span>
+                        <span className="font-bold text-green-600">{displayTotal.toLocaleString()} FCFA</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Statut paiement:</span>

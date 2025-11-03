@@ -72,7 +72,7 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
         }
       }
 
-      // Charger les commandes livrées
+      // Charger les commandes restaurant livrées
       const ordersQuery = query(
         collection(db, 'orders'),
         where('restaurantId', '==', currentRestaurantId),
@@ -80,7 +80,7 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
       );
       const ordersSnap = await getDocs(ordersQuery);
       const ordersData = ordersSnap.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .map((doc) => ({ id: doc.id, ...doc.data(), source: 'restaurant' }))
         .filter((order) => {
           const orderDate = order.deliveryCompletedAt?.toDate() || order.updatedAt?.toDate();
           return orderDate && orderDate >= startPeriod && orderDate <= endPeriod;
@@ -91,7 +91,36 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
             order.assignedDeliverer !== 'Non assigné' &&
             order.assignedDeliverer.trim() !== ''
         );
-      setOrders(ordersData);
+
+      // Charger les commandes partenaires livrées
+      const partnerOrdersQuery = query(
+        collection(db, 'partnerOrders'),
+        where('restaurantId', '==', currentRestaurantId),
+        where('status', '==', 'delivered')
+      );
+      const partnerOrdersSnap = await getDocs(partnerOrdersQuery);
+      const partnerOrdersData = partnerOrdersSnap.docs
+        .map((doc) => ({ 
+          id: doc.id, 
+          ...doc.data(), 
+          source: 'partner',
+          // Normaliser les champs pour compatibilité
+          deliveryFee: doc.data().deliveryFee || 0,
+        }))
+        .filter((order) => {
+          const orderDate = order.updatedAt?.toDate() || order.createdAt?.toDate();
+          return orderDate && orderDate >= startPeriod && orderDate <= endPeriod;
+        })
+        .filter(
+          (order) =>
+            order.assignedDeliverer &&
+            order.assignedDeliverer !== 'Non assigné' &&
+            order.assignedDeliverer.trim() !== ''
+        );
+
+      // Combiner les deux types de commandes
+      const allOrders = [...ordersData, ...partnerOrdersData];
+      setOrders(allOrders);
 
       // Charger les dépenses
       const expensesQuery = query(
@@ -132,14 +161,20 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
     const commission = (totalRevenue * commissionRate) / 100;
     const netProfit = totalRevenue - totalExpenses - commission;
 
+    // Répartition par source (restaurant vs partenaires)
+    const restaurantOrders = orders.filter((o) => o.source === 'restaurant');
+    const partnerOrders = orders.filter((o) => o.source === 'partner');
+    const restaurantRevenue = restaurantOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0);
+    const partnerRevenue = partnerOrders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0);
+
     // Dépenses par catégorie
     const expensesByCategory = {
-      fuel: expenses.filter((e) => e.category === 'fuel').reduce((sum, e) => sum + e.amount, 0),
+      fuel: expenses.filter((e) => e.category === 'fuel' || e.type === 'fuel').reduce((sum, e) => sum + e.amount, 0),
       maintenance: expenses
-        .filter((e) => e.category === 'maintenance')
+        .filter((e) => e.category === 'maintenance' || e.type === 'maintenance')
         .reduce((sum, e) => sum + e.amount, 0),
       repair: expenses.filter((e) => e.category === 'repair').reduce((sum, e) => sum + e.amount, 0),
-      other: expenses.filter((e) => e.category === 'other').reduce((sum, e) => sum + e.amount, 0),
+      other: expenses.filter((e) => e.category === 'other' || e.type === 'other' || e.type === 'salary').reduce((sum, e) => sum + e.amount, 0),
     };
 
     // Performance par livreur
@@ -175,6 +210,10 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
       commission,
       netProfit,
       totalDeliveries: orders.length,
+      restaurantOrders: restaurantOrders.length,
+      partnerOrders: partnerOrders.length,
+      restaurantRevenue,
+      partnerRevenue,
       expensesByCategory,
       delivererPerformance: delivererPerformance.sort((a, b) => b.profit - a.profit),
     };
@@ -195,6 +234,11 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
       csv += `Commission (${commissionRate}%),${financialData.commission}\n`;
       csv += `Benefice net,${financialData.netProfit}\n`;
       csv += `Nombre de livraisons,${financialData.totalDeliveries}\n\n`;
+
+      // Répartition par source
+      csv += `REPARTITION PAR SOURCE\n`;
+      csv += `Commandes Restaurant,${financialData.restaurantOrders},${financialData.restaurantRevenue} FCFA\n`;
+      csv += `Commandes Partenaires,${financialData.partnerOrders},${financialData.partnerRevenue} FCFA\n\n`;
 
       // Dépenses par catégorie
       csv += `DEPENSES PAR CATEGORIE\n`;
@@ -401,6 +445,73 @@ const DeliveryFinancialDashboard = ({ currentRestaurantId }) => {
             ) : (
               <FaArrowDown className="text-4xl text-red-500" />
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Répartition Restaurant vs Partenaires */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+          <FaTruck className="mr-2 text-blue-600" />
+          Répartition par Source
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 border-2 border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h5 className="text-sm font-semibold text-blue-900">🍽️ Commandes Restaurant</h5>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-blue-700">Nombre de livraisons</span>
+                <span className="text-xl font-bold text-blue-900">{financialData.restaurantOrders}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-blue-700">Revenus</span>
+                <span className="text-xl font-bold text-blue-900">
+                  {financialData.restaurantRevenue.toLocaleString()} FCFA
+                </span>
+              </div>
+              <div className="pt-2 border-t border-blue-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-blue-600">Part du total</span>
+                  <span className="text-sm font-semibold text-blue-800">
+                    {financialData.totalRevenue > 0
+                      ? ((financialData.restaurantRevenue / financialData.totalRevenue) * 100).toFixed(1)
+                      : 0}
+                    %
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border-2 border-green-200">
+            <div className="flex items-center justify-between mb-3">
+              <h5 className="text-sm font-semibold text-green-900">🤝 Commandes Partenaires</h5>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-green-700">Nombre de livraisons</span>
+                <span className="text-xl font-bold text-green-900">{financialData.partnerOrders}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-green-700">Revenus</span>
+                <span className="text-xl font-bold text-green-900">
+                  {financialData.partnerRevenue.toLocaleString()} FCFA
+                </span>
+              </div>
+              <div className="pt-2 border-t border-green-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-green-600">Part du total</span>
+                  <span className="text-sm font-semibold text-green-800">
+                    {financialData.totalRevenue > 0
+                      ? ((financialData.partnerRevenue / financialData.totalRevenue) * 100).toFixed(1)
+                      : 0}
+                    %
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

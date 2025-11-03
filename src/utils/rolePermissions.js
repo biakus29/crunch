@@ -32,10 +32,16 @@ export const ROLE_PERMISSIONS = {
             'accountingCenter',    // Centre comptable unifié
             'deliveryOptimized',   // Système de livraison optimisé
             'deliveryDashboard',   // Tableau de bord livraison
+            'partnerDashboard',    // Dashboard partenaires
             'payments',            // Paiements
             'menus',               // Gestion des menus
             'purchases',           // Achats (listes et budgets)
+            'purchaseSummary',     // Résumé Achats par ingrédient
             'promotions',          // Promotions
+            'ambassadors',         // Ambassadeurs
+            'supplies',            // Approvisionnements
+            'ingredients',         // Ingrédients
+            'kitchen',             // Cuisine
             'managers',            // Gestion des utilisateurs
             'budgets',             // Gestion des budgets
             'expenseClassification', // Classification des sorties
@@ -58,7 +64,7 @@ export const ROLE_PERMISSIONS = {
         [ROLES.ACCOUNTANT]: {
           // Accès limité aux achats, budgets, dépenses de livraison et vue financière des commandes
           sections: [
-            'orders', 'purchases', 'deliveryDashboard', 'deliveryExpenses', 'reports', 'accountingReports', 'accountingCenter', 'budgets', 'expenseClassification', 'expenseCleanup', 'kitchen', 'accountAdjustment', 'salesHistory', 'userInterfaces' // + centre comptable unifié + debug
+            'orders', 'purchases', 'purchaseSummary', 'deliveryDashboard', 'deliveryExpenses', 'reports', 'accountingReports', 'accountingCenter', 'budgets', 'expenseClassification', 'expenseCleanup', 'kitchen', 'accountAdjustment', 'salesHistory', 'userInterfaces' // + centre comptable unifié + debug
           ],
     canCreate: true, // Peut créer des dépenses et budgets
     canEdit: true,   // Peut modifier des dépenses et budgets
@@ -78,7 +84,7 @@ export const ROLE_PERMISSIONS = {
   [ROLES.KITCHEN_SUPPLY]: {
     // Accès aux menus, catégories, et sections d'approvisionnement éclatées
     sections: [
-      'menus', 'categories', 'ingredients', 'purchases', 'supplyReports'
+      'menus', 'categories', 'ingredients', 'purchases', 'purchaseSummary', 'supplyReports'
     ],
     canCreate: true,
     canEdit: true,
@@ -110,7 +116,7 @@ export const ROLE_PERMISSIONS = {
   
   [ROLES.SUPPLY_MANAGER]: {
     // Système existant - Accès complet aux approvisionnements
-    sections: ['supplies'],
+    sections: ['supplies', 'purchases', 'purchaseSummary', 'ingredients', 'supplyReports'],
     canCreate: true,
     canEdit: true,
     canDelete: true,
@@ -122,18 +128,18 @@ export const ROLE_PERMISSIONS = {
   [ROLES.DELIVERY_MANAGER]: {
     // Gestionnaire de livraison - Gestion complète des livreurs et livraisons
     sections: [
-      'orders', 'deliveryOptimized', 'deliveryDashboard', 'deliveryTracking', 'deliverers', 'deliveryShifts', 'deliveryExpenses', 'reports' // Toutes les sections de livraison
+      'orders', 'deliveryOptimized', 'deliveryDashboard', 'deliveryTracking', 'deliverers', 'deliveryShifts', 'deliveryExpenses', 'partnerDashboard', 'reports' // Toutes les sections de livraison
     ],
     canCreate: true, // Peut créer des livreurs et enregistrer des dépenses
     canEdit: true,   // Peut modifier les assignations de livraison
     canDelete: false, // Ne peut pas supprimer
-    canViewFinances: false, // Pas d'accès aux montants financiers globaux
+    canViewFinances: true, // Accès aux montants pour gérer les dépenses de livraison
     canManageUsers: false,
     canAccessAllRestaurants: false, // Accès seulement à son restaurant
     restrictedViews: {
       orders: ['delivery'], // Vue livraison uniquement des commandes
       reports: ['delivery'], // Rapports de livraison uniquement
-      deliveryExpenses: ['delivery'] // Dépenses du département livraison uniquement
+      deliveryExpenses: ['all'] // Accès complet aux dépenses de livraison
     }
   },
 
@@ -141,9 +147,9 @@ export const ROLE_PERMISSIONS = {
     // Développeur - Accès complet au système pour les tests et le développement
     sections: [
       'dashboard', 'restaurant', 'menus', 'categories', 'orders', 'createOrder', 'takeawayOrder',
-      'promotions', 'ambassadors', 'supplies', 'ingredients', 'purchases', 'supplyReports',
+      'promotions', 'ambassadors', 'supplies', 'ingredients', 'purchases', 'purchaseSummary', 'supplyReports',
       'deliveryDashboard', 'deliveryTracking', 'deliverers', 'deliveryShifts', 'deliveryExpenses', 
-      'deliveryOptimized', 'payments', 'loyalty', 'comments', 'reports', 'accountingReports', 
+      'deliveryOptimized', 'partnerDashboard', 'payments', 'loyalty', 'comments', 'reports', 'accountingReports', 
       'accountingCenter', 'managers', 'budgets', 'expenseClassification', 'expenseCleanup', 
       'kitchen', 'accountAdjustment', 'salesHistory', 'developer', 'userInterfaces', 'historiqueCommandes'
     ],

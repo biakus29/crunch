@@ -16,22 +16,44 @@ const DeliveryTracking = ({ currentRestaurantId }) => {
   useEffect(() => {
     if (!currentRestaurantId) return;
 
+    // Charger les commandes restaurant
     const ordersQuery = query(
       collection(db, 'orders'),
       where('restaurantId', '==', currentRestaurantId),
       where('status', 'in', ['delivering', 'delivered', 'en_livraison', 'livree', 'client_indisponible'])
     );
 
-    const unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
+    // Charger les commandes partenaires
+    const partnerOrdersQuery = query(
+      collection(db, 'partnerOrders'),
+      where('restaurantId', '==', currentRestaurantId),
+      where('status', 'in', ['in_delivery', 'delivered'])
+    );
+
+    const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
       const ordersData = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        source: 'restaurant',
       }));
-      setOrders(ordersData);
-      setLoading(false);
+      
+      // Charger aussi les commandes partenaires
+      onSnapshot(partnerOrdersQuery, (partnerSnapshot) => {
+        const partnerOrdersData = partnerSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          source: 'partner',
+          // Normaliser les champs pour compatibilité
+          status: doc.data().status === 'in_delivery' ? 'delivering' : doc.data().status,
+        }));
+        
+        // Combiner les deux
+        setOrders([...ordersData, ...partnerOrdersData]);
+        setLoading(false);
+      });
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeOrders();
   }, [currentRestaurantId]);
 
   // Normaliser les statuts
@@ -307,8 +329,20 @@ const DeliveryTracking = ({ currentRestaurantId }) => {
               {filteredOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      #{order.id.slice(-6).toUpperCase()}
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-medium text-gray-900">
+                        #{order.id.slice(-6).toUpperCase()}
+                      </div>
+                      {order.source === 'partner' && (
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                          🤝 Partenaire
+                        </span>
+                      )}
+                      {order.source === 'restaurant' && (
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                          🍽️ Restaurant
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-gray-500">
                       {order.createdAt?.toDate().toLocaleString('fr-FR', {

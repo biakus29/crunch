@@ -21,6 +21,7 @@ import {
   FaTrash,
   FaPhone,
   FaUser,
+  FaMotorcycle,
   FaMapMarkerAlt,
   FaCheckCircle,
   FaTimesCircle,
@@ -32,12 +33,14 @@ import {
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import InitializeDeliverers from './InitializeDeliverers';
+import MotorcyclesManager from './MotorcyclesManager';
 
 const DeliveryManager = ({ currentRestaurantId, userRole }) => {
   const [deliverers, setDeliverers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showInitModal, setShowInitModal] = useState(false);
+  const [showMotorcyclesManager, setShowMotorcyclesManager] = useState(false);
   const [selectedDeliverer, setSelectedDeliverer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
@@ -337,6 +340,12 @@ const DeliveryManager = ({ currentRestaurantId, userRole }) => {
             >
               <FaPlus className="mr-1 text-xs sm:mr-2 sm:text-sm" /> Nouveau Livreur
             </button>
+            <button
+              onClick={() => setShowMotorcyclesManager(true)}
+              className="w-full px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs hover:bg-indigo-700 transition duration-200 flex items-center justify-center sm:w-auto sm:px-4 sm:py-2 sm:text-sm"
+            >
+              <FaMotorcycle className="mr-1 text-xs sm:mr-2 sm:text-sm" /> Ajouter une moto
+            </button>
             
             {deliverers.length === 0 && (
               <button
@@ -386,6 +395,17 @@ const DeliveryManager = ({ currentRestaurantId, userRole }) => {
             </select>
           </div>
         </div>
+
+          {/* Panel pour gérer les motos séparément */}
+          {showMotorcyclesManager && (
+            <div className="mt-4">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-semibold">Gestion des motos</h4>
+                <button className="text-sm text-gray-600" onClick={() => setShowMotorcyclesManager(false)}>Fermer</button>
+              </div>
+              <MotorcyclesManager currentRestaurantId={currentRestaurantId} />
+            </div>
+          )}
       </div>
 
       {/* Liste des livreurs */}
@@ -592,6 +612,8 @@ const DeliveryManager = ({ currentRestaurantId, userRole }) => {
                       />
                     </div>
                   </div>
+
+                  {/* Marque et Date d'achat gérées séparément dans la section Motos */}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">

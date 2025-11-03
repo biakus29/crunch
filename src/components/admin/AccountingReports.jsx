@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { db } from '../../firebase';
 import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { useRoleAuth } from '../../hooks/useRoleAuth';
 import {
   FaCalendarAlt,
   FaChartLine,
@@ -26,13 +27,7 @@ import { toast } from 'react-toastify';
 import { formatPrice, calculateOrderTotals } from '../../utils/adminUtils';
 
 const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole }) => {
-  // Debug des props reçues
-  console.log('🔍 AccountingReports - Props reçues:', {
-    orders: orders?.length || 0,
-    items: items?.length || 0,
-    extraLists: extraLists?.length || 0,
-    userRole: userRole
-  });
+  
 
   // Vérification de sécurité pour les props
   const safeOrders = Array.isArray(orders) ? orders : [];
@@ -55,8 +50,11 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
 
   // Données supplémentaires
   const [expenses, setExpenses] = useState([]);
-  const [purchases, setPurchases] = useState([]);
+  const [deliveryExpenses, setDeliveryExpenses] = useState([]);
+  const [purchaseLists, setPurchaseLists] = useState([]);
   const [deliverers, setDeliverers] = useState([]);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [simpleView, setSimpleView] = useState(true);
 
   // Types de rapports
   const reportTypes = [
@@ -66,60 +64,91 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     { id: 'all', label: 'Toutes les périodes', icon: FaChartLine, color: 'gray' }
   ];
 
+  // Auth/restaurant context
+  const { restaurantId: userRestaurantId, canAccessAllRestaurants } = useRoleAuth();
+
   // Charger les données supplémentaires (dépenses et achats seulement)
   useEffect(() => {
     const loadAdditionalData = async () => {
-    try {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      // Charger les dépenses
-        const expensesQuery = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
-        const expensesSnapshot = await getDocs(expensesQuery);
+        // Construire la requête des dépenses selon le contexte (restaurant et rôle)
+        let expQuery;
+        const baseExpenses = collection(db, 'expenses');
+        const filterByRestaurant = !canAccessAllRestaurants();
+        const isDeliveryManager = userRole === 'delivery_manager';
+
+        if (filterByRestaurant && isDeliveryManager) {
+          expQuery = query(baseExpenses, where('restaurantId', '==', userRestaurantId), where('department', '==', 'livraison'), orderBy('date', 'desc'));
+        } else if (filterByRestaurant) {
+          expQuery = query(baseExpenses, where('restaurantId', '==', userRestaurantId), orderBy('date', 'desc'));
+        } else if (isDeliveryManager) {
+          expQuery = query(baseExpenses, where('department', '==', 'livraison'), orderBy('date', 'desc'));
+        } else {
+          expQuery = query(baseExpenses, orderBy('date', 'desc'));
+        }
+
+        const expensesSnapshot = await getDocs(expQuery);
         const expensesData = expensesSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
+          // Normaliser une Date exploitable pour filtrage/affichage
+          date: doc.data().date || null,
+          createdAt: doc.data().createdAt?.toDate?.() || (doc.data().createdAt ? new Date(doc.data().createdAt) : null),
+          type: 'expense'
         }));
         setExpenses(expensesData);
 
-      // Charger les achats
-        const purchasesQuery = query(collection(db, 'purchases'), orderBy('createdAt', 'desc'));
-        const purchasesSnapshot = await getDocs(purchasesQuery);
-        const purchasesData = purchasesSnapshot.docs.map(doc => ({
+        // Charger les dépenses de livraison (deliveryExpenses)
+        let deliveryExpQuery;
+        if (filterByRestaurant) {
+          deliveryExpQuery = query(collection(db, 'deliveryExpenses'), where('restaurantId', '==', userRestaurantId));
+        } else {
+          deliveryExpQuery = collection(db, 'deliveryExpenses');
+        }
+        const deliveryExpSnapshot = await getDocs(deliveryExpQuery);
+        const deliveryExpData = deliveryExpSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt)
+          date: doc.data().date ? (doc.data().date?.toDate ? doc.data().date.toDate() : new Date(doc.data().date)) : null,
+          createdAt: doc.data().createdAt?.toDate?.() || (doc.data().createdAt ? new Date(doc.data().createdAt) : null),
+          type: 'deliveryExpense',
+          department: 'livraison'
         }));
-        setPurchases(purchasesData);
+        setDeliveryExpenses(deliveryExpData);
 
-    } catch (error) {
+        // Charger les listes d'achats cuisine (purchaseLists)
+        let purchaseListsQ;
+        if (filterByRestaurant) {
+          purchaseListsQ = query(collection(db, 'purchaseLists'), where('restaurantId', '==', userRestaurantId), orderBy('date', 'desc'));
+        } else {
+          purchaseListsQ = query(collection(db, 'purchaseLists'), orderBy('date', 'desc'));
+        }
+        const purchaseListsSnapshot = await getDocs(purchaseListsQ);
+        const purchaseListsData = purchaseListsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date || null,
+          createdAt: doc.data().createdAt?.toDate?.() || (doc.data().createdAt ? new Date(doc.data().createdAt) : null),
+          type: 'purchase',
+          // Calculer le total si pas présent
+          total: doc.data().total || (doc.data().items ? doc.data().items.reduce((sum, item) => sum + (item.totalPrice || 0), 0) : 0)
+        }));
+        setPurchaseLists(purchaseListsData);
+      } catch (error) {
         console.error('Erreur lors du chargement des données:', error);
-      toast.error('Erreur lors du chargement des données');
-    } finally {
-      setLoading(false);
-    }
-  };
+        toast.error('Erreur lors du chargement des données');
+      } finally {
+        setLoading(false);
+        setHasLoadedOnce(true);
+      }
+    };
 
     loadAdditionalData();
-  }, []);
+  }, [userRestaurantId, canAccessAllRestaurants, userRole]);
 
-  // Debug: Afficher les données reçues
-  useEffect(() => {
-    if (safeOrders && safeOrders.length > 0) {
-      const dates = safeOrders.slice(0, 5).map(order => ({
-        id: order.id?.slice(-4),
-        date: new Date(order.timestamp).toLocaleDateString('fr-FR'),
-        time: new Date(order.timestamp).toLocaleTimeString('fr-FR')
-      }));
-      
-      console.log('🔍 AccountingReports - Données reçues:', {
-        orders: safeOrders?.length || 0,
-        items: safeItems?.length || 0,
-        extraLists: safeExtraLists?.length || 0,
-        sampleDates: dates
-      });
-    }
-  }, [safeOrders, safeItems, safeExtraLists]);
+  
 
 
   // Fonction getPeriodRange copiée de ReportsDashboard
@@ -236,14 +265,47 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
       .filter(Boolean); // Remove null entries
   }, [safeOrders, safeItems, safeExtraLists]);
 
+  // Utilitaire: convertir "YYYY-Www" en une date du lundi de cette semaine
+  const weekStringToDate = useCallback((weekStr) => {
+    if (!weekStr || typeof weekStr !== 'string' || !/\d{4}-W\d{2}/.test(weekStr)) return null;
+    const [yearStr, wStr] = weekStr.split('-W');
+    const year = Number(yearStr);
+    const week = Number(wStr);
+    if (!year || !week) return null;
+    const simple = new Date(year, 0, 1);
+    const dayOfWeek = simple.getDay();
+    const ISOweekStart = new Date(simple);
+    const diff = (dayOfWeek <= 4 ? dayOfWeek - 1 : dayOfWeek - 8);
+    ISOweekStart.setDate(simple.getDate() - diff + (week - 1) * 7);
+    ISOweekStart.setHours(0,0,0,0);
+    return ISOweekStart;
+  }, []);
+
+  // Date de base effective selon le type de rapport
+  const effectiveBaseDate = useMemo(() => {
+    if (reportType === 'weekly') {
+      return weekStringToDate(selectedWeek) || new Date();
+    }
+    if (reportType === 'monthly') {
+      if (selectedMonth && /\d{4}-\d{2}/.test(selectedMonth)) {
+        return new Date(`${selectedMonth}-01T00:00:00`);
+      }
+      return new Date();
+    }
+    if (reportType === 'daily') {
+      return selectedDate ? new Date(selectedDate) : new Date();
+    }
+    return null; // 'all'
+  }, [reportType, selectedDate, selectedWeek, selectedMonth, weekStringToDate]);
+
   // Filtrer les commandes selon la période et les filtres (logique de ReportsDashboard)
   const filteredOrders = useMemo(() => {
     if (!enrichedOrders || enrichedOrders.length === 0) {
       return [];
     }
 
-    // Compute current period range based on selectedDate and reportType
-    const { start, end } = getPeriodRange(selectedDate, reportType);
+    // Compute current period range based on effectiveBaseDate and reportType
+    const { start, end } = getPeriodRange(effectiveBaseDate, reportType);
 
     const filtered = enrichedOrders.filter((order) => {
       // Date validation
@@ -303,7 +365,121 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     });
     
     return filtered;
-  }, [enrichedOrders, reportType, selectedDate, delivererFilter, statusFilter, paymentMethodFilter, destinationFilter, paymentStatusFilter, minRating]);
+  }, [enrichedOrders, reportType, effectiveBaseDate, delivererFilter, statusFilter, paymentMethodFilter, destinationFilter, paymentStatusFilter, minRating]);
+
+  // Filtrer les dépenses et achats selon la période sélectionnée
+  const { start: rangeStart, end: rangeEnd } = useMemo(() => getPeriodRange(effectiveBaseDate, reportType), [effectiveBaseDate, reportType]);
+
+  // Combiner toutes les dépenses (expenses + deliveryExpenses)
+  const allExpenses = useMemo(() => {
+    return [...expenses, ...deliveryExpenses];
+  }, [expenses, deliveryExpenses]);
+
+  const filteredExpenses = useMemo(() => {
+    if (!Array.isArray(allExpenses) || !rangeStart || !rangeEnd) return allExpenses || [];
+    return allExpenses.filter((e) => {
+      const base = e?.date ? (e.date instanceof Date ? e.date : new Date(e.date)) : (e?.createdAt instanceof Date ? e.createdAt : (e?.createdAt ? new Date(e.createdAt) : null));
+      if (!base || isNaN(base.getTime())) return false;
+      const localD = new Date(base);
+      localD.setHours(0, 0, 0, 0);
+      const startLocal = new Date(rangeStart);
+      startLocal.setHours(0, 0, 0, 0);
+      const endLocal = new Date(rangeEnd);
+      endLocal.setHours(23, 59, 59, 999);
+      return localD >= startLocal && localD <= endLocal;
+    });
+  }, [allExpenses, rangeStart, rangeEnd]);
+
+  const filteredPurchases = useMemo(() => {
+    if (!Array.isArray(purchaseLists) || !rangeStart || !rangeEnd) return purchaseLists || [];
+    return purchaseLists.filter((p) => {
+      const base = p?.date ? new Date(p.date) : (p?.createdAt instanceof Date ? p.createdAt : (p?.createdAt ? new Date(p.createdAt) : null));
+      if (!base || isNaN(base.getTime())) return false;
+      const localD = new Date(base);
+      localD.setHours(0, 0, 0, 0);
+      const startLocal = new Date(rangeStart);
+      startLocal.setHours(0, 0, 0, 0);
+      const endLocal = new Date(rangeEnd);
+      endLocal.setHours(23, 59, 59, 999);
+      return localD >= startLocal && localD <= endLocal;
+    });
+  }, [purchaseLists, rangeStart, rangeEnd]);
+
+  // Totaux par type de dépense pour la vue simplifiée
+  const deliveryExpensesTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e?.type === 'deliveryExpense')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
+
+  const generalExpensesTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e?.type !== 'deliveryExpense')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
+
+  // Détail journalier pour la période sélectionnée
+  const dailyBreakdown = useMemo(() => {
+    if (!rangeStart || !rangeEnd) return [];
+    const days = [];
+    const start = new Date(rangeStart);
+    const end = new Date(rangeEnd);
+    start.setHours(0,0,0,0); end.setHours(0,0,0,0);
+    const keyOf = (d) => d.toISOString().slice(0,10);
+
+    // Indexer par date
+    const revenueByDay = {};
+    const genExpByDay = {};
+    const delivExpByDay = {};
+    const purchasesByDay = {};
+
+    (filteredOrders || []).forEach(o => {
+      const d = o.date ? new Date(o.date) : null;
+      if (!d || isNaN(d)) return;
+      d.setHours(0,0,0,0);
+      const k = keyOf(d);
+      revenueByDay[k] = (revenueByDay[k] || 0) + (Number(o.total) || 0);
+    });
+
+    (filteredExpenses || []).forEach(e => {
+      const base = e?.date ? (e.date instanceof Date ? e.date : new Date(e.date)) : (e?.createdAt ? new Date(e.createdAt) : null);
+      if (!base || isNaN(base)) return;
+      base.setHours(0,0,0,0);
+      const k = keyOf(base);
+      if (e?.type === 'deliveryExpense') {
+        delivExpByDay[k] = (delivExpByDay[k] || 0) + (Number(e.amount) || 0);
+      } else {
+        genExpByDay[k] = (genExpByDay[k] || 0) + (Number(e.amount) || 0);
+      }
+    });
+
+    (filteredPurchases || []).forEach(p => {
+      const base = p?.date ? new Date(p.date) : (p?.createdAt ? new Date(p.createdAt) : null);
+      if (!base || isNaN(base)) return;
+      base.setHours(0,0,0,0);
+      const k = keyOf(base);
+      purchasesByDay[k] = (purchasesByDay[k] || 0) + (Number(p.total) || 0);
+    });
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const k = keyOf(d);
+      const revenue = revenueByDay[k] || 0;
+      const gexp = genExpByDay[k] || 0;
+      const dexp = delivExpByDay[k] || 0;
+      const buys = purchasesByDay[k] || 0;
+      const net = revenue - gexp - dexp - buys;
+      days.push({
+        key: k,
+        label: d.toLocaleDateString('fr-FR'),
+        revenue,
+        generalExpenses: gexp,
+        deliveryExpenses: dexp,
+        purchases: buys,
+        net
+      });
+    }
+    return days;
+  }, [rangeStart, rangeEnd, filteredOrders, filteredExpenses, filteredPurchases]);
 
   // Calculer les statistiques financières
   const financialStats = useMemo(() => {
@@ -401,8 +577,8 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     });
 
     // Dépenses et achats
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-    const totalPurchases = purchases.reduce((sum, purchase) => sum + (purchase.total || 0), 0);
+    const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    const totalPurchases = filteredPurchases.reduce((sum, purchase) => sum + (purchase.total || 0), 0);
     const netProfit = totalRevenue - totalExpenses - totalPurchases;
     
     return {
@@ -417,7 +593,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
       paidOrdersCount: filteredOrders.filter(o => o.isPaid).length,
       averageOrderValue: filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0
     };
-  }, [filteredOrders, expenses, purchases]);
+  }, [filteredOrders, filteredExpenses, filteredPurchases]);
 
   // Analyse des plats populaires
   const popularDishes = useMemo(() => {
@@ -449,20 +625,28 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     // Ajouter les commandes
     filteredOrders.forEach(order => {
       const paymentMethod = order.payment?.method || order.paymentMethod?.name || 'Non spécifié';
-      const orderTime = new Date(order.timestamp).toLocaleTimeString('fr-FR');
-      csvContent += `Commande,${new Date(order.timestamp).toLocaleDateString('fr-FR')},${orderTime},${order.total},${paymentMethod},${order.status},${order.assignedDeliverer || 'Non assigné'},Commande #${order.id?.slice(-4) || 'N/A'}\n`;
+      const orderDate = order.date ? new Date(order.date) : null;
+      const orderTime = orderDate ? orderDate.toLocaleTimeString('fr-FR') : '';
+      const orderDateStr = orderDate ? orderDate.toLocaleDateString('fr-FR') : '';
+      csvContent += `Commande,${orderDateStr},${orderTime},${order.total},${paymentMethod},${order.status},${order.assignedDeliverer || 'Non assigné'},Commande #${order.id?.slice(-4) || 'N/A'}\n`;
     });
     
-    // Ajouter les dépenses
-    expenses.forEach(expense => {
-      const expenseTime = new Date(expense.createdAt).toLocaleTimeString('fr-FR');
-      csvContent += `Dépense,${new Date(expense.createdAt).toLocaleDateString('fr-FR')},${expenseTime},-${expense.amount},${expense.paymentMethod || 'Espèces'},Dépense,${expense.department || 'N/A'},${expense.description}\n`;
+    // Ajouter les dépenses (filtrées par période)
+    filteredExpenses.forEach(expense => {
+      const d = expense.date ? (expense.date instanceof Date ? expense.date : new Date(expense.date)) : (expense.createdAt ? new Date(expense.createdAt) : null);
+      const expenseTime = d ? d.toLocaleTimeString('fr-FR') : '';
+      const expenseDate = d ? d.toLocaleDateString('fr-FR') : '';
+      const category = expense.type === 'deliveryExpense' ? 'Dépense Livraison' : 'Dépense';
+      csvContent += `${category},${expenseDate},${expenseTime},-${expense.amount},${expense.paymentMethod || 'Espèces'},Dépense,${expense.department || 'N/A'},${expense.description}\n`;
     });
     
-    // Ajouter les achats
-    purchases.forEach(purchase => {
-      const purchaseTime = new Date(purchase.createdAt).toLocaleTimeString('fr-FR');
-      csvContent += `Achat,${new Date(purchase.createdAt).toLocaleDateString('fr-FR')},${purchaseTime},-${purchase.total},${purchase.paymentMethod || 'Espèces'},Achat,${purchase.supplier || 'N/A'},${purchase.description}\n`;
+    // Ajouter les achats cuisine (filtrés par période)
+    filteredPurchases.forEach(purchase => {
+      const d = purchase.date ? new Date(purchase.date) : (purchase.createdAt ? new Date(purchase.createdAt) : null);
+      const purchaseTime = d ? d.toLocaleTimeString('fr-FR') : '';
+      const purchaseDate = d ? d.toLocaleDateString('fr-FR') : '';
+      const description = purchase.notes || `Liste d'achats ${purchase.brands?.join(', ') || ''}`;
+      csvContent += `Achat Cuisine,${purchaseDate},${purchaseTime},-${purchase.total || 0},${purchase.paymentMethod || 'Espèces'},Achat,Cuisine,${description}\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -476,7 +660,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     document.body.removeChild(link);
     
     toast.success('Rapport exporté avec succès');
-  }, [filteredOrders, expenses, purchases, reportType, selectedDate]);
+  }, [filteredOrders, filteredExpenses, filteredPurchases, reportType, selectedDate]);
 
   // Obtenir les options de filtres (comme dans ReportsDashboard)
   const delivererOptions = useMemo(() => {
@@ -499,7 +683,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     return [{ value: 'all', label: 'Tous les statuts' }, ...statuses.map(s => ({ value: s, label: s }))];
   }, [enrichedOrders]);
 
-  if (loading) {
+  if (loading && !hasLoadedOnce) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -507,8 +691,8 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
     );
   }
 
-  // Vérifier si les données sont disponibles
-  if (!safeOrders || safeOrders.length === 0) {
+  // Vérifier si les données sont disponibles (après première charge pour éviter le flicker)
+  if (hasLoadedOnce && (!safeOrders || safeOrders.length === 0) && filteredExpenses.length === 0 && filteredPurchases.length === 0) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
         <div className="flex items-center">
@@ -528,7 +712,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-gray-50 min-h-screen p-4">
       {/* Header */}
       <div className="flex justify-between items-center">
           <div>
@@ -542,97 +726,51 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
           </div>
         </div>
           <div className="flex space-x-3">
-            <button
-            onClick={() => setReportType('all')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-          >
-            📊 Voir toutes les commandes
-          </button>
-          <button
-            onClick={() => {
-              console.log('🔍 DEBUG COMPLET:', {
-                safeOrders: safeOrders,
-                filteredOrders: filteredOrders,
-                financialStats: financialStats
-              });
-            }}
-            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex items-center"
-          >
-            🔍 Debug
-            </button>
-            <button
-              onClick={exportToCSV}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
-            >
-            <FaDownload className="mr-2" />
-            Exporter CSV
-            </button>
-        </div>
+            <button onClick={() => setReportType('all')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center">📊 Voir toutes les commandes</button>
+            <button onClick={exportToCSV} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"><FaDownload className="mr-2" />Exporter CSV</button>
+          </div>
       </div>
 
-      {/* Sélection du type de rapport */}
+      {/* Sélection du type de rapport (détaillée) */}
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">📅 Période du rapport</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {reportTypes.map((type) => (
-            <button
-              key={type.id}
-              onClick={() => setReportType(type.id)}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                reportType === type.id
-                  ? `border-${type.color}-500 bg-${type.color}-50`
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <type.icon className={`text-2xl text-${type.color}-600`} />
-                <div className="text-left">
-                  <div className="font-medium text-gray-900">{type.label}</div>
-                </div>
-              </div>
-            </button>
-          ))}
-              </div>
-
-        {/* Sélecteurs de date */}
-        <div className="mt-4 flex flex-wrap gap-4">
-          {reportType === 'daily' && (
+        <div className="flex flex-wrap gap-4 items-end">
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Période</label>
+            <select
+              value={reportType}
+              onChange={(e) => setReportType(e.target.value)}
+              className="border rounded-md px-3 py-2"
+            >
+              <option value="all">Toutes les périodes</option>
+              <option value="daily">Journalier</option>
+              <option value="weekly">Hebdomadaire</option>
+              <option value="monthly">Mensuel</option>
+            </select>
+          </div>
+
+          {reportType === 'daily' && (
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="border rounded-md px-3 py-2"
-              />
-                </div>
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="border rounded-md px-3 py-2" />
+            </div>
           )}
           {reportType === 'weekly' && (
-                  <div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Semaine</label>
-              <input
-                type="week"
-                value={selectedWeek}
-                onChange={(e) => setSelectedWeek(e.target.value)}
-                className="border rounded-md px-3 py-2"
-              />
-                  </div>
+              <input type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} className="border rounded-md px-3 py-2" />
+            </div>
           )}
           {reportType === 'monthly' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mois</label>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="border rounded-md px-3 py-2"
-              />
-                </div>
-                  )}
-                </div>
-              </div>
+              <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="border rounded-md px-3 py-2" />
+            </div>
+          )}
+        </div>
+      </div>
 
-      {/* Filtres avancés */}
+      {/* Filtres avancés (cachés si simpleView) */}
+      {!simpleView && (
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">🔍 Filtres avancés</h3>
@@ -727,6 +865,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
                   </div>
                 </div>
               </div>
+      )}
 
         {/* Indicateur des filtres actifs */}
         <div className="mt-4 p-3 bg-gray-50 rounded-lg">
@@ -801,7 +940,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
                 {formatPrice(financialStats.totalExpenses)} FCFA
               </p>
               <p className="text-xs text-gray-500">
-                {expenses.length} dépenses
+                {filteredExpenses.length} dépenses
               </p>
                   </div>
             <FaReceipt className="text-3xl text-red-600" />
@@ -821,7 +960,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
                 {formatPrice(financialStats.totalPurchases)} FCFA
               </p>
               <p className="text-xs text-gray-500">
-                {purchases.length} achats
+                {filteredPurchases.length} achats
               </p>
                       </div>
             <FaShoppingCart className="text-3xl text-orange-600" />
@@ -908,7 +1047,7 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
       </div>
 
       {/* Résumé des activités */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-6 bg-gray-50 min-h-screen p-4">
       <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold mb-4">📦 Commandes</h3>
           <div className="space-y-3">
@@ -948,11 +1087,11 @@ const AccountingReports = ({ orders = [], items = [], extraLists = [], userRole 
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-600">Nombre de dépenses</span>
-              <span className="font-medium text-red-600">{expenses.length}</span>
+              <span className="font-medium text-red-600">{filteredExpenses.length}</span>
               </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Nombre d'achats</span>
-              <span className="font-medium text-orange-600">{purchases.length}</span>
+              <span className="font-medium text-orange-600">{filteredPurchases.length}</span>
               </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Total sorties</span>

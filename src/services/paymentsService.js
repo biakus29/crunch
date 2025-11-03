@@ -19,7 +19,7 @@ import {
 import { db } from '../firebase';
 import { optimizedQuery, invalidateCache } from '../utils/firebaseOptimizer';
 import { onSnapshot as fsOnSnapshot } from 'firebase/firestore';
-import { calculateOrderTotals } from '../utils/adminUtils';
+import { calculateOrderTotals, getDisplayTotal } from '../utils/adminUtils';
 
 // Build Firestore where constraints array from filters for onSnapshot usage
 function buildFsConstraints({ dateRange, filterStatus, filterMethod, itemsPerPage }) {
@@ -141,12 +141,18 @@ export async function enrichPaymentsWithOrders(payments) {
             }, 0);
             const fee = Number(order.deliveryFee);
             const fallbackTotal = itemsTotal + (isNaN(fee) ? 0 : fee);
-            const derivedAmount =
-              Number(payment.amount) ||
-              Number(order.totalWithDelivery) ||
-              Number(order.total) ||
-              fallbackTotal ||
-              0;
+            // Utiliser getDisplayTotal si order.items existe pour respecter customTotal/customDiscount
+            let derivedAmount = Number(payment.amount) || 0;
+            if (!derivedAmount && order.items && Array.isArray(order.items)) {
+              try {
+                const totals = calculateOrderTotals(order, [], []);
+                derivedAmount = getDisplayTotal(order, totals);
+              } catch (e) {
+                derivedAmount = Number(order.totalWithDelivery) || Number(order.total) || fallbackTotal || 0;
+              }
+            } else if (!derivedAmount) {
+              derivedAmount = Number(order.totalWithDelivery) || Number(order.total) || fallbackTotal || 0;
+            }
             const customerName = order.contact?.name || order.customerName || 'Client inconnu';
             let customerPhone = order.contact?.phone || order.address?.phone || order.phone || null;
             if (!customerPhone && typeof order.userId === 'string' && order.userId.startsWith('guest-')) {
@@ -168,7 +174,17 @@ export async function enrichPaymentsWithOrders(payments) {
                 totalItems: order.items?.length || 0,
                 restaurant: order.restaurant || 'Restaurant inconnu',
                 orderNumber: order.orderNumber || payment.orderId.slice(-6),
-                totalWithDelivery: Number(order.totalWithDelivery) || fallbackTotal,
+                totalWithDelivery: (() => {
+                  if (order.items && Array.isArray(order.items)) {
+                    try {
+                      const totals = calculateOrderTotals(order, [], []);
+                      return getDisplayTotal(order, totals);
+                    } catch (e) {
+                      return Number(order.totalWithDelivery) || fallbackTotal;
+                    }
+                  }
+                  return Number(order.totalWithDelivery) || fallbackTotal;
+                })(),
                 deliveryFee: isNaN(fee) ? 0 : fee,
                 subtotal: itemsTotal,
                 address: order.address?.fullAddress || order.address?.completeAddress || order.address?.address || null,
@@ -231,7 +247,17 @@ export async function syncPaymentsWithOrders() {
         }, 0);
         const fee = Number(order.deliveryFee);
         const fallbackTotal = itemsTotal + (isNaN(fee) ? 0 : fee);
-        const derivedAmount = Number(order.totalWithDelivery) || Number(order.total) || fallbackTotal || 0;
+        let derivedAmount = 0;
+        if (order.items && Array.isArray(order.items)) {
+          try {
+            const totals = calculateOrderTotals(order, [], []);
+            derivedAmount = getDisplayTotal(order, totals);
+          } catch (e) {
+            derivedAmount = Number(order.totalWithDelivery) || Number(order.total) || fallbackTotal || 0;
+          }
+        } else {
+          derivedAmount = Number(order.totalWithDelivery) || Number(order.total) || fallbackTotal || 0;
+        }
         const customerName = order.contact?.name || order.customerName || 'Client inconnu';
         const customerPhone = order.contact?.phone || order.address?.phone || order.phone || null;
         const customerEmail = order.contact?.email || order.customerEmail || null;

@@ -6,7 +6,7 @@ import {
   STATUS_LABELS,
   DEFAULT_DELIVERY_FEE,
 } from "../adminConstants";
-import { calculateOrderTotals, convertPrice } from "../../../utils/adminUtils";
+import { calculateOrderTotals, convertPrice, getDisplayTotal } from "../../../utils/adminUtils";
 import { FaTruck, FaCheck } from "react-icons/fa";
 
 const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragStart, onDragEnd, deliverers = [] }) => {
@@ -25,7 +25,9 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
   const quartier = address.area || "Non spécifié";
   const description = address.completeAddress || "Non spécifié";
   const deliveryFee = order.deliveryFee !== undefined ? Number(order.deliveryFee) : DEFAULT_DELIVERY_FEE;
-  const { subtotal, totalWithDelivery } = calculateOrderTotals(order, extraLists, items);
+  const totals = calculateOrderTotals(order, extraLists, items);
+  const displayTotal = getDisplayTotal(order, totals);
+  const { subtotal } = totals;
 
   const getExtraName = (extraListId, index) => {
     const extraList = extraLists.find((el) => el.id === extraListId);
@@ -130,9 +132,15 @@ const OrderCard = ({ order, items, extraLists, usersData, onShowDetails, onDragS
               {(Number(order.pointsReduction) || 0).toLocaleString()} FCFA
             </span>
           </div>
+          {(order.customDiscount > 0 || order.customTotal !== null) && (
+            <div className="flex justify-between text-orange-600">
+              <span>Réduction:</span>
+              <span>-{(order.customDiscount || 0).toLocaleString()} FCFA</span>
+            </div>
+          )}
           <div className="flex justify-between text-green-600 font-semibold">
             <span>Total:</span>
-            <span>{totalWithDelivery.toLocaleString()} FCFA</span>
+            <span>{displayTotal.toLocaleString()} FCFA</span>
           </div>
         </div>
 

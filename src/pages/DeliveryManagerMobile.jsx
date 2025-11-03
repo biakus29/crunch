@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, orderBy, addDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { FaTruck, FaMapMarkerAlt, FaPhone, FaCheckCircle, FaClock, FaSignOutAlt, FaUser, FaChartLine, FaBox } from 'react-icons/fa';
+import { FaTruck, FaMapMarkerAlt, FaPhone, FaCheckCircle, FaClock, FaSignOutAlt, FaUser, FaChartLine, FaBox, FaReceipt, FaPlus, FaGasPump, FaWrench, FaTools, FaFileInvoice, FaHandshake } from 'react-icons/fa';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -12,10 +12,20 @@ const DeliveryManagerMobile = () => {
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [deliverers, setDeliverers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders', 'deliverers', 'stats', 'tracking'
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders', 'deliverers', 'stats', 'tracking', 'expenses'
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [restaurantId, setRestaurantId] = useState(null);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({
+    delivererId: '',
+    category: 'fuel',
+    amount: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0],
+    supplier: '',
+  });
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
@@ -73,6 +83,16 @@ const DeliveryManagerMobile = () => {
         );
         setDeliverers(deliverersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
 
+        // Charger les dépenses de livraison
+        const expensesSnap = await getDocs(
+          query(
+            collection(db, 'deliveryExpenses'),
+            where('restaurantId', '==', userData.restaurantId),
+            orderBy('date', 'desc')
+          )
+        );
+        setExpenses(expensesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+
         setLoading(false);
         return () => unsubscribeOrders();
       } catch (error) {
@@ -108,6 +128,59 @@ const DeliveryManagerMobile = () => {
       toast.error('Erreur lors de l\'assignation');
     }
   };
+
+  const handleCreateExpense = async () => {
+    try {
+      if (!expenseForm.delivererId || !expenseForm.amount || !expenseForm.description) {
+        toast.error('Veuillez remplir tous les champs requis');
+        return;
+      }
+
+      const deliverer = deliverers.find((d) => d.id === expenseForm.delivererId);
+      const expenseData = {
+        ...expenseForm,
+        delivererName: deliverer?.name || '',
+        amount: parseFloat(expenseForm.amount),
+        date: new Date(expenseForm.date),
+        restaurantId: restaurantId,
+        createdAt: new Date(),
+      };
+
+      await addDoc(collection(db, 'deliveryExpenses'), expenseData);
+      toast.success('Dépense enregistrée avec succès');
+      
+      // Recharger les dépenses
+      const expensesSnap = await getDocs(
+        query(
+          collection(db, 'deliveryExpenses'),
+          where('restaurantId', '==', restaurantId),
+          orderBy('date', 'desc')
+        )
+      );
+      setExpenses(expensesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      
+      // Réinitialiser le formulaire
+      setExpenseForm({
+        delivererId: '',
+        category: 'fuel',
+        amount: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0],
+        supplier: '',
+      });
+      setShowExpenseModal(false);
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur lors de l\'enregistrement');
+    }
+  };
+
+  const EXPENSE_CATEGORIES = [
+    { value: 'fuel', label: '⛽ Carburant', color: 'orange' },
+    { value: 'maintenance', label: '🔧 Entretien', color: 'blue' },
+    { value: 'repair', label: '🛠️ Réparation', color: 'red' },
+    { value: 'other', label: '📦 Divers', color: 'purple' },
+  ];
 
   const getStatusColor = (status) => {
     const colors = {
@@ -185,12 +258,27 @@ const DeliveryManagerMobile = () => {
                 <p className="text-sm text-blue-100">{user?.name}</p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="bg-white bg-opacity-20 hover:bg-opacity-30 p-2 rounded-lg transition"
-            >
-              <FaSignOutAlt className="text-xl" />
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => navigate('/partner-deliveries', { 
+                  state: { 
+                    restaurantId: restaurantId,
+                    fromDeliveryManager: true 
+                  } 
+                })}
+                className="bg-white bg-opacity-20 hover:bg-opacity-30 p-2 rounded-lg transition"
+                title="Dashboard Partenaires"
+              >
+                <FaHandshake className="text-xl" />
+              </button>
+              <button
+                onClick={handleLogout}
+                className="bg-white bg-opacity-20 hover:bg-opacity-30 p-2 rounded-lg transition"
+                title="Déconnexion"
+              >
+                <FaSignOutAlt className="text-xl" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -213,7 +301,7 @@ const DeliveryManagerMobile = () => {
         </div>
 
         {/* Tabs */}
-        <div className="grid grid-cols-4 gap-2 mb-6">
+        <div className="grid grid-cols-5 gap-2 mb-6">
           <button
             onClick={() => setActiveTab('orders')}
             className={`py-2 px-2 rounded-lg font-medium transition text-sm ${
@@ -240,6 +328,15 @@ const DeliveryManagerMobile = () => {
           >
             <FaUser className="inline mr-1" />
             Livreurs
+          </button>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className={`py-2 px-2 rounded-lg font-medium transition text-sm ${
+              activeTab === 'expenses' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 shadow'
+            }`}
+          >
+            <FaReceipt className="inline mr-1" />
+            Dépenses
           </button>
           <button
             onClick={() => setActiveTab('stats')}
@@ -488,6 +585,99 @@ const DeliveryManagerMobile = () => {
           </div>
         )}
 
+        {activeTab === 'expenses' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-800">
+                Dépenses de Livraison ({expenses.length})
+              </h2>
+              <button
+                onClick={() => setShowExpenseModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center"
+              >
+                <FaPlus className="mr-2" /> Nouvelle
+              </button>
+            </div>
+
+            {/* Statistiques des dépenses */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-white rounded-lg p-4 shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-lg font-bold text-gray-900">
+                      {expenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString()} FCFA
+                    </p>
+                  </div>
+                  <FaReceipt className="text-2xl text-gray-400" />
+                </div>
+              </div>
+              <div className="bg-white rounded-lg p-4 shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500">Ce mois</p>
+                    <p className="text-lg font-bold text-blue-600">
+                      {expenses.filter(e => {
+                        const expenseDate = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+                        const now = new Date();
+                        return expenseDate.getMonth() === now.getMonth() && expenseDate.getFullYear() === now.getFullYear();
+                      }).reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString()} FCFA
+                    </p>
+                  </div>
+                  <FaGasPump className="text-2xl text-orange-400" />
+                </div>
+              </div>
+            </div>
+
+            {/* Liste des dépenses */}
+            {expenses.slice(0, 20).map((expense) => {
+              const category = EXPENSE_CATEGORIES.find((c) => c.value === expense.category);
+              return (
+                <div key={expense.id} className="bg-white rounded-lg shadow p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium bg-${category?.color}-100 text-${category?.color}-800`}>
+                          {category?.label || expense.category}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {expense.date?.toDate
+                            ? expense.date.toDate().toLocaleDateString('fr-FR')
+                            : new Date(expense.date).toLocaleDateString('fr-FR')}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-gray-900 mb-1">
+                        {expense.description}
+                      </div>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <FaUser className="mr-1" />
+                        {expense.delivererName}
+                      </div>
+                      {expense.supplier && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Fournisseur: {expense.supplier}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-gray-900">
+                        {expense.amount?.toLocaleString() || 0} FCFA
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {expenses.length === 0 && (
+              <div className="bg-white rounded-lg p-8 text-center shadow">
+                <FaReceipt className="mx-auto text-5xl text-gray-300 mb-4" />
+                <p className="text-gray-500">Aucune dépense enregistrée</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'stats' && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg shadow p-6">
@@ -572,6 +762,108 @@ const DeliveryManagerMobile = () => {
               >
                 Annuler
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal création dépense */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-4" onClick={() => setShowExpenseModal(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Nouvelle Dépense</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Livreur *</label>
+                  <select
+                    value={expenseForm.delivererId}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, delivererId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Sélectionner un livreur</option>
+                    {deliverers.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+                  <select
+                    value={expenseForm.category}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {EXPENSE_CATEGORIES.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Montant (FCFA) *</label>
+                  <input
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: 5000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                  <input
+                    type="text"
+                    value={expenseForm.description}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: Plein d'essence"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
+                  <input
+                    type="text"
+                    value={expenseForm.supplier}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, supplier: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ex: Station Total"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-3 mt-6">
+                <button
+                  onClick={() => setShowExpenseModal(false)}
+                  className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleCreateExpense}
+                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Enregistrer
+                </button>
+              </div>
             </div>
           </div>
         </div>

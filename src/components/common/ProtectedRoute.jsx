@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/authcontext';
 
-const ProtectedRoute = ({ children, adminOnly = false }) => {
+const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = [] }) => {
   const { user, loading, isAdmin, isAuthenticated } = useAuth();
   const location = useLocation();
 
@@ -15,10 +15,23 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
   // Si pas d'utilisateur connecté, rediriger vers la page de connexion
   if (!isAuthenticated) {
+    // Si on accède à une route partenaire, rediriger vers le login partenaire
+    if (location.pathname.includes('partner-')) {
+      return <Navigate to="/login-partners" state={{ from: location }} replace />;
+    }
     return <Navigate to="/loginrestau" state={{ from: location }} replace />;
   }
 
-  // Si la route nécessite des droits admin et que l'utilisateur n'est pas admin
+  // Vérifier les rôles autorisés si spécifiés
+  if (allowedRoles.length > 0) {
+    const userRole = user?.role || '';
+    if (!allowedRoles.includes(userRole) && !isAdmin) { // Admin peut toujours accéder
+      return <Navigate to="/unauthorized" replace />;
+    }
+    return children;
+  }
+
+  // Sinon, vérifier si admin requis
   if (adminOnly && !isAdmin) {
     return <Navigate to="/unauthorized" replace />;
   }

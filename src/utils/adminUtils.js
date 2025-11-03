@@ -59,6 +59,29 @@ export const calculateOrderTotals = (order, extraLists, items) => {
   };
 };
 
+/**
+ * Calcule le total d'affichage d'une commande en tenant compte des overrides admin.
+ * Priorité: customTotal > (totalCalculé - customDiscount) > totalCalculé
+ * @param {Object} order - La commande avec customTotal/customDiscount éventuels
+ * @param {Object} totals - Résultat de calculateOrderTotals(order, extraLists, items)
+ * @returns {number} Le total à afficher partout (modal, listes, rapports)
+ */
+export const getDisplayTotal = (order, totals) => {
+  const hasCustomTotal = order.customTotal !== null && order.customTotal !== undefined && !isNaN(Number(order.customTotal));
+  if (hasCustomTotal) {
+    return Number(order.customTotal);
+  }
+  
+  const customDiscount = Number(order.customDiscount) || 0;
+  const baseTotal = Number(totals.totalWithDelivery || 0);
+  
+  if (customDiscount > 0) {
+    return Math.max(0, baseTotal - customDiscount);
+  }
+  
+  return baseTotal;
+};
+
 export const getWeekNumber = (date) => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);

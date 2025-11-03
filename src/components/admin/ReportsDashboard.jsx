@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from "react";
-import { formatPrice, calculateOrderTotals } from "../../utils/adminUtils";
+import { formatPrice, calculateOrderTotals, getDisplayTotal } from "../../utils/adminUtils";
 
 // Constants for better maintainability
 const PERIOD_MODES = {
@@ -237,6 +237,7 @@ const ReportsDashboard = ({
           if (!order || typeof order !== 'object') return null;
           
           const totals = calculateOrderTotals(order, extraLists, items);
+          const displayTotal = getDisplayTotal(order, totals);
           // Utiliser timestamp en priorité, sinon updatedAt comme fallback
           const orderDate = order.timestamp 
             ? new Date(order.timestamp.seconds * 1000) 
@@ -259,7 +260,7 @@ const ReportsDashboard = ({
             destination: order?.address?.area || order.destination || "",
             subtotal: Number(totals.subtotal) || 0,
             deliveryFee: Number(order.deliveryFee) || 0,
-            total: Number(totals.totalWithDelivery) || 0,
+            total: displayTotal,
             rating: typeof rating === "number" && !isNaN(rating) ? rating : null,
             paymentMethod: typeof order.paymentMethod === "string" 
               ? order.paymentMethod 

@@ -148,6 +148,7 @@ const TakeawayOrderForm = ({ currentRestaurantId, onClose, onOrderCreated }) => 
         
         return {
           id: itemId,
+          dishId: itemId,
           name: item.name,
           price: price,
           quantity: quantity,
@@ -186,6 +187,7 @@ const TakeawayOrderForm = ({ currentRestaurantId, onClose, onOrderCreated }) => 
         restaurantId: currentRestaurantId,
         createdByManager: auth.currentUser?.email || 'unknown', // Tracker le gérant qui crée la commande
         createdAt: Timestamp.now(),
+        timestamp: Timestamp.now(),
         updatedAt: Timestamp.now(),
         notes: 'Commande à emporter créée en interne'
       };

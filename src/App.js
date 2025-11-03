@@ -48,6 +48,8 @@ const DeliveryManagerMobile = lazy(() => import('./pages/DeliveryManagerMobile')
 const CsvDemo = lazy(() => import('./pages/CsvDemo'));
 const HistoriqueCommandes = lazy(() => import('./pages/HistoriqueCommandes'));
 const SalesHistoryPage = lazy(() => import('./pages/SalesHistoryPage'));
+const LoginPartnersPage = lazy(() => import('./pages/loginpartners'));
+const PartnerDeliveriesPage = lazy(() => import('./pages/partnerdeliveries'));
 
 function App() {
   return (
@@ -147,6 +149,12 @@ function App() {
               <Route path="/panier" element={<Panier />} />
               <Route path="/addrestaurant" element={<AddRestaurant />} />
               <Route path="/loginrestau" element={<Login />} />
+              <Route path="/login-partners" element={<LoginPartnersPage />} />
+              <Route path="/partner-deliveries" element={
+                <ProtectedRoute>
+                  <PartnerDeliveriesPage />
+                </ProtectedRoute>
+              } />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/detail/:id" element={<ProductDetails />} />
               <Route path="/cart" element={<CartPage />} />

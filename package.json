@@ -29,7 +29,7 @@
     "helmet": "^8.1.0",
     "icofont": "^1.0.0",
     "install": "^0.13.0",
-    "jspdf": "^3.0.2",
+    "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.477.0",
     "morgan": "^1.10.0",

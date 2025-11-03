@@ -44,7 +44,7 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
     email: '',
     password: '',
     phone: '',
-    role: ROLES.ORDER_MANAGER
+    roles: [ROLES.ORDER_MANAGER] // Changé en tableau pour supporter plusieurs rôles
   });
   const [userExists, setUserExists] = useState(false);
   const [checkingUser, setCheckingUser] = useState(false);
@@ -152,7 +152,7 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
       email: '',
       password: '',
       phone: '',
-      role: ROLES.ORDER_MANAGER
+      roles: [ROLES.ORDER_MANAGER] // Réinitialiser avec un tableau
     });
     setCreatedUserInfo(null);
     setUserExists(false);
@@ -233,8 +233,8 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
 
   const handleUserSubmit = async () => {
     try {
-      if (!form.email || !form.name || !form.role) {
-        alert('Email, nom et rôle sont requis');
+      if (!form.email || !form.name || !form.roles || form.roles.length === 0) {
+        alert('Email, nom et au moins un rôle sont requis');
         return;
       }
 
@@ -257,31 +257,32 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
           const existingUser = existingUserSnap.docs[0];
           uid = existingUser.id;
           
-          // Mettre à jour ses informations
+          // Mettre à jour ses informations avec les rôles multiples
           await updateDoc(doc(db, 'usersrestau', uid), {
             name: form.name,
             phone: form.phone || '',
-            role: form.role,
+            roles: form.roles, // Tableau de rôles
+            role: form.roles[0], // Garder le premier rôle comme rôle principal pour compatibilité
             restaurantId: currentRestaurantId,
-            active: true, // Activer automatiquement lors de l'attribution de rôle
+            active: true,
             updatedAt: serverTimestamp()
           });
         }
         
-        // Pour utilisateur existant, ne pas afficher de mot de passe
-        // Car nous ne pouvons pas le changer côté client
-        alert(`Rôle ${ROLE_LABELS[form.role]} attribué avec succès à ${form.email}. L'utilisateur peut se connecter avec son mot de passe existant.`);
+        const rolesText = form.roles.map(r => ROLE_LABELS[r]).join(', ');
+        alert(`Rôles (${rolesText}) attribués avec succès à ${form.email}. L'utilisateur peut se connecter avec son mot de passe existant.`);
       } else {
         // Nouvel utilisateur - Créer le compte Auth
         const cred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
         uid = cred.user.uid;
 
-        // Créer le profil utilisateur
+        // Créer le profil utilisateur avec rôles multiples
         const userData = {
           name: form.name,
           email: form.email.trim(),
           phone: form.phone || '',
-          role: form.role,
+          roles: form.roles, // Tableau de rôles
+          role: form.roles[0], // Premier rôle comme rôle principal pour compatibilité
           restaurantId: currentRestaurantId,
           uid,
           active: true,
@@ -292,22 +293,24 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
         await setDoc(doc(db, 'usersrestau', uid), userData);
         setUsers(prev => [...prev, { id: uid, ...userData }]);
         
-        // Sauvegarder les informations de connexion pour affichage (seulement pour nouveaux comptes)
+        // Sauvegarder les informations de connexion pour affichage
+        const rolesText = form.roles.map(r => ROLE_LABELS[r]).join(', ');
         setCreatedUserInfo({
           name: form.name,
           email: form.email,
           password: form.password,
-          role: ROLE_LABELS[form.role]
+          role: rolesText
         });
       }
 
-      // Créer un document spécifique selon le rôle si nécessaire
-      if (form.role === ROLES.SUPPLY_MANAGER) {
+      // Créer un document spécifique si SUPPLY_MANAGER est dans les rôles
+      if (form.roles.includes(ROLES.SUPPLY_MANAGER)) {
         await addDoc(collection(db, 'supplyManagers'), {
           name: form.name,
           email: form.email.trim(),
           phone: form.phone || '',
-          role: form.role,
+          roles: form.roles,
+          role: form.roles[0],
           restaurantId: currentRestaurantId,
           uid,
           active: true,
@@ -319,9 +322,10 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
       await loadUsers();
       setShowCreate(false);
       
+      const rolesText = form.roles.map(r => ROLE_LABELS[r]).join(', ');
       const message = userExists 
-        ? `Rôle ${ROLE_LABELS[form.role]} attribué avec succès à ${form.email}`
-        : `Utilisateur ${ROLE_LABELS[form.role]} créé avec succès`;
+        ? `Rôles (${rolesText}) attribués avec succès à ${form.email}`
+        : `Utilisateur avec rôles (${rolesText}) créé avec succès`;
       
       if (userExists) {
         alert(message);
@@ -339,7 +343,7 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
       email: user.email || '',
       password: '',
       phone: user.phone || '',
-      role: user.role || ROLES.ORDER_MANAGER
+      roles: user.roles || (user.role ? [user.role] : [ROLES.ORDER_MANAGER]) // Charger les rôles multiples ou convertir le rôle unique
     });
     setShowEdit(true);
   };
@@ -348,10 +352,16 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
     try {
       if (!selected) return;
 
+      if (!form.roles || form.roles.length === 0) {
+        alert('Au moins un rôle est requis');
+        return;
+      }
+
       const updatedData = {
         name: form.name,
         phone: form.phone,
-        role: form.role,
+        roles: form.roles, // Tableau de rôles
+        role: form.roles[0], // Premier rôle comme rôle principal pour compatibilité
         updatedAt: serverTimestamp()
       };
 
@@ -366,7 +376,9 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
       setShowEdit(false);
       setSelected(null);
       resetForm();
-      alert('Utilisateur mis à jour');
+      
+      const rolesText = form.roles.map(r => ROLE_LABELS[r]).join(', ');
+      alert(`Utilisateur mis à jour avec rôles: ${rolesText}`);
     } catch (error) {
       console.error('Erreur mise à jour:', error);
       alert(`Erreur: ${error.message}`);
@@ -466,9 +478,13 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
-                    {ROLE_LABELS[user.role] || user.role}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {(user.roles || [user.role]).map((role, index) => (
+                      <span key={index} className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(role)}`}>
+                        {ROLE_LABELS[role] || role}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{user.phone || '-'}</td>
@@ -603,17 +619,38 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
                 value={form.phone} 
                 onChange={e => setForm({ ...form, phone: e.target.value })} 
               />
-              <select 
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                value={form.role}
-                onChange={e => setForm({ ...form, role: e.target.value })}
-              >
-                {Object.entries(ROLES).map(([key, role]) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
+              
+              {/* Sélection multiple de rôles */}
+              <div className="border rounded p-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Rôles (sélection multiple)
+                </label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {Object.entries(ROLES).map(([key, role]) => (
+                    <label key={role} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={form.roles.includes(role)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setForm({ ...form, roles: [...form.roles, role] });
+                          } else {
+                            setForm({ ...form, roles: form.roles.filter(r => r !== role) });
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="flex items-center gap-2">
+                        {roleIcons[role]}
+                        <span className="text-sm">{ROLE_LABELS[role]}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {form.roles.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Sélectionnez au moins un rôle</p>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <button 
@@ -658,17 +695,38 @@ const RoleBasedUserManager = ({ currentRestaurantId, canAccessAllRestaurants = f
                 value={form.phone} 
                 onChange={e => setForm({ ...form, phone: e.target.value })} 
               />
-              <select 
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                value={form.role}
-                onChange={e => setForm({ ...form, role: e.target.value })}
-              >
-                {Object.entries(ROLES).map(([key, role]) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
+              
+              {/* Sélection multiple de rôles */}
+              <div className="border rounded p-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Rôles (sélection multiple)
+                </label>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {Object.entries(ROLES).map(([key, role]) => (
+                    <label key={role} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={form.roles.includes(role)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setForm({ ...form, roles: [...form.roles, role] });
+                          } else {
+                            setForm({ ...form, roles: form.roles.filter(r => r !== role) });
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="flex items-center gap-2">
+                        {roleIcons[role]}
+                        <span className="text-sm">{ROLE_LABELS[role]}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {form.roles.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Sélectionnez au moins un rôle</p>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <button 

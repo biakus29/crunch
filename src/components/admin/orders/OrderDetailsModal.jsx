@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { Timestamp, collection, doc, onSnapshot, query, updateDoc } from "firebase/firestore";
+import { Timestamp, collection, doc, onSnapshot, query, updateDoc, getDocs } from "firebase/firestore";
 import { db } from "../../../firebase";
 import {
   ORDER_STATUS,
@@ -15,6 +15,8 @@ import {
   calculateOrderTotals,
 } from "../../../utils/adminUtils";
 import { groupExtrasByGroupId, validateRequiredGroups } from "../../../shared/extras";
+import { useRoleAuth } from "../../../hooks/useRoleAuth";
+import { ROLES } from "../../../utils/rolePermissions";
 
 const OrderDetailsModal = React.memo(({ 
   order, 
@@ -84,6 +86,17 @@ const OrderDetailsModal = React.memo(({
   const [isEditingPayment, setIsEditingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState(order.payment?.method || 'cash');
   const [paymentProvider, setPaymentProvider] = useState(order.payment?.provider || 'OM');
+  const { userRole } = useRoleAuth();
+  const [devDate, setDevDate] = useState(() => {
+    const d = order.timestamp ? new Date(order.timestamp.seconds * 1000) : (order.updatedAt ? new Date(order.updatedAt.seconds * 1000) : new Date());
+    const pad = (n) => String(n).padStart(2, '0');
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const mm = pad(d.getMinutes());
+    return `${y}-${m}-${day}T${hh}:${mm}`;
+  });
   const [transactionId, setTransactionId] = useState(order.payment?.transactionId || '');
   const [paymentSplit, setPaymentSplit] = useState({
     cash: order.payment?.cashAmount || 0,
@@ -94,6 +107,7 @@ const OrderDetailsModal = React.memo(({
   const [paymentError, setPaymentError] = useState(null);
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isSavingTotal, setIsSavingTotal] = useState(false);
 
   // Liste des livreurs disponibles
   const DELIVERERS = ["Boris", "Cyriac", "Serge", "Ismaël", "Joël", "Patrick", "Abdoulaye", "Franck"];
@@ -301,8 +315,14 @@ const OrderDetailsModal = React.memo(({
       }
       // Validation centralisée des extras requis
       if (extraLists && extraLists.length > 0) {
+        // Ne considérer que les listes d'extras reliées à l'article courant
+        const relevantLists = (currentItem.extraLists || [])
+          .map((lid) => extraLists.find((l) => l.id === lid))
+          .filter(Boolean);
+        if (relevantLists.length === 0) continue;
+
         const allExtras = [];
-        extraLists.forEach((list) => {
+        relevantLists.forEach((list) => {
           (list.extraListElements || []).forEach((el, i) => {
             allExtras.push({
               id: `${list.id}:${i}`,
@@ -321,7 +341,7 @@ const OrderDetailsModal = React.memo(({
         const res = validateRequiredGroups({ groups, selectedById });
         if (!res.valid) {
           const firstErr = res.errors[0];
-          const list = extraLists.find((l) => (l.id === firstErr.groupId) || (firstErr.groupId === "__ungrouped__" && l.id));
+          const list = relevantLists.find((l) => (l.id === firstErr.groupId)) || extraLists.find((l) => l.id);
           const name = list?.name || "Extras";
           return `Extras obligatoires manquants pour ${name}`;
         }
@@ -427,7 +447,7 @@ const OrderDetailsModal = React.memo(({
       });
       await onUpdateFees(order.id, order.address?.area || "inconnu", Number(newFee));
       setFeeSuccessMessage("Frais mis à jour avec succès");
-      setTimeout(() => setShowFeeModal(false), 1000);
+      setShowFeeModal(false);
     } catch (error) {
       console.error("Erreur lors de la mise à jour des frais:", error);
       setFeeError("Erreur lors de la sauvegarde des frais");
@@ -457,6 +477,7 @@ const OrderDetailsModal = React.memo(({
 
   const handleSaveTotal = async () => {
     try {
+      setIsSavingTotal(true);
       const orderRef = doc(db, "orders", order.id);
       const updateData = {
         customDiscount: Number(customDiscount) || 0,
@@ -480,10 +501,12 @@ const OrderDetailsModal = React.memo(({
         onOrderUpdated(updatedOrder);
       }
       
-      setTimeout(() => setShowTotalModal(false), 1000);
+      setShowTotalModal(false);
     } catch (error) {
       console.error("Erreur lors de la mise à jour du total:", error);
       setError("Erreur lors de la sauvegarde du total");
+    } finally {
+      setIsSavingTotal(false);
     }
   };
 
@@ -491,6 +514,20 @@ const OrderDetailsModal = React.memo(({
     setShowTotalModal(false);
     setCustomDiscount(order.customDiscount || 0);
     setCustomTotal(order.customTotal || null);
+  };
+
+  const handleDevDateSave = async () => {
+    try {
+      const date = new Date(devDate);
+      if (isNaN(date.getTime())) return;
+      const orderRef = doc(db, "orders", order.id);
+      await updateDoc(orderRef, {
+        timestamp: Timestamp.fromDate(date),
+        updatedAt: Timestamp.now(),
+      });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // Gestion de la modification du paiement
@@ -575,6 +612,7 @@ const OrderDetailsModal = React.memo(({
         isPaid: true
       });
       
+      setPaymentError(null); // Effacer les erreurs précédentes
       setPaymentSuccessMessage("Paiement mis à jour avec succès");
       setRefreshTrigger(prev => prev + 1); // Déclencher un rafraîchissement
       
@@ -584,9 +622,10 @@ const OrderDetailsModal = React.memo(({
         onOrderUpdated(updatedOrder);
       }
       
-      setTimeout(() => setIsEditingPayment(false), 1000);
+      setIsEditingPayment(false);
     } catch (error) {
       console.error("Erreur lors de la mise à jour du paiement:", error);
+      setPaymentSuccessMessage(null); // Effacer le message de succès
       setPaymentError("Erreur lors de la sauvegarde du paiement");
     } finally {
       setIsSavingPayment(false);
@@ -614,6 +653,14 @@ const OrderDetailsModal = React.memo(({
         <div className="sticky top-0 bg-white p-3 border-b flex justify-between items-center z-10">
           <h3 className="text-base font-semibold">Commande #{order.id.slice(0, 6)}</h3>
           <div className="flex items-center space-x-1">
+            <button
+              className="mr-2 text-gray-500 hover:text-gray-700"
+              onClick={onClose}
+              aria-label="Fermer"
+              title="Fermer"
+            >
+              ×
+            </button>
             <span className="text-xs font-medium">{isPaid ? "Payé" : "Non payé"}</span>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={isPaid} onChange={handleTogglePaid} className="sr-only peer" />
@@ -1229,7 +1276,16 @@ const OrderDetailsModal = React.memo(({
         {showFeeModal && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-3 rounded-lg shadow-lg w-full max-w-xs">
-              <h4 className="text-sm font-semibold mb-2">Modifier les frais de livraison</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold">Modifier les frais de livraison</h4>
+                <button
+                  className="text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowFeeModal(false)}
+                  aria-label="Fermer"
+                >
+                  ×
+                </button>
+              </div>
               {feeError && <p className="text-red-600 text-xs mb-2">{feeError}</p>}
               {feeSuccessMessage && <p className="text-green-600 text-xs mb-2">{feeSuccessMessage}</p>}
               <div className="flex items-center space-x-2 mb-2">
@@ -1284,7 +1340,16 @@ const OrderDetailsModal = React.memo(({
         {showTotalModal && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-4 rounded-lg shadow-lg w-full max-w-md">
-              <h4 className="text-lg font-semibold mb-3">Modifier le total et paiement</h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-lg font-semibold">Modifier le total et paiement</h4>
+                <button
+                  className="text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowTotalModal(false)}
+                  aria-label="Fermer"
+                >
+                  ×
+                </button>
+              </div>
               
               <div className="space-y-4">
                 {/* Réduction */}
@@ -1402,14 +1467,16 @@ const OrderDetailsModal = React.memo(({
                 <button
                   className="flex-1 bg-gray-200 p-2 rounded hover:bg-gray-300 text-sm"
                   onClick={handleCancelTotalEdit}
+                  disabled={isSavingTotal}
                 >
                   Annuler
                 </button>
                 <button
                   className="flex-1 bg-blue-600 text-white p-2 rounded hover:bg-blue-700 text-sm"
                   onClick={handleSaveTotal}
+                  disabled={isSavingTotal}
                 >
-                  Enregistrer
+                  {isSavingTotal ? "Enregistrement..." : "Enregistrer"}
                 </button>
               </div>
             </div>

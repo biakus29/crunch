@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import {
   collection,
   addDoc,
@@ -31,9 +31,11 @@ import 'react-toastify/dist/ReactToastify.css';
 const ExpensesManager = ({ currentRestaurantId, userRole }) => {
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [motorcycles, setMotorcycles] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
   const [menus, setMenus] = useState([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState('all'); // 'all' ou restaurantId
+  const [deliverers, setDeliverers] = useState([]);
   const [selectedMenu, setSelectedMenu] = useState('all'); // 'all' ou menuId
   const [selectedDepartment, setSelectedDepartment] = useState('all'); // 'all' ou department
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,8 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
     supplier: '',
     notes: '',
     type: 'fixed',
+    motorcycleId: '',
+    delivererId: '',
     menuId: '', // MangedAbord ou Crunch
     department: userRole === 'delivery_manager' ? 'livraison' : 'general' // Forcer livraison pour delivery_manager
   });
@@ -91,7 +95,35 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
     }
     loadData();
     loadMenus();
+    loadMotorcycles();
+    loadDeliverers();
   }, [currentRestaurantId, selectedRestaurant]);
+
+  const loadDeliverers = async () => {
+    try {
+      const filterRestaurantId = currentRestaurantId || (selectedRestaurant !== 'all' ? selectedRestaurant : null);
+      const delivQuery = filterRestaurantId
+        ? query(collection(db, 'deliverers'), where('restaurantId', '==', filterRestaurantId), orderBy('name'))
+        : query(collection(db, 'deliverers'), orderBy('name'));
+      const delivSnap = await getDocs(delivQuery);
+      setDeliverers(delivSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error('Erreur chargement livreurs:', error);
+    }
+  };
+
+  const loadMotorcycles = async () => {
+    try {
+      const filterRestaurantId = currentRestaurantId || (selectedRestaurant !== 'all' ? selectedRestaurant : null);
+      const motosQuery = filterRestaurantId
+        ? query(collection(db, 'motorcycles'), where('restaurantId', '==', filterRestaurantId), orderBy('brand'))
+        : query(collection(db, 'motorcycles'), orderBy('brand'));
+      const motosSnap = await getDocs(motosQuery);
+      setMotorcycles(motosSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error('Erreur chargement motos:', error);
+    }
+  };
 
   const loadRestaurants = async () => {
     try {
@@ -195,6 +227,8 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
       supplier: expenseForm.supplier.trim(),
       notes: expenseForm.notes.trim(),
       type: expenseForm.type,
+      motorcycleId: expenseForm.motorcycleId || '',
+      delivererId: expenseForm.delivererId || '',
       menuId: expenseForm.menuId || '',
       department: expenseForm.department || 'general',
       restaurantId: currentRestaurantId || selectedRestaurant,
@@ -212,6 +246,8 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
       amount: parseFloat(expenseForm.amount),
       categoryId: expenseForm.categoryId,
       date: expenseForm.date,
+      motorcycleId: expenseForm.motorcycleId || '',
+      delivererId: expenseForm.delivererId || '',
       invoiceNumber: expenseForm.invoiceNumber.trim(),
       supplier: expenseForm.supplier.trim(),
       notes: expenseForm.notes.trim(),
@@ -240,6 +276,8 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
       amount: expense.amount.toString(),
       categoryId: expense.categoryId,
       date: expense.date,
+      motorcycleId: expense.motorcycleId || '',
+      delivererId: expense.delivererId || '',
       invoiceNumber: expense.invoiceNumber || '',
       supplier: expense.supplier || '',
       notes: expense.notes || '',
@@ -389,6 +427,8 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
       supplier: '',
       notes: '',
       type: 'fixed'
+      ,motorcycleId: '',
+      delivererId: ''
     });
   };
 
@@ -832,6 +872,35 @@ const ExpensesManager = ({ currentRestaurantId, userRole }) => {
                       />
                     </div>
                   </div>
+
+                  {expenseForm.department === 'livraison' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Moto (optionnel)</label>
+                      <select
+                        value={expenseForm.motorcycleId}
+                        onChange={(e) => {
+                          const motoId = e.target.value;
+                          const moto = motorcycles.find(m => m.id === motoId);
+                          setExpenseForm({ ...expenseForm, motorcycleId: motoId, delivererId: moto?.currentDelivererId || '' });
+                        }}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Aucune</option>
+                        {motorcycles.map((m) => (
+                          <option key={m.id} value={m.id}>{m.registrationNumber ? `${m.registrationNumber} — ` : ''}{m.brand || 'Moto'}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {expenseForm.delivererId && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Livreur associé</label>
+                      <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-sm text-gray-700">
+                        {deliverers.find(d => d.id === expenseForm.delivererId)?.name || expenseForm.delivererId}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">

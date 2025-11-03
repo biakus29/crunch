@@ -33,6 +33,7 @@ import {
   syncPaymentsWithOrders,
   backfillAllPayments 
 } from '../../services/paymentsService';
+import { calculateOrderTotals, getDisplayTotal } from '../../utils/adminUtils';
 
 // Statuts des commandes
 const ORDER_STATUS = {
@@ -172,7 +173,14 @@ function AllPaymentsPage() {
   // Calculer les statistiques
   const stats = useMemo(() => {
     const totalOrders = filteredOrders.length;
-    const totalAmount = filteredOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
+    const totalAmount = filteredOrders.reduce((sum, order) => {
+      // Utiliser getDisplayTotal si items/extraLists disponibles, sinon order.total
+      if (order.items && Array.isArray(order.items)) {
+        const totals = calculateOrderTotals(order, [], []);
+        return sum + getDisplayTotal(order, totals);
+      }
+      return sum + (Number(order.total) || 0);
+    }, 0);
     const totalDelivery = filteredOrders.reduce((sum, order) => sum + (Number(order.deliveryFee) || 0), 0);
     const paidOrders = filteredOrders.filter(order => order.isPaid).length;
     const deliveredOrders = filteredOrders.filter(order => order.status === 'livree').length;
@@ -195,9 +203,21 @@ function AllPaymentsPage() {
       'Client': order.address?.phone || order.userId?.replace('guest-', '') || 'N/A',
       'Téléphone': order.address?.phone || 'N/A',
       'Adresse': order.address?.completeAddress || order.address?.area || 'N/A',
-      'Sous-total': Number(order.total || 0) - Number(order.deliveryFee || 0),
+      'Sous-total': (() => {
+        if (order.items && Array.isArray(order.items)) {
+          const totals = calculateOrderTotals(order, [], []);
+          return totals.subtotal;
+        }
+        return Number(order.total || 0) - Number(order.deliveryFee || 0);
+      })(),
       'Livraison': Number(order.deliveryFee || 0),
-      'Total': Number(order.total || 0),
+      'Total': (() => {
+        if (order.items && Array.isArray(order.items)) {
+          const totals = calculateOrderTotals(order, [], []);
+          return getDisplayTotal(order, totals);
+        }
+        return Number(order.total || 0);
+      })(),
       'Statut': order.status || 'N/A',
       'Payé': order.isPaid ? 'Oui' : 'Non',
       'Méthode': order.paymentMethod?.name || 'N/A',
@@ -471,7 +491,20 @@ function AllPaymentsPage() {
               {filteredOrders.map((order) => {
                 const status = ORDER_STATUS[order.status] || ORDER_STATUS['en_attente'];
                 const paymentMethod = PAYMENT_METHODS[order.paymentMethod?.id] || PAYMENT_METHODS['cash_delivery'];
-                const subtotal = (Number(order.total) || 0) - (Number(order.deliveryFee) || 0);
+                const subtotal = (() => {
+                  if (order.items && Array.isArray(order.items)) {
+                    const totals = calculateOrderTotals(order, [], []);
+                    return totals.subtotal;
+                  }
+                  return (Number(order.total) || 0) - (Number(order.deliveryFee) || 0);
+                })();
+                const displayTotal = (() => {
+                  if (order.items && Array.isArray(order.items)) {
+                    const totals = calculateOrderTotals(order, [], []);
+                    return getDisplayTotal(order, totals);
+                  }
+                  return Number(order.total) || 0;
+                })();
                 
                 return (
                   <tr key={order.id} className="hover:bg-gray-50">
@@ -529,7 +562,7 @@ function AllPaymentsPage() {
                           Livraison: <span className="font-medium">{(Number(order.deliveryFee) || 0).toLocaleString()} FCFA</span>
                         </div>
                         <div className="text-sm font-bold text-gray-900">
-                          Total: {(Number(order.total) || 0).toLocaleString()} FCFA
+                          Total: {displayTotal.toLocaleString()} FCFA
                         </div>
                       </div>
                     </td>
@@ -607,9 +640,21 @@ function AllPaymentsPage() {
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-900 mb-2">Détails financiers</h4>
-                    <p className="text-sm text-gray-600">Sous-total: {((Number(selectedOrder.total) || 0) - (Number(selectedOrder.deliveryFee) || 0)).toLocaleString()} FCFA</p>
+                    <p className="text-sm text-gray-600">Sous-total: {(() => {
+                      if (selectedOrder.items && Array.isArray(selectedOrder.items)) {
+                        const totals = calculateOrderTotals(selectedOrder, [], []);
+                        return totals.subtotal.toLocaleString();
+                      }
+                      return ((Number(selectedOrder.total) || 0) - (Number(selectedOrder.deliveryFee) || 0)).toLocaleString();
+                    })()} FCFA</p>
                     <p className="text-sm text-gray-600">Livraison: {(Number(selectedOrder.deliveryFee) || 0).toLocaleString()} FCFA</p>
-                    <p className="text-sm font-semibold text-gray-900">Total: {(Number(selectedOrder.total) || 0).toLocaleString()} FCFA</p>
+                    <p className="text-sm font-semibold text-gray-900">Total: {(() => {
+                      if (selectedOrder.items && Array.isArray(selectedOrder.items)) {
+                        const totals = calculateOrderTotals(selectedOrder, [], []);
+                        return getDisplayTotal(selectedOrder, totals).toLocaleString();
+                      }
+                      return (Number(selectedOrder.total) || 0).toLocaleString();
+                    })()} FCFA</p>
                   </div>
                 </div>
                 
